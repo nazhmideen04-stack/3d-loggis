@@ -56,7 +56,7 @@ st.markdown("""
 # Шапка
 col_head_title, col_head_logo = st.columns([4, 1])
 with col_head_title:
-    st.markdown("<h1 style='margin-bottom: 0px;'>LOGGIS 3B // TUNNEL HEALTH MONITORING</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom: 0px;'>LOGGIS 3B </h1>", unsafe_allow_html=True)
 
 with col_head_logo:
     if os.path.exists(LOGO_PATH):
