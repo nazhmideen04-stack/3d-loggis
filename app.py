@@ -13,7 +13,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg"
 
-# Стили для аккуратной шапки и полупрозрачности логотипа
+# Стили для полупрозрачного логотипа
 st.markdown("""
 <style>
     [data-testid="stImage"] img {
@@ -38,9 +38,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Верхняя брендовая строка
+# Шапка
 col_head_title, col_head_logo = st.columns([4, 1])
-
 with col_head_title:
     st.markdown("<h1 style='margin-bottom: 0px;'>LOGGIS 3B</h1>", unsafe_allow_html=True)
 
@@ -51,6 +50,7 @@ with col_head_logo:
         st.markdown("<div style='text-align: right;'><span class='header-badge'>LOGGIS</span></div>", unsafe_allow_html=True)
 
 COLORSCALES = {
+    # 1. Çevresel gerinim: Синий -> Белый (0) -> Красный
     "hoop_bwr": [
         [0.0, "#0010D6"],
         [0.35, "#3388FF"],
@@ -58,6 +58,7 @@ COLORSCALES = {
         [0.65, "#FF4422"],
         [1.0, "#C60000"]
     ],
+    # 2. Boyuna gerinim: Изумрудный -> Серый (0) -> Неоновый Пурпурный
     "axial_gvp": [
         [0.0, "#006428"],
         [0.35, "#00E676"],
@@ -65,6 +66,7 @@ COLORSCALES = {
         [0.65, "#E040FB"],
         [1.0, "#6A0080"]
     ],
+    # 3. Sıcaklık: Turbo
     "temp_turbo": "Turbo"
 }
 
@@ -114,7 +116,7 @@ def fetch_category_data(cat_key):
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--single-process",
-            "--blink-settings=imagesEnabled=false",
+            "--window-size=1920,1080",
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
@@ -123,24 +125,29 @@ def fetch_category_data(cat_key):
             browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
-            viewport={"width": 1600, "height": 900},
+            viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="tr-TR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media", "font", "stylesheet"] else route.continue_())
 
-        page.goto(URL, timeout=40000, wait_until="domcontentloaded")
+        # Блокируем ТОЛЬКО тяжелые изображения и медиа (стили и шрифты оставляем для корректного SignalR)
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
+        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+        page.wait_for_timeout(3500)
+
+        # 1. Открытие меню Types
         types_btn = page.get_by_text("Types").first
-        types_btn.wait_for(state="visible", timeout=20000)
+        types_btn.wait_for(state="visible", timeout=30000)
         types_btn.click()
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(800)
 
+        # 2. Выбор категории
         try:
             listbox = page.get_by_role("listbox").first
-            listbox.wait_for(state="visible", timeout=3000)
+            listbox.wait_for(state="visible", timeout=5000)
             listbox.select_option(cat["name"])
         except Exception:
             try:
@@ -148,29 +155,57 @@ def fetch_category_data(cat_key):
             except Exception:
                 page.get_by_text(cat["name"]).first.click(force=True)
 
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(1200)
         try:
             page.keyboard.press("Escape")
         except Exception:
             pass
+        page.wait_for_timeout(600)
 
+        # 3. Фильтры таблицы
         combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="visible", timeout=15000)
+        combos.first.wait_for(state="visible", timeout=20000)
+
         try:
-            combos.first.select_option("ALL")
+            combos.first.select_option(value="ALL")
         except Exception:
             pass
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(1000)
 
         try:
             combos.nth(1).select_option("TABLE_MOST_RECENT")
         except Exception:
             pass
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(1200)
 
+        if combos.count() >= 3:
+            try:
+                combos.nth(2).select_option("NONE")
+            except Exception:
+                pass
+            page.wait_for_timeout(600)
+
+        # 4. Ожидание таблицы
         table_loc = page.locator("table, [role='grid'], .table").first
-        table_loc.wait_for(state="visible", timeout=25000)
+        table_loc.wait_for(state="visible", timeout=45000)
 
+        # Сортировка по дате
+        try:
+            date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
+            if date_header.is_visible():
+                date_header.click()
+                page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
+        # Дожидаемся появления тега датчиков в теле таблицы
+        for _ in range(25):
+            txt = page.locator("table tbody, [role='rowgroup']").inner_text()
+            if cat["tag"] in txt:
+                break
+            page.wait_for_timeout(600)
+
+        # 5. Мгновенное чтение всех ячеек через JS
         raw_table_data = page.evaluate("""() => {
             const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
             return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
@@ -181,10 +216,11 @@ def fetch_category_data(cat_key):
 
     sensor_best = {}
     for idx, cols in enumerate(raw_table_data):
-        if cat["tag"] in cols[1]:
+        if len(cols) >= 3 and cat["tag"] in cols[1]:
             d_raw = cols[0]
             s_name = cols[1]
             v = clean_num(cols[2])
+
             if not np.isnan(v):
                 ts = parse_robust_timestamp(d_raw)
                 if s_name not in sensor_best:
@@ -321,7 +357,7 @@ with col_nav:
 
 cat_cfg = CATEGORIES[selected_comp]
 
-with st.spinner(f"{cat_cfg['title']} verisi taranıyor..."):
+with st.spinner(f"{cat_cfg['title']} verisi LoggIS üzerinden alınıyor..."):
     cur_layer = fetch_category_data(selected_comp)
 
 v_map = cur_layer["values"]
@@ -425,7 +461,7 @@ with col_3d:
             showlegend=False
         ))
 
-        # Маркеры сенсоров
+        # Сенсоры
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
