@@ -376,7 +376,7 @@ with col_nav:
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    if st.button("🔄 Verileri Yenile (LoggIS)"):
+    if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
@@ -398,10 +398,10 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write(f"📅 **En Son Veri Zamanı:**")
-    st.info(f"🕒 `{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}`")
-    st.write(f"📡 **Aktif Sensör Sayısı:** `{len(v_map)}` adet")
-    st.write(f"📊 **Skala Limitleri:** `Min: {clim[0]}`, `Maks: {clim[1]} {cat_cfg['unit']}`")
+    st.write(f" **En Son Veri Zamanı:**")
+    st.info(f" `{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}`")
+    st.write(f" **Aktif Sensör Sayısı:** `{len(v_map)}` adet")
+    st.write(f" **Skala Limitleri:** `Min: {clim[0]}`, `Maks: {clim[1]} {cat_cfg['unit']}`")
 
     st.markdown("---")
     selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
