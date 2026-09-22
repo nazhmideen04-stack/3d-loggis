@@ -20,7 +20,7 @@ COLORSCALES = {
         [0.65, "#FF4422"],
         [1.0, "#C60000"]
     ],
-    # 2. Boyuna gerinim: Изумрудный -> Белый/Серый (0) -> Неоновый Пурпурный
+    # 2. Boyuna gerinim: Изумрудный -> Серый (0) -> Неоновый Пурпурный
     "axial_gvp": [
         [0.0, "#006428"],
         [0.35, "#00E676"],
@@ -67,26 +67,17 @@ def clean_num(s):
     return float(m.group()) if m else np.nan
 
 def parse_robust_timestamp(d_str):
-    """
-    Универсальный парсер даты: находит числа года, месяца, дня, часов, минут, секунд
-    даже если в строке LoggIS есть пробелы, точки, слэши или буквы T/Z.
-    """
     if not d_str:
         return 0.0
-    
-    # Ищем последовательности цифр
     nums = [int(n) for n in re.findall(r"\d+", str(d_str))]
     if len(nums) < 3:
         return 0.0
-    
     try:
-        # Формат YYYY-MM-DD
         if nums[0] > 1900:
             year, month, day = nums[0], nums[1], nums[2]
             hour = nums[3] if len(nums) > 3 else 0
             minute = nums[4] if len(nums) > 4 else 0
             second = nums[5] if len(nums) > 5 else 0
-        # Формат DD.MM.YYYY
         elif nums[2] > 1900:
             day, month, year = nums[0], nums[1], nums[2]
             hour = nums[3] if len(nums) > 3 else 0
@@ -118,8 +109,11 @@ def fetch_all_in_memory():
             os.system("playwright install chromium")
             browser = p.chromium.launch(headless=True, args=browser_args)
 
+        # Передаем явную таймзону Europe/Istanbul
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
+            timezone_id="Europe/Istanbul",
+            locale="tr-TR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
 
@@ -128,7 +122,7 @@ def fetch_all_in_memory():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(4000)
 
-            # 1. Открытие меню Types
+            # 1. Открытие Types
             types_btn = page.get_by_text("Types").first
             types_btn.wait_for(state="visible", timeout=30000)
             types_btn.click()
@@ -153,18 +147,16 @@ def fetch_all_in_memory():
                 pass
             page.wait_for_timeout(800)
 
-            # 3. Фильтры интервала
+            # 3. Фильтры
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
 
-            # Пробуем выбрать "Son 1 Gün" / "Son 1 Saat", если нет - ставим "ALL"
             try:
                 combos.first.select_option(value="ALL")
             except Exception:
                 pass
             page.wait_for_timeout(1000)
 
-            # Переключаем отображение на последние
             try:
                 combos.nth(1).select_option("TABLE_MOST_RECENT")
             except Exception:
@@ -178,11 +170,10 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
-            # 4. Дожидаемся таблицы
+            # 4. Чтение таблицы
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
 
-            # Клик по шапке даты для сортировки от самых новых к старым (Descending)
             try:
                 date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
                 if date_header.is_visible():
@@ -197,8 +188,7 @@ def fetch_all_in_memory():
                     break
                 page.wait_for_timeout(1000)
 
-            # 5. Считываем все строки и берем СТРОГО максимальный timestamp для каждого сенсора
-            sensor_best = {}  # {sensor: (timestamp, val, date_str)}
+            sensor_best = {}
             rows = page.locator("table tbody tr, [role='row']").all()
 
             for idx, r in enumerate(rows):
@@ -210,24 +200,15 @@ def fetch_all_in_memory():
 
                     if not np.isnan(v):
                         ts = parse_robust_timestamp(d_raw)
-                        
-                        # Если датчика еще нет или текущая строка новее по дате/времени
                         if s_name not in sensor_best:
                             sensor_best[s_name] = (ts, v, d_raw, idx)
                         else:
                             prev_ts, _, _, prev_idx = sensor_best[s_name]
-                            # Приоритет строго по дате. Если даты равны или не распознаны — берем строку с наибольшим индексом
                             if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
                                 sensor_best[s_name] = (ts, v, d_raw, idx)
 
             val_map = {s: item[1] for s, item in sensor_best.items()}
-            
-            # Находим абсолютную максимальную дату среди всех датчиков
-            if sensor_best:
-                latest_entry = max(sensor_best.values(), key=lambda x: x[0])
-                latest_date_str = latest_entry[2]
-            else:
-                latest_date_str = ""
+            latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
 
             page.close()
             results[cat["key"]] = {"values": val_map, "date": latest_date_str}
