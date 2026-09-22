@@ -14,7 +14,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-# Стили оформления DESTECH
+# Фирменный стиль DESTECH
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -77,7 +77,7 @@ if os.path.exists(LOGO_PATH):
 
 logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.90; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
-# Заголовок и логотип по одной оси
+# Заголовок и логотип строго по одной оси Y
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
@@ -109,8 +109,8 @@ COLORSCALES = {
 }
 
 CATEGORIES = {
-    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": COLORSCALES["hoop_bwr"]},
-    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": COLORSCALES["axial_gvp"]},
+    "hoop": {"name": "Othoradial strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": COLORSCALES["hoop_bwr"]},
+    "axial": {"name": "Longitudinal strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": COLORSCALES["axial_gvp"]},
     "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C", "cmap": COLORSCALES["temp_turbo"]},
 }
 
@@ -120,29 +120,6 @@ def clean_num(s):
     s = str(s).replace(",", ".").replace(" ", "").strip()
     m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
     return float(m.group()) if m else np.nan
-
-def parse_robust_timestamp(d_str):
-    if not d_str:
-        return 0.0
-    nums = [int(n) for n in re.findall(r"\d+", str(d_str))]
-    if len(nums) < 3:
-        return 0.0
-    try:
-        if nums[0] > 1900:
-            year, month, day = nums[0], nums[1], nums[2]
-            hour = nums[3] if len(nums) > 3 else 0
-            minute = nums[4] if len(nums) > 4 else 0
-            second = nums[5] if len(nums) > 5 else 0
-        elif nums[2] > 1900:
-            day, month, year = nums[0], nums[1], nums[2]
-            hour = nums[3] if len(nums) > 3 else 0
-            minute = nums[4] if len(nums) > 4 else 0
-            second = nums[5] if len(nums) > 5 else 0
-        else:
-            return 0.0
-        return datetime(year, month, day, hour, minute, second).timestamp()
-    except Exception:
-        return 0.0
 
 @st.cache_data(ttl=60)
 def fetch_category_data(cat_key, reload_seed=0):
@@ -174,134 +151,92 @@ def fetch_category_data(cat_key, reload_seed=0):
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(3500)
 
-        # 1. Выбор категории сенсоров (Types)
-        types_btn = page.get_by_text(re.compile(r"^Types?$", re.I)).first
-        types_btn.wait_for(state="visible", timeout=30000)
-        types_btn.click()
-        page.wait_for_timeout(800)
-
-        try:
-            listbox = page.get_by_role("listbox").first
-            listbox.wait_for(state="visible", timeout=5000)
-            listbox.select_option(cat["name"])
-        except Exception:
-            try:
-                page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
-            except Exception:
-                page.get_by_text(cat["name"]).first.click(force=True)
-
-        page.wait_for_timeout(1000)
-        try:
-            page.keyboard.press("Escape")
-        except Exception:
-            pass
+        # 1. Вкладка Types -> выбор типа датчиков
+        types_tab = page.locator("text='Types'").first
+        types_tab.wait_for(state="visible", timeout=30000)
+        types_tab.click()
         page.wait_for_timeout(600)
 
-        # 2. Выбор всех сенсоров (ALL)
-        combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="visible", timeout=20000)
+        # Клик по строке нужного типа (Temperature, Longitudinal strains, Othoradial strains)
         try:
-            combos.first.select_option(value="ALL")
+            item = page.locator(f"text='{cat['name']}'").first
+            item.wait_for(state="visible", timeout=5000)
+            item.click()
         except Exception:
-            pass
-        page.wait_for_timeout(800)
+            page.locator(f"*:text-matches('{cat['name']}', 'i')").first.click(force=True)
 
-        # 3. Выбор режима: Напрямую TABLE_MOST_RECENT (Dernière mesure / Самый последний замер)
-        # Это гарантирует, что LoggIS отдает именно текущую минуту/день, а не данные 60-дневной давности
-        try:
-            # Проверяем, есть ли режим TABLE_MOST_RECENT или Tableau
-            combos.nth(1).select_option("TABLE_MOST_RECENT")
-        except Exception:
-            try:
-                combos.nth(1).select_option(label=re.compile(r"Dernière|Recent|En son|Tableau|Table", re.I))
-            except Exception:
-                pass
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(1000)
 
-        # 4. Если режим табличный с периодом, переключаем на 2 mois
-        if combos.count() >= 3:
-            try:
-                combos.nth(2).select_option(label=re.compile(r"2\s*mois|2\s*month|2\s*ay", re.I))
-            except Exception:
-                try:
-                    combos.nth(2).select_option(value="2M")
-                except Exception:
-                    pass
-            page.wait_for_timeout(1000)
+        # 2. Установка Duration: 2 mois и Display mode: Tableau
+        page.evaluate("""() => {
+            const selects = Array.from(document.querySelectorAll('select'));
+            for (let s of selects) {
+                for (let opt of s.options) {
+                    if (/tableau/i.test(opt.text) || /tableau/i.test(opt.value)) {
+                        s.value = opt.value;
+                        s.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    if (/2\\s*mois/i.test(opt.text) || /2\\s*mois/i.test(opt.value)) {
+                        s.value = opt.value;
+                        s.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            }
+        }""")
+        page.wait_for_timeout(1500)
 
-        # 5. Ожидание таблицы
-        table_loc = page.locator("table, [role='grid'], .table").first
+        # 3. Ожидание таблицы
+        table_loc = page.locator("table").first
         table_loc.wait_for(state="visible", timeout=45000)
 
-        # Кликаем дважды по колонке Date, чтобы отсортировать строго DESC (от самого свежего к старому)
-        try:
-            date_th = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
-            if date_th.is_visible():
-                date_th.click()
-                page.wait_for_timeout(500)
-                # Если первая сортировка была по возрастанию (ASC), второй клик делает убывание (DESC - самые новые сверху)
-                date_th.click()
-                page.wait_for_timeout(800)
-        except Exception:
-            pass
-
-        # Ждем поступления данных
+        # Дожидаемся появления датчиков с нужным тегом в шапке
         for _ in range(30):
-            txt = page.locator("table tbody, [role='rowgroup']").inner_text()
-            if cat["tag"] in txt:
+            th_text = page.locator("table thead").inner_text()
+            if cat["tag"] in th_text:
                 break
             page.wait_for_timeout(500)
 
-        raw_table_data = page.evaluate("""() => {
-            const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
-            return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
-                       .filter(c => c.length >= 2);
+        # 4. Извлечение названий датчиков из <th> и первой (самой последней по времени) строки данных <td>
+        extracted_data = page.evaluate("""() => {
+            const table = document.querySelector('table');
+            if (!table) return null;
+
+            // Считываем заголовки колонок (сенсоры)
+            const thElements = Array.from(table.querySelectorAll('thead th, thead td'));
+            const headers = thElements.map(th => th.innerText.trim());
+
+            // Считываем самую верхнюю строку (самый свежий замер)
+            const firstRow = table.querySelector('tbody tr');
+            if (!firstRow) return { headers: headers, latestRow: [] };
+
+            const cells = Array.from(firstRow.querySelectorAll('td')).map(td => td.innerText.trim());
+            return {
+                headers: headers,
+                latestRow: cells
+            };
         }""")
 
         browser.close()
 
-    # 6. Извлечение САМЫХ СВЕЖИХ значений датчиков
-    sensor_best = {}
-    for idx, cols in enumerate(raw_table_data):
-        s_name = None
-        s_idx = -1
-        for ci, cell in enumerate(cols):
-            if cat["tag"] in cell:
-                m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", cell)
-                s_name = m.group(1) if m else cell.strip()
-                s_idx = ci
-                break
+    val_map = {}
+    latest_date_str = ""
 
-        if not s_name:
-            continue
+    if extracted_data and extracted_data.get("latestRow"):
+        headers = extracted_data["headers"]
+        row_vals = extracted_data["latestRow"]
 
-        d_raw = ""
-        v = np.nan
-        for ci, cell in enumerate(cols):
-            if ci == s_idx:
-                continue
-            if re.search(r"\d{1,4}[/\-\.]\d{1,2}[/\-\.]\d{1,4}", cell) or ":" in cell:
-                if not d_raw:
-                    d_raw = cell
-            num_cand = clean_num(cell)
-            if not np.isnan(num_cand) and np.isnan(v):
-                v = num_cand
+        # Первая ячейка — дата и время замера
+        if len(row_vals) > 0:
+            latest_date_str = row_vals[0]
 
-        if not np.isnan(v):
-            ts = parse_robust_timestamp(d_raw)
-            # Сохраняем датчик, только если его timestamp больше предыдущего
-            if s_name not in sensor_best:
-                sensor_best[s_name] = (ts, v, d_raw, idx)
-            else:
-                prev_ts, _, _, prev_idx = sensor_best[s_name]
-                if ts > prev_ts:
-                    sensor_best[s_name] = (ts, v, d_raw, idx)
-                elif ts == prev_ts and ts == 0.0 and idx < prev_idx:
-                    # Если даты не распарсились, берём верхнюю строку таблицы
-                    sensor_best[s_name] = (ts, v, d_raw, idx)
-
-    val_map = {s: item[1] for s, item in sensor_best.items()}
-    latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
+        # Остальные ячейки соответствуют сенсорам в заголовках
+        for h_name, val_str in zip(headers[1:], row_vals[1:]):
+            if cat["tag"] in h_name:
+                m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h_name)
+                s_name = m.group(1) if m else h_name.split()[0].strip()
+                v = clean_num(val_str)
+                if not np.isnan(v):
+                    val_map[s_name] = v
 
     return {"values": val_map, "date": latest_date_str}
 
@@ -552,7 +487,7 @@ with col_3d:
             showlegend=False
         ))
 
-        # Маркеры расположения датчиков
+        # Маркеры датчиков
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
