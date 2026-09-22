@@ -7,7 +7,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from playwright.sync_api import sync_playwright
 
-# Инициализация виртуального дисплея для работы PyVista на сервере Linux
+# Streamlit Cloud Linux sunucusunda sanal ekranı başlat (Xvfb)
 if not os.environ.get("DISPLAY"):
     try:
         pv.start_xvfb()
@@ -41,6 +41,7 @@ def fetch_all_in_memory():
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--single-process",
+            "--window-size=1920,1080",
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
@@ -48,29 +49,43 @@ def fetch_all_in_memory():
             os.system("playwright install chromium")
             browser = p.chromium.launch(headless=True, args=browser_args)
 
-        context = browser.new_context()
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
 
         for cat in CATEGORIES:
             page = context.new_page()
-            page.goto(URL, timeout=60000)
-            page.wait_for_load_state("domcontentloaded")
-            page.wait_for_timeout(3500)
+            page.goto(URL, timeout=90000, wait_until="networkidle")
+            page.wait_for_timeout(3000)
 
-            # Выбор категории в меню Types
-            page.get_by_text("Types").first.click()
-            page.wait_for_timeout(800)
-            page.get_by_role("listbox").first.select_option(cat["name"])
+            # 1. Types butonunu bekle ve tıkla
+            types_btn = page.locator("button, div, span, a").filter(has_text=re.compile(r"^Types$", re.IGNORECASE)).first
+            if not types_btn.is_visible():
+                types_btn = page.get_by_text("Types").first
+
+            types_btn.wait_for(state="visible", timeout=60000)
+            types_btn.click(force=True)
+            page.wait_for_timeout(1000)
+
+            # 2. Kategoriyi seç
+            listbox = page.get_by_role("listbox").first
+            listbox.wait_for(state="visible", timeout=15000)
+            listbox.select_option(cat["name"])
             page.wait_for_timeout(1000)
 
             try:
                 page.keyboard.press("Escape")
             except Exception:
                 pass
+            page.wait_for_timeout(500)
 
-            # Фильтры: Duration=ALL, Display=TABLE_MOST_RECENT, Processor=NONE
+            # 3. Filtreler: Duration=ALL, Display=TABLE_MOST_RECENT, Processor=NONE
             combos = page.get_by_role("combobox")
+            combos.first.wait_for(state="visible", timeout=20000)
             combos.first.select_option("ALL")
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(1000)
+
             combos.nth(1).select_option("TABLE_MOST_RECENT")
             page.wait_for_timeout(1500)
 
@@ -81,11 +96,11 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
-            # Ожидание строк таблицы
+            # 4. Tabloyu bekle ve oku
             table_loc = page.locator("table, [role='grid'], .table").first
-            table_loc.wait_for(state="visible", timeout=30000)
+            table_loc.wait_for(state="visible", timeout=45000)
 
-            for _ in range(12):
+            for _ in range(20):
                 txt = page.locator("table tbody, [role='rowgroup']").inner_text()
                 if cat["tag"] in txt:
                     break
