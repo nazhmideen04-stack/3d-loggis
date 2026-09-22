@@ -51,11 +51,13 @@ def fetch_all_in_memory():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(4000)
 
+            # 1. Открытие меню Types
             types_btn = page.get_by_text("Types").first
             types_btn.wait_for(state="visible", timeout=30000)
             types_btn.click()
             page.wait_for_timeout(1000)
 
+            # 2. Выбор категории
             try:
                 listbox = page.get_by_role("listbox").first
                 listbox.wait_for(state="visible", timeout=5000)
@@ -74,6 +76,7 @@ def fetch_all_in_memory():
                 pass
             page.wait_for_timeout(500)
 
+            # 3. Фильтры таблицы
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
             combos.first.select_option("ALL")
@@ -89,6 +92,7 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
+            # 4. Считывание таблицы данных
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
 
@@ -168,13 +172,13 @@ def patches_for(comp, pos):
     x0, x1 = float(pos[:, 0].min()), float(pos[:, 0].max())
     if comp == "axial":
         return [{
-            "angles": list(np.linspace(ang - 25.0, ang + 25.0, 5)),
-            "chainage": list(np.linspace(x0, x1, 40)),
+            "angles": list(np.linspace(ang - 25.0, ang + 25.0, 4)),
+            "chainage": list(np.linspace(x0, x1, 24)),
             "closed": False
         } for ang in sorted({float(a) for a in pos[:, 1]} if pos.ndim > 1 else [])]
     return [{
-        "angles": list(np.linspace(0.0, 360.0, 32, endpoint=False)),
-        "chainage": list(np.linspace(x0, x1, 40 if comp == "temp" else 24)),
+        "angles": list(np.linspace(0.0, 360.0, 24, endpoint=False)),
+        "chainage": list(np.linspace(x0, x1, 24 if comp == "temp" else 18)),
         "closed": True
     }]
 
@@ -223,7 +227,7 @@ def build_mesh_data(patches, offset_x):
         offset += nA * nC
     return np.array(pts, dtype=np.float32), np.array(triangles, dtype=np.int32)
 
-# --- UI ARAYÜZÜ ---
+# --- ИНТЕРФЕЙС STREAMLIT ---
 st.title("LOGGIS 3B TÜNEL İZLEME SİSTEMİ")
 
 col_nav, col_3d = st.columns([1, 4])
@@ -267,7 +271,7 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B PLOTLY SAHNESİ ---
+# --- ЛЕГКАЯ И ИНТЕРАКТИВНАЯ 3D СЦЕНА (PLOTLY) ---
 fig = go.Figure()
 
 sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
@@ -286,7 +290,6 @@ for ti, tun in enumerate(("TA", "TB")):
     cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
     scalars = W @ cur_vals
 
-    # Поверхность туннеля (Mesh3d)
     fig.add_trace(go.Mesh3d(
         x=pts[:, 0],
         y=pts[:, 1],
@@ -298,19 +301,20 @@ for ti, tun in enumerate(("TA", "TB")):
         colorscale=cat_cfg["cmap"],
         cmin=clim[0],
         cmax=clim[1],
-        opacity=0.95,
+        opacity=0.92,
         name=f"Tünel {tun}",
+        lighting=dict(ambient=0.75, diffuse=0.8, roughness=0.5, specular=0.2),
         colorbar=dict(
-            title=dict(text=f"{cat_cfg['title']}<br>[{cat_cfg['unit']}]", side="right"),
-            thickness=20,
-            len=0.75,
-            x=1.02
+            title=dict(text=f"[{cat_cfg['unit']}]", side="top"),
+            thickness=16,
+            len=0.7,
+            x=0.98,
+            tickfont=dict(color="#DDD")
         ) if ti == 0 else None,
         showscale=(ti == 0),
         hoverinfo="skip"
     ))
 
-    # Сенсоры
     for n, pt in zip(names, pos):
         ang = np.radians(pt[1])
         sx = off_x + (R + 0.12) * np.sin(ang)
@@ -320,8 +324,8 @@ for ti, tun in enumerate(("TA", "TB")):
         sensor_y.append(sy)
         sensor_z.append(sz)
         val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
-        sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}<br>Konum: ({sx:.1f}, {sy:.1f}, {sz:.1f})")
-        sensor_colors.append("#FFE600" if n == selected_sensor else "#18D2EB")
+        sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
+        sensor_colors.append("#FFE600" if n == selected_sensor else "#00E5FF")
 
 if sensor_x:
     fig.add_trace(go.Scatter3d(
@@ -330,32 +334,41 @@ if sensor_x:
         z=sensor_z,
         mode="markers",
         marker=dict(
-            size=6,
+            size=5,
             color=sensor_colors,
             symbol="circle",
-            line=dict(color="#000000", width=1)
+            line=dict(color="#111", width=1)
         ),
         text=sensor_text,
         hoverinfo="text",
         name="Sensörler"
     ))
 
+# Режим "orbit" обеспечивает свободное вращение вокруг объекта под любым углом
 fig.update_layout(
-    paper_bgcolor="#131518",
-    plot_bgcolor="#131518",
+    dragmode="orbit",
+    paper_bgcolor="#111215",
     scene=dict(
-        xaxis=dict(title="X (m)", backgroundcolor="#131518", gridcolor="#333", color="#AAA"),
-        yaxis=dict(title="Y (m)", backgroundcolor="#131518", gridcolor="#333", color="#AAA"),
-        zaxis=dict(title="Z (m)", backgroundcolor="#131518", gridcolor="#333", color="#AAA"),
-        aspectratio=dict(x=1.5, y=0.5, z=2.5),
+        xaxis=dict(showbackground=False, showgrid=True, gridcolor="#2A2E35", zeroline=False, title="", showticklabels=False),
+        yaxis=dict(showbackground=False, showgrid=True, gridcolor="#2A2E35", zeroline=False, title="", showticklabels=False),
+        zaxis=dict(showbackground=False, showgrid=True, gridcolor="#2A2E35", zeroline=False, title="Boyuna (Z)", color="#888"),
+        aspectratio=dict(x=1.3, y=0.5, z=2.2),
         camera=dict(
-            eye=dict(x=-1.8, y=1.8, z=1.2),
+            eye=dict(x=-1.5, y=1.6, z=1.0),
             center=dict(x=0, y=0, z=0)
         )
     ),
-    margin=dict(l=0, r=0, b=0, t=30),
-    legend=dict(font=dict(color="#FFF"), yanchor="top", y=0.95, xanchor="left", x=0.01)
+    margin=dict(l=0, r=0, b=0, t=10),
+    height=720,
+    showlegend=False
 )
 
+config = {
+    "scrollZoom": True,
+    "displayModeBar": True,
+    "modeBarButtonsToRemove": ["resetCameraDefault3d", "hoverClosest3d"],
+    "displaylogo": False
+}
+
 with col_3d:
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config=config)
