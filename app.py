@@ -1,42 +1,54 @@
-import base64
+import os
+import re
+from datetime import datetime
+import numpy as np
+from scipy.interpolate import RBFInterpolator
+import plotly.graph_objects as go
+import streamlit as st
+from playwright.sync_api import sync_playwright
+
+st.set_page_config(page_title="LOGGIS 3B", layout="wide")
+
+URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
 LOGO_PATH = "logo.png"
 
-def get_base64_image(image_path):
-    if os.path.exists(image_path):
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    return None
+# Стили для аккуратной шапки и полупрозрачности логотипа
+st.markdown("""
+<style>
+    [data-testid="stImage"] img {
+        opacity: 0.75;
+        transition: opacity 0.3s ease;
+    }
+    [data-testid="stImage"] img:hover {
+        opacity: 1.0;
+    }
+    .header-badge {
+        font-family: sans-serif;
+        font-weight: 800;
+        font-size: 18px;
+        letter-spacing: 2px;
+        color: rgba(255, 255, 255, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 4px 12px;
+        border-radius: 6px;
+        display: inline-block;
+        margin-top: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-logo_b64 = get_base64_image(LOGO_PATH)
-
-# Верхняя брендовая панель с полупрозрачным логотипом
+# Верхняя брендовая строка
 col_head_title, col_head_logo = st.columns([4, 1])
+
 with col_head_title:
     st.markdown("<h1 style='margin-bottom: 0px;'>LOGGIS 3B</h1>", unsafe_allow_html=True)
 
 with col_head_logo:
-    if logo_b64:
-        st.markdown(
-            f"""<div style='text-align: right;'>
-                <img src='data:image/png;base64,{logo_b64}' class='header-logo' alt='Company Logo'>
-            </div>""",
-            unsafe_allow_html=True
-        )
+    if os.path.exists(LOGO_PATH):
+        st.image(LOGO_PATH, width=150)
     else:
-        st.markdown(
-            """<div style='text-align: right; margin-top: 15px;'>
-                <span class='header-badge'>LOGGIS</span>
-            </div>""",
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(
-            """<div style='text-align: right; margin-top: 15px;'>
-                <span class='header-badge'>LOGGIS</span>
-            </div>""",
-            unsafe_allow_html=True
-        )
+        st.markdown("<div style='text-align: right;'><span class='header-badge'>LOGGIS</span></div>", unsafe_allow_html=True)
 
 COLORSCALES = {
     "hoop_bwr": [
