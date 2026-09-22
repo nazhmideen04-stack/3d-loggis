@@ -166,7 +166,7 @@ def fetch_category_data(cat_key):
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
-            locale="fr-FR",  # Французская локаль под интерфейс Tableau / 2 mois
+            locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
@@ -175,100 +175,104 @@ def fetch_category_data(cat_key):
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(3500)
 
-        # 1. Открытие Types и выбор категории
-        types_btn = page.get_by_text(re.compile(r"Types?", re.I)).first
-        types_btn.wait_for(state="visible", timeout=30000)
-        types_btn.click()
-        page.wait_for_timeout(800)
-
+        # 1. Выбор категории сенсоров (Types)
         try:
-            listbox = page.get_by_role("listbox").first
-            listbox.wait_for(state="visible", timeout=5000)
-            listbox.select_option(cat["name"])
-        except Exception:
+            types_btn = page.get_by_text(re.compile(r"^Types?$", re.I)).first
+            types_btn.wait_for(state="visible", timeout=20000)
+            types_btn.click()
+            page.wait_for_timeout(700)
+
             try:
-                page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
+                listbox = page.get_by_role("listbox").first
+                listbox.wait_for(state="visible", timeout=4000)
+                listbox.select_option(cat["name"])
             except Exception:
-                page.get_by_text(cat["name"]).first.click(force=True)
-
-        page.wait_for_timeout(1000)
-        try:
+                try:
+                    page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
+                except Exception:
+                    page.get_by_text(cat["name"]).first.click(force=True)
+            page.wait_for_timeout(800)
             page.keyboard.press("Escape")
         except Exception:
             pass
-        page.wait_for_timeout(600)
 
-        # 2. Настройка фильтров: Duration (2 mois) и Display mode (Tableau)
-        combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="visible", timeout=20000)
-
-        # а) Выбор сенсоров (ALL)
+        # 2. Переключение на "Display mode: Tableau"
         try:
-            combos.first.select_option(value="ALL")
+            # Вариант А: Кнопка или вкладка с текстом Tableau
+            tableau_btn = page.locator("button, [role='tab'], a, span, label").filter(has_text=re.compile(r"^Tableau$", re.I)).first
+            if tableau_btn.is_visible(timeout=2000):
+                tableau_btn.click()
+            else:
+                # Вариант Б: Выпадающий список select
+                page.evaluate("""() => {
+                    const selects = Array.from(document.querySelectorAll('select'));
+                    for (const s of selects) {
+                        for (const opt of s.options) {
+                            if (/tableau|table/i.test(opt.innerText)) {
+                                s.value = opt.value;
+                                s.dispatchEvent(new Event('change', { bubbles: true }));
+                                return;
+                            }
+                        }
+                    }
+                }""")
         except Exception:
             pass
         page.wait_for_timeout(800)
 
-        # б) Display mode -> Tableau (Режим таблицы)
+        # 3. Переключение Duration на "2 mois"
         try:
-            # Пробуем найти выпадающий список или радиокнопку/вкладку Display mode / Mode d'affichage
-            tableau_option = page.locator("select option").filter(has_text=re.compile(r"Tableau|Table", re.I)).first
-            if tableau_option.count() > 0:
-                val = tableau_option.get_attribute("value")
-                tableau_option.locator("xpath=..").select_option(val)
+            # Вариант А: Кнопка или чип с надписью 2 mois
+            dur_chip = page.locator("button, [role='radio'], [role='option'], a, span, label").filter(has_text=re.compile(r"2\s*mois", re.I)).first
+            if dur_chip.is_visible(timeout=2000):
+                dur_chip.click()
             else:
-                page.get_by_text(re.compile(r"^Tableau$", re.I)).first.click(force=True)
-        except Exception:
-            # Fallback по позиции combobox
-            try:
-                combos.nth(1).select_option("TABLE_MOST_RECENT")
-            except Exception:
-                pass
-        page.wait_for_timeout(1000)
-
-        # в) Duration -> 2 mois (2 месяца)
-        try:
-            # Ищем селектор периода
-            duration_option = page.locator("select option").filter(has_text=re.compile(r"2\s*mois|2\s*months?", re.I)).first
-            if duration_option.count() > 0:
-                val = duration_option.get_attribute("value")
-                duration_option.locator("xpath=..").select_option(val)
-            else:
-                # Если период выбирается кнопкой/чипом
-                page.get_by_text(re.compile(r"2\s*mois", re.I)).first.click(force=True)
+                # Вариант Б: Выпадающий список select
+                page.evaluate("""() => {
+                    const selects = Array.from(document.querySelectorAll('select'));
+                    for (const s of selects) {
+                        for (const opt of s.options) {
+                            if (/2\s*mois|2\s*m/i.test(opt.innerText)) {
+                                s.value = opt.value;
+                                s.dispatchEvent(new Event('change', { bubbles: true }));
+                                return;
+                            }
+                        }
+                    }
+                }""")
         except Exception:
             pass
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(1000)
 
-        # г) Сброс третьего фильтра агрегации при наличии
-        if combos.count() >= 3:
-            try:
-                combos.nth(2).select_option("NONE")
-            except Exception:
-                pass
-            page.wait_for_timeout(600)
+        # 4. Выбор всех сенсоров (ALL), если есть комбобокс
+        try:
+            combos = page.get_by_role("combobox")
+            if combos.count() > 0 and combos.first.is_visible():
+                combos.first.select_option(value="ALL")
+        except Exception:
+            pass
 
-        # 3. Ожидание таблицы Tableau
+        # 5. Ожидание таблицы данных
         table_loc = page.locator("table, [role='grid'], .table").first
-        table_loc.wait_for(state="visible", timeout=45000)
+        table_loc.wait_for(state="visible", timeout=40000)
 
-        # Сортировка по дате, чтобы последние замеры были сверху
+        # Клик по колонке даты для актуальной сортировки
         try:
             date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
             if date_header.is_visible():
                 date_header.click()
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(800)
         except Exception:
             pass
 
-        # Дожидаемся загрузки данных по нужному тегу датчиков
-        for _ in range(30):
+        # Ожидание появления данных с нужным тегом
+        for _ in range(35):
             txt = page.locator("table tbody, [role='rowgroup']").inner_text()
             if cat["tag"] in txt:
                 break
             page.wait_for_timeout(600)
 
-        # 4. Считывание всех строк таблицы
+        # 6. Чтение строк таблицы
         raw_table_data = page.evaluate("""() => {
             const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
             return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
@@ -277,7 +281,6 @@ def fetch_category_data(cat_key):
 
         browser.close()
 
-    # Фильтрация и поиск последних актуальных значений за выбранный период (2 mois)
     sensor_best = {}
     for idx, cols in enumerate(raw_table_data):
         if len(cols) >= 3 and cat["tag"] in cols[1]:
