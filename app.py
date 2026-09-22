@@ -324,7 +324,7 @@ def build_mesh_data(patches, offset_x):
     return np.array(pts, dtype=np.float32), np.array(triangles, dtype=np.int32)
 
 # --- ИНТЕРФЕЙС STREAMLIT ---
-st.title("LOGGIS 3B TÜNEL İZLEME SİSTEMİ")
+st.title("LOGGIS 3B")
 
 col_nav, col_3d = st.columns([1, 4])
 
