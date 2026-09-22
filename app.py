@@ -11,8 +11,8 @@ st.set_page_config(page_title="LOGGIS 3B Tünel İzleme", layout="wide")
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
 CATEGORIES = [
-    {"name": "Othoradial Strains", "key": "hoop", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": "RdBu_r"},
-    {"name": "Longitudinal Strains", "key": "axial", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": "RdBu_r"},
+    {"name": "Othoradial Strains", "key": "hoop", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": "Spectral_r"},
+    {"name": "Longitudinal Strains", "key": "axial", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": "Spectral_r"},
     {"name": "Temperature", "key": "temp", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C", "cmap": "Turbo"},
 ]
 
@@ -271,7 +271,7 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- ЛЕГКАЯ И ИНТЕРАКТИВНАЯ 3D СЦЕНА (PLOTLY) ---
+# --- ПЛОТНЫЙ И НАСЫЩЕННЫЙ 3D PLOTLY ---
 fig = go.Figure()
 
 sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
@@ -301,9 +301,14 @@ for ti, tun in enumerate(("TA", "TB")):
         colorscale=cat_cfg["cmap"],
         cmin=clim[0],
         cmax=clim[1],
-        opacity=0.92,
+        opacity=1.0,  # Полная непрозрачность
         name=f"Tünel {tun}",
-        lighting=dict(ambient=0.75, diffuse=0.8, roughness=0.5, specular=0.2),
+        lighting=dict(
+            ambient=0.95,   # Ровный яркий свет без тёмных затемнений
+            diffuse=0.5,
+            roughness=0.9,
+            specular=0.05
+        ),
         colorbar=dict(
             title=dict(text=f"[{cat_cfg['unit']}]", side="top"),
             thickness=16,
@@ -325,7 +330,7 @@ for ti, tun in enumerate(("TA", "TB")):
         sensor_z.append(sz)
         val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
         sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
-        sensor_colors.append("#FFE600" if n == selected_sensor else "#00E5FF")
+        sensor_colors.append("#FFE600" if n == selected_sensor else "#00FFFF")
 
 if sensor_x:
     fig.add_trace(go.Scatter3d(
@@ -334,17 +339,17 @@ if sensor_x:
         z=sensor_z,
         mode="markers",
         marker=dict(
-            size=5,
+            size=6,
             color=sensor_colors,
             symbol="circle",
-            line=dict(color="#111", width=1)
+            opacity=1.0,  # Непрозрачные маркеры
+            line=dict(color="#000000", width=1.5)
         ),
         text=sensor_text,
         hoverinfo="text",
         name="Sensörler"
     ))
 
-# Режим "orbit" обеспечивает свободное вращение вокруг объекта под любым углом
 fig.update_layout(
     dragmode="orbit",
     paper_bgcolor="#111215",
