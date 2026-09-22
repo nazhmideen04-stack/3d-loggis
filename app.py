@@ -14,7 +14,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-# Фирменный стиль DESTECH
+# Стили оформления DESTECH
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -69,7 +69,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Считываем логотип в Base64 для точного позиционирования
+# Логотип в Base64
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
@@ -77,7 +77,7 @@ if os.path.exists(LOGO_PATH):
 
 logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.90; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
-# Единая строка: заголовок и логотип на строго одной вертикальной оси Y
+# Заголовок и логотип по одной оси
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
@@ -128,13 +128,11 @@ def parse_robust_timestamp(d_str):
     if len(nums) < 3:
         return 0.0
     try:
-        # Формат YYYY-MM-DD
         if nums[0] > 1900:
             year, month, day = nums[0], nums[1], nums[2]
             hour = nums[3] if len(nums) > 3 else 0
             minute = nums[4] if len(nums) > 4 else 0
             second = nums[5] if len(nums) > 5 else 0
-        # Формат DD/MM/YYYY
         elif nums[2] > 1900:
             day, month, year = nums[0], nums[1], nums[2]
             hour = nums[3] if len(nums) > 3 else 0
@@ -146,8 +144,8 @@ def parse_robust_timestamp(d_str):
     except Exception:
         return 0.0
 
-@st.cache_data(ttl=120)
-def fetch_category_data(cat_key):
+@st.cache_data(ttl=60)
+def fetch_category_data(cat_key, reload_seed=0):
     cat = CATEGORIES[cat_key]
     with sync_playwright() as p:
         browser_args = [
@@ -167,7 +165,7 @@ def fetch_category_data(cat_key):
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
-            locale="tr-TR",
+            locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
@@ -176,7 +174,7 @@ def fetch_category_data(cat_key):
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(3500)
 
-        # 1. Открытие Types и выбор категории
+        # 1. Выбор категории сенсоров (Types)
         types_btn = page.get_by_text(re.compile(r"^Types?$", re.I)).first
         types_btn.wait_for(state="visible", timeout=30000)
         types_btn.click()
@@ -199,28 +197,28 @@ def fetch_category_data(cat_key):
             pass
         page.wait_for_timeout(600)
 
-        # 2. Настройка комбобоксов
+        # 2. Выбор всех сенсоров (ALL)
         combos = page.get_by_role("combobox")
         combos.first.wait_for(state="visible", timeout=20000)
-
-        # а) Датчики: ALL
         try:
             combos.first.select_option(value="ALL")
         except Exception:
             pass
         page.wait_for_timeout(800)
 
-        # б) Display mode -> Tableau / Table
+        # 3. Выбор режима: Напрямую TABLE_MOST_RECENT (Dernière mesure / Самый последний замер)
+        # Это гарантирует, что LoggIS отдает именно текущую минуту/день, а не данные 60-дневной давности
         try:
-            combos.nth(1).select_option(label=re.compile(r"Tableau|Table", re.I))
+            # Проверяем, есть ли режим TABLE_MOST_RECENT или Tableau
+            combos.nth(1).select_option("TABLE_MOST_RECENT")
         except Exception:
             try:
-                combos.nth(1).select_option("TABLE_MOST_RECENT")
+                combos.nth(1).select_option(label=re.compile(r"Dernière|Recent|En son|Tableau|Table", re.I))
             except Exception:
                 pass
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(1200)
 
-        # в) Duration -> 2 mois
+        # 4. Если режим табличный с периодом, переключаем на 2 mois
         if combos.count() >= 3:
             try:
                 combos.nth(2).select_option(label=re.compile(r"2\s*mois|2\s*month|2\s*ay", re.I))
@@ -231,18 +229,29 @@ def fetch_category_data(cat_key):
                     pass
             page.wait_for_timeout(1000)
 
-        # 3. Ожидание таблицы данных
+        # 5. Ожидание таблицы
         table_loc = page.locator("table, [role='grid'], .table").first
         table_loc.wait_for(state="visible", timeout=45000)
 
-        # Ждем загрузки строк с нужным тегом
+        # Кликаем дважды по колонке Date, чтобы отсортировать строго DESC (от самого свежего к старому)
+        try:
+            date_th = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
+            if date_th.is_visible():
+                date_th.click()
+                page.wait_for_timeout(500)
+                # Если первая сортировка была по возрастанию (ASC), второй клик делает убывание (DESC - самые новые сверху)
+                date_th.click()
+                page.wait_for_timeout(800)
+        except Exception:
+            pass
+
+        # Ждем поступления данных
         for _ in range(30):
             txt = page.locator("table tbody, [role='rowgroup']").inner_text()
             if cat["tag"] in txt:
                 break
-            page.wait_for_timeout(600)
+            page.wait_for_timeout(500)
 
-        # 4. Извлечение строк таблицы
         raw_table_data = page.evaluate("""() => {
             const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
             return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
@@ -251,10 +260,9 @@ def fetch_category_data(cat_key):
 
         browser.close()
 
-    # 5. Парсинг: фиксируем точный временной срез самого последнего замера
-    parsed_records = []
+    # 6. Извлечение САМЫХ СВЕЖИХ значений датчиков
+    sensor_best = {}
     for idx, cols in enumerate(raw_table_data):
-        # Поиск имени сенсора
         s_name = None
         s_idx = -1
         for ci, cell in enumerate(cols):
@@ -267,7 +275,6 @@ def fetch_category_data(cat_key):
         if not s_name:
             continue
 
-        # Поиск даты и числового значения
         d_raw = ""
         v = np.nan
         for ci, cell in enumerate(cols):
@@ -282,25 +289,19 @@ def fetch_category_data(cat_key):
 
         if not np.isnan(v):
             ts = parse_robust_timestamp(d_raw)
-            parsed_records.append({
-                "sensor": s_name,
-                "val": v,
-                "timestamp": ts,
-                "date_str": d_raw,
-                "row_idx": idx
-            })
+            # Сохраняем датчик, только если его timestamp больше предыдущего
+            if s_name not in sensor_best:
+                sensor_best[s_name] = (ts, v, d_raw, idx)
+            else:
+                prev_ts, _, _, prev_idx = sensor_best[s_name]
+                if ts > prev_ts:
+                    sensor_best[s_name] = (ts, v, d_raw, idx)
+                elif ts == prev_ts and ts == 0.0 and idx < prev_idx:
+                    # Если даты не распарсились, берём верхнюю строку таблицы
+                    sensor_best[s_name] = (ts, v, d_raw, idx)
 
-    if not parsed_records:
-        return {"values": {}, "date": ""}
-
-    # Находим абсолютное максимальное время замера
-    max_ts = max(r["timestamp"] for r in parsed_records)
-    latest_date_str = max(parsed_records, key=lambda x: x["timestamp"])["date_str"]
-
-    # Для каждого датчика берем самое актуальное значение на момент max_ts
-    val_map = {}
-    for r in sorted(parsed_records, key=lambda x: (x["timestamp"], x["row_idx"])):
-        val_map[r["sensor"]] = r["val"]
+    val_map = {s: item[1] for s, item in sensor_best.items()}
+    latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
 
     return {"values": val_map, "date": latest_date_str}
 
@@ -410,6 +411,9 @@ def build_mesh_data(patches, offset_x):
     return np.array(pts, dtype=np.float32), np.array(triangles, dtype=np.int32)
 
 # --- ИНТЕРФЕЙС STREAMLIT ---
+if "reload_counter" not in st.session_state:
+    st.session_state.reload_counter = 0
+
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
@@ -421,18 +425,19 @@ with col_nav:
     )
 
     if st.button("Verileri Yenile"):
+        st.session_state.reload_counter += 1
         st.cache_data.clear()
         st.rerun()
 
 cat_cfg = CATEGORIES[selected_comp]
 
 with st.spinner(f"{cat_cfg['title']} verisi LoggIS üzerinden alınıyor..."):
-    cur_layer = fetch_category_data(selected_comp)
+    cur_layer = fetch_category_data(selected_comp, reload_seed=st.session_state.reload_counter)
 
 v_map = cur_layer["values"]
 vals = [float(v) for v in v_map.values() if v is not None and not np.isnan(v)]
 
-# Вычисление контрастного диапазона шкалы
+# Вычисление контрастной шкалы
 if not vals:
     clim = [-1.0, 1.0]
 elif selected_comp == "temp":
@@ -463,7 +468,7 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B PLOTLY SAHNESİ ---
+# --- 3B PLOTLY SAHNESИ ---
 with col_3d:
     if not v_map:
         st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı. Lütfen 'Verileri Yenile' butonunu deneyiniz.")
@@ -479,7 +484,6 @@ with col_3d:
             label_z.append(-49.0)
             label_text.append(f"  {tun}  ")
 
-            # Выбираем сенсоры данного тоннеля с известными координатами и числовыми значениями
             names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c) and not np.isnan(v_map.get(c, np.nan))]
             if not names:
                 continue
@@ -531,7 +535,7 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
-        # Метки названий тоннелей (TA, TB)
+        # Названия тоннелей TA и TB
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
