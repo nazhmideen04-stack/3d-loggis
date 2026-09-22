@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-st.set_page_config(page_title="LOGGIS 3B Tünel İzleme", layout="wide")
+st.set_page_config(page_title="LOGGIS 3B", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -323,7 +323,7 @@ def build_mesh_data(patches, offset_x):
     return np.array(pts, dtype=np.float32), np.array(triangles, dtype=np.int32)
 
 # --- ИНТЕРФЕЙС STREAMLIT ---
-st.title("LOGGIS 3B TÜNEL İZLEME SİSTEMİ")
+st.title("LOGGIS 3B")
 
 col_nav, col_3d = st.columns([1, 4])
 
@@ -452,7 +452,7 @@ with col_3d:
             textfont=dict(
                 family="Arial Black, Arial, sans-serif",
                 size=18,
-                color="#00E5FF"  # Яркий неоновый бирюзовый заголовок
+                color="#000000"  # Яркий неоновый бирюзовый заголовок
             ),
             hoverinfo="none",
             showlegend=False
