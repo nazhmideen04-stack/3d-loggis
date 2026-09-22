@@ -14,14 +14,10 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-# Фирменный стиль DESTECH
+# Фирменный стиль DESTECH (без темно-синего фона страницы)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
-
-    .stApp {
-        background-color: #0B1118;
-    }
 
     html, body, [class*="css"], p, span, label, .stMarkdown {
         font-family: 'Chakra Petch', sans-serif !important;
@@ -34,6 +30,15 @@ st.markdown("""
         letter-spacing: 1.5px !important;
         text-transform: uppercase;
         color: #FFFFFF !important;
+    }
+
+    /* Убираем серый фон у инлайн-кода (бэктиков ` `) */
+    code {
+        background-color: transparent !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        padding: 0 !important;
+        font-weight: 600 !important;
     }
 
     .destech-badge {
@@ -75,7 +80,7 @@ logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; h
 
 # Единая строка: заголовок и логотип на строго одной вертикальной координате
 st.markdown(f"""
-<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(30, 154, 214, 0.2);">
+<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
         <div style="color: #1E9AD6; font-weight: 600; font-size: 13px; letter-spacing: 1px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ</div>
@@ -335,7 +340,7 @@ def build_operator(names, patches):
         np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
     ])
     wrapped[:, 1] *= angle_scale
-    W = np.empty((query.shape[0], len(names)), dtype=np.float32)
+    W = np.empty((query.shape0], len(names)), dtype=np.float32)
     for j in range(len(names)):
         e = np.zeros(len(names))
         e[j] = 1.0
@@ -369,7 +374,7 @@ def build_mesh_data(patches, offset_x):
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
-    st.subheader("Kontrol Paneli")
+    st.subheader("Kontrol Panelİ")
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
@@ -398,10 +403,12 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write(f" **En Son Veri Zamanı:**")
-    st.info(f" `{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}`")
-    st.write(f" **Aktif Sensör Sayısı:** `{len(v_map)}` adet")
-    st.write(f" **Skala Limitleri:** `Min: {clim[0]}`, `Maks: {clim[1]} {cat_cfg['unit']}`")
+    st.write("📅 **En Son Veri Zamanı:**")
+    st.write(f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}")
+    st.write("📡 **Aktif Sensör Sayısı:**")
+    st.write(f"{len(v_map)}")
+    st.write("📊 **Skala Limitleri:**")
+    st.write(f"Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}")
 
     st.markdown("---")
     selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
@@ -505,11 +512,11 @@ with col_3d:
 
         fig.update_layout(
             dragmode="orbit",
-            paper_bgcolor="#0B1118",
+            paper_bgcolor="#0E1117",
             scene=dict(
-                xaxis=dict(showbackground=False, showgrid=True, gridcolor="#1B2636", zeroline=False, title="", showticklabels=False),
-                yaxis=dict(showbackground=False, showgrid=True, gridcolor="#1B2636", zeroline=False, title="", showticklabels=False),
-                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#1B2636", zeroline=False, title="Boyuna (Z)", color="#1E9AD6"),
+                xaxis=dict(showbackground=False, showgrid=True, gridcolor="#262730", zeroline=False, title="", showticklabels=False),
+                yaxis=dict(showbackground=False, showgrid=True, gridcolor="#262730", zeroline=False, title="", showticklabels=False),
+                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#262730", zeroline=False, title="Boyuna (Z)", color="#1E9AD6"),
                 aspectratio=dict(x=1.3, y=0.5, z=2.2),
                 camera=dict(eye=dict(x=-1.5, y=1.6, z=1.0), center=dict(x=0, y=0, z=0))
             ),
