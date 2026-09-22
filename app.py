@@ -2,26 +2,18 @@ import os
 import re
 import numpy as np
 from scipy.interpolate import RBFInterpolator
-import pyvista as pv
+import plotly.graph_objects as go
 import streamlit as st
-import streamlit.components.v1 as components
 from playwright.sync_api import sync_playwright
-
-# Streamlit Cloud Linux sunucusunda sanal ekranı başlat (Xvfb)
-if not os.environ.get("DISPLAY"):
-    try:
-        pv.start_xvfb()
-    except Exception:
-        pass
 
 st.set_page_config(page_title="LOGGIS 3B Tünel İzleme", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
 CATEGORIES = [
-    {"name": "Othoradial Strains", "key": "hoop", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": "coolwarm"},
-    {"name": "Longitudinal Strains", "key": "axial", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": "coolwarm"},
-    {"name": "Temperature", "key": "temp", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C", "cmap": "turbo"},
+    {"name": "Othoradial Strains", "key": "hoop", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": "RdBu_r"},
+    {"name": "Longitudinal Strains", "key": "axial", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": "RdBu_r"},
+    {"name": "Temperature", "key": "temp", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C", "cmap": "Turbo"},
 ]
 
 def clean_num(s):
@@ -59,19 +51,16 @@ def fetch_all_in_memory():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(4000)
 
-            # 1. Открываем меню Types
             types_btn = page.get_by_text("Types").first
             types_btn.wait_for(state="visible", timeout=30000)
             types_btn.click()
             page.wait_for_timeout(1000)
 
-            # 2. Надежный выбор опции в listbox
             try:
                 listbox = page.get_by_role("listbox").first
                 listbox.wait_for(state="visible", timeout=5000)
                 listbox.select_option(cat["name"])
             except Exception:
-                # Fallback: прямой поиск по тегу option или тексту внутри списка
                 try:
                     page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
                 except Exception:
@@ -85,7 +74,6 @@ def fetch_all_in_memory():
                 pass
             page.wait_for_timeout(500)
 
-            # 3. Фильтры: Duration=ALL, Display=TABLE_MOST_RECENT, Processor=NONE
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
             combos.first.select_option("ALL")
@@ -101,7 +89,6 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
-            # 4. Ожидание таблицы и извлечение строк
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
 
@@ -214,8 +201,9 @@ def build_operator(names, patches):
         W[:, j] = rbf(query)
     return pos, W
 
-def build_patch_polydata(patches, offset_x):
-    pts, faces, offset = [], [], 0
+def build_mesh_data(patches, offset_x):
+    pts, triangles = [], []
+    offset = 0
     for p in patches:
         nA, nC = len(p["angles"]), len(p["chainage"])
         for a in range(nA):
@@ -226,10 +214,14 @@ def build_patch_polydata(patches, offset_x):
         for a in range(num_rows):
             next_a = (a + 1) % nA
             for c in range(nC - 1):
-                faces.extend([3, offset + a * nC + c, offset + next_a * nC + c, offset + a * nC + c + 1,
-                              3, offset + a * nC + c + 1, offset + next_a * nC + c, offset + next_a * nC + c + 1])
+                p0 = offset + a * nC + c
+                p1 = offset + a * nC + c + 1
+                p2 = offset + next_a * nC + c
+                p3 = offset + next_a * nC + c + 1
+                triangles.append([p0, p2, p1])
+                triangles.append([p1, p2, p3])
         offset += nA * nC
-    return pv.PolyData(np.array(pts, dtype=np.float32), np.array(faces))
+    return np.array(pts, dtype=np.float32), np.array(triangles, dtype=np.int32)
 
 # --- UI ARAYÜZÜ ---
 st.title("LOGGIS 3B TÜNEL İZLEME SİSTEMİ")
@@ -275,57 +267,95 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# PyVista Sahnesini Oluşturma
-pv.set_plot_theme("dark")
-plotter = pv.Plotter(window_size=[950, 650])
-plotter.set_background("#131518")
+# --- 3B PLOTLY SAHNESİ ---
+fig = go.Figure()
 
-submeshes, w_blocks, channels = [], [], []
+sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
+
 for ti, tun in enumerate(("TA", "TB")):
     off_x = (ti - 0.5) * SP
     names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
     if not names:
         continue
+
     pos = np.array([position(n) for n in names])
     patches = patches_for(selected_comp, pos)
     pos, W = build_operator(names, patches)
-    submeshes.append(build_patch_polydata(patches, off_x))
-    w_blocks.append(W)
-    channels.extend(names)
+    pts, tris = build_mesh_data(patches, off_x)
 
+    cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
+    scalars = W @ cur_vals
+
+    # Поверхность туннеля (Mesh3d)
+    fig.add_trace(go.Mesh3d(
+        x=pts[:, 0],
+        y=pts[:, 1],
+        z=pts[:, 2],
+        i=tris[:, 0],
+        j=tris[:, 1],
+        k=tris[:, 2],
+        intensity=scalars,
+        colorscale=cat_cfg["cmap"],
+        cmin=clim[0],
+        cmax=clim[1],
+        opacity=0.95,
+        name=f"Tünel {tun}",
+        colorbar=dict(
+            title=dict(text=f"{cat_cfg['title']}<br>[{cat_cfg['unit']}]", side="right"),
+            thickness=20,
+            len=0.75,
+            x=1.02
+        ) if ti == 0 else None,
+        showscale=(ti == 0),
+        hoverinfo="skip"
+    ))
+
+    # Сенсоры
     for n, pt in zip(names, pos):
         ang = np.radians(pt[1])
-        center = [off_x + (R + 0.12) * np.sin(ang), (R + 0.12) * np.cos(ang), pt[0] - 45.0]
-        color = (1.0, 0.92, 0.05) if n == selected_sensor else (0.10, 0.75, 0.85)
-        plotter.add_mesh(pv.Sphere(radius=0.25 if n == selected_sensor else 0.20, center=center), color=color)
+        sx = off_x + (R + 0.12) * np.sin(ang)
+        sy = (R + 0.12) * np.cos(ang)
+        sz = pt[0] - 45.0
+        sensor_x.append(sx)
+        sensor_y.append(sy)
+        sensor_z.append(sz)
+        val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
+        sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}<br>Konum: ({sx:.1f}, {sy:.1f}, {sz:.1f})")
+        sensor_colors.append("#FFE600" if n == selected_sensor else "#18D2EB")
 
-mesh = submeshes[0].merge(submeshes[1], merge_points=False)
-W_full = np.zeros((submeshes[0].n_points + submeshes[1].n_points, len(channels)), dtype=np.float32)
-W_full[:submeshes[0].n_points, :w_blocks[0].shape[1]] = w_blocks[0]
-W_full[submeshes[0].n_points:, w_blocks[0].shape[1]:] = w_blocks[1]
+if sensor_x:
+    fig.add_trace(go.Scatter3d(
+        x=sensor_x,
+        y=sensor_y,
+        z=sensor_z,
+        mode="markers",
+        marker=dict(
+            size=6,
+            color=sensor_colors,
+            symbol="circle",
+            line=dict(color="#000000", width=1)
+        ),
+        text=sensor_text,
+        hoverinfo="text",
+        name="Sensörler"
+    ))
 
-cur_vals = np.array([v_map.get(c, 0.0) for c in channels], dtype=np.float32)
-mesh["Field"] = W_full @ cur_vals
-
-plotter.add_mesh(
-    mesh,
-    scalars="Field",
-    cmap=cat_cfg["cmap"],
-    clim=clim,
-    opacity=0.92,
-    scalar_bar_args={
-        "title": f"{cat_cfg['title']} [{cat_cfg['unit']}]",
-        "vertical": True,
-        "position_x": 0.86,
-        "position_y": 0.20,
-        "width": 0.06,
-        "height": 0.60
-    }
+fig.update_layout(
+    paper_bgcolor="#131518",
+    plot_bgcolor="#131518",
+    scene=dict(
+        xaxis=dict(title="X (m)", backgroundcolor="#131518", gridcolor="#333", color="#AAA"),
+        yaxis=dict(title="Y (m)", backgroundcolor="#131518", gridcolor="#333", color="#AAA"),
+        zaxis=dict(title="Z (m)", backgroundcolor="#131518", gridcolor="#333", color="#AAA"),
+        aspectratio=dict(x=1.5, y=0.5, z=2.5),
+        camera=dict(
+            eye=dict(x=-1.8, y=1.8, z=1.2),
+            center=dict(x=0, y=0, z=0)
+        )
+    ),
+    margin=dict(l=0, r=0, b=0, t=30),
+    legend=dict(font=dict(color="#FFF"), yanchor="top", y=0.95, xanchor="left", x=0.01)
 )
-plotter.camera_position = [(-35.0, 42.0, -32.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
 
-# HTML Olarak İzolasyonlu İframe İçinde Gösterim
 with col_3d:
-    img_path = f"/tmp/scene_{selected_comp}.png"
-    plotter.show(screenshot=img_path, auto_close=True)
-    st.image(img_path, use_container_width=True, caption=f"{cat_cfg['title']} 3B Görünümü")
+    st.plotly_chart(fig, use_container_width=True)
