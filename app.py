@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-st.set_page_config(page_title="LOGGIS 3B", layout="wide")
+st.set_page_config(page_title="LOGGIS 3B Tünel İzleme", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -107,7 +107,7 @@ def fetch_all_in_memory():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(4000)
 
-            # 1. Открытие Types
+            # 1. Открытие меню Types
             types_btn = page.get_by_text("Types").first
             types_btn.wait_for(state="visible", timeout=30000)
             types_btn.click()
@@ -132,25 +132,22 @@ def fetch_all_in_memory():
                 pass
             page.wait_for_timeout(800)
 
-            # 3. Фильтры: Duration=ALL ОБЯЗАТЕЛЕН, Display=TABLE_MOST_RECENT
+            # 3. Фильтры
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
-            
-            # Duration -> ALL
+
             try:
                 combos.first.select_option("ALL")
             except Exception:
                 pass
             page.wait_for_timeout(1200)
 
-            # Display -> TABLE_MOST_RECENT
             try:
                 combos.nth(1).select_option("TABLE_MOST_RECENT")
             except Exception:
                 pass
             page.wait_for_timeout(1500)
 
-            # Processor -> NONE
             if combos.count() >= 3:
                 try:
                     combos.nth(2).select_option("NONE")
@@ -158,7 +155,7 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
-            # 4. Чтение таблицы
+            # 4. Чтение строк таблицы
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
 
@@ -168,8 +165,7 @@ def fetch_all_in_memory():
                     break
                 page.wait_for_timeout(1000)
 
-            # Извлечение самых свежих данных
-            sensor_latest = {}
+            parsed_rows = []
             rows = page.locator("table tbody tr, [role='row']").all()
 
             for row_idx, r in enumerate(rows):
@@ -181,18 +177,48 @@ def fetch_all_in_memory():
 
                     if not np.isnan(v):
                         ts = parse_date_key(d_raw)
-                        # Если дата не распарсилась (ts == 0), используем row_idx как относительный порядок
-                        effective_time = ts if ts > 0.0 else float(row_idx)
-                        
-                        if s_name not in sensor_latest or effective_time >= sensor_latest[s_name]["effective_time"]:
-                            sensor_latest[s_name] = {
-                                "val": v,
-                                "effective_time": effective_time,
-                                "date_str": d_raw
-                            }
+                        parsed_rows.append({
+                            "sensor": s_name,
+                            "val": v,
+                            "ts": ts,
+                            "row_idx": row_idx,
+                            "date_str": d_raw
+                        })
 
-            val_map = {k: item["val"] for k, item in sensor_latest.items()}
-            latest_date_str = max(sensor_latest.values(), key=lambda x: x["effective_time"])["date_str"] if sensor_latest else ""
+            val_map = {}
+            latest_date_str = ""
+
+            if parsed_rows:
+                # Находим самый свежий момент времени среди всех измерений
+                max_ts = max(r["ts"] for r in parsed_rows)
+
+                # Если даты распарсились корректно:
+                if max_ts > 0.0:
+                    # Фильтруем данные строго за последний 1 час (3600 секунд от самого свежего замера)
+                    one_hour_threshold = max_ts - 3600.0
+                    recent_rows = [r for r in parsed_rows if r["ts"] >= one_hour_threshold]
+
+                    # Если датчиков за этот час оказалось слишком мало (например, прибор скинул всего 1 точку),
+                    # плавно берем замеры, совпадающие с последним сеансом связи
+                    if not recent_rows:
+                        recent_rows = [r for r in parsed_rows if r["ts"] == max_ts]
+
+                    for r in recent_rows:
+                        # Берем максимальный замер по времени для каждого датчика в этом часе
+                        s = r["sensor"]
+                        if s not in val_map or r["ts"] >= val_map[s]["ts"]:
+                            val_map[s] = {"val": r["val"], "ts": r["ts"]}
+
+                    val_map = {k: v["val"] for k, v in val_map.items()}
+                    latest_item = max(parsed_rows, key=lambda x: x["ts"])
+                    latest_date_str = latest_item["date_str"]
+
+                else:
+                    # Fallback: если LoggIS отдает формат без стандартных дат,
+                    # берем последние физические строки таблицы
+                    for r in parsed_rows:
+                        val_map[r["sensor"]] = r["val"]
+                        latest_date_str = r["date_str"]
 
             page.close()
             results[cat["key"]] = {"values": val_map, "date": latest_date_str}
@@ -342,8 +368,8 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write(f"📅 **Son Ölçüm Tarihi:** `{cur_layer['date'] if cur_layer['date'] else 'Canlı'}`")
-    st.write(f"📡 **Aktif Sensör:** `{len(v_map)}` adet")
+    st.write(f"📅 **En Son Ölçüm Saati:** `{cur_layer['date'] if cur_layer['date'] else 'Canlı'}`")
+    st.write(f"📡 **Son Saatteki Aktif Sensör:** `{len(v_map)}` adet")
     st.write(f"📊 **Limitler:** `Min: {clim[0]}`, `Maks: {clim[1]} {cat_cfg['unit']}`")
 
     st.markdown("---")
@@ -354,7 +380,7 @@ with col_nav:
 # --- 3B PLOTLY SAHNESİ ---
 with col_3d:
     if not v_map:
-        st.warning("⚠️ LoggIS'ten şu anda veri çekilemedi veya seçilen kategori için sensör tablosu boş. Lütfen 'Verileri Yenile' butonuna tıklayınız.")
+        st.warning("⚠️ LoggIS'te son 1 saat içerisinde ölçüm bulunamadı veya tablo boş.")
     else:
         fig = go.Figure()
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
