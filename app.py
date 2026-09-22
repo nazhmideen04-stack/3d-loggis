@@ -7,7 +7,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from playwright.sync_api import sync_playwright
 
-# Streamlit Cloud Linux sunucusunda sanal ekranı başlat
+# Инициализация виртуального дисплея для работы PyVista на сервере Linux
 if not os.environ.get("DISPLAY"):
     try:
         pv.start_xvfb()
@@ -35,11 +35,18 @@ def clean_num(s):
 def fetch_all_in_memory():
     results = {}
     with sync_playwright() as p:
+        browser_args = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--single-process",
+        ]
         try:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=True, args=browser_args)
         except Exception:
             os.system("playwright install chromium")
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context()
 
@@ -49,6 +56,7 @@ def fetch_all_in_memory():
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(3500)
 
+            # Выбор категории в меню Types
             page.get_by_text("Types").first.click()
             page.wait_for_timeout(800)
             page.get_by_role("listbox").first.select_option(cat["name"])
@@ -59,6 +67,7 @@ def fetch_all_in_memory():
             except Exception:
                 pass
 
+            # Фильтры: Duration=ALL, Display=TABLE_MOST_RECENT, Processor=NONE
             combos = page.get_by_role("combobox")
             combos.first.select_option("ALL")
             page.wait_for_timeout(800)
@@ -72,6 +81,7 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
+            # Ожидание строк таблицы
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=30000)
 
@@ -294,7 +304,7 @@ plotter.add_mesh(
 )
 plotter.camera_position = [(-35.0, 42.0, -32.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
 
-# HTML Olarak İzolasyonlu İframe İçinde Gösterim (React removeChild hatasını tamamen önler)
+# HTML Olarak İzolasyonlu İframe İçinde Gösterim
 with col_3d:
     html_path = f"/tmp/scene_{selected_comp}.html"
     plotter.export_html(html_path)
