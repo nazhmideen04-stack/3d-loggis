@@ -385,7 +385,7 @@ with col_3d:
             label_x.append(off_x)
             label_y.append(R + 2.2)     # на 2.2 метра выше свода
             label_z.append(-48.0)       # у самого входа (Z = -45м)
-            label_text.append(f"<b>TÜNEL {tun}</b>")
+            label_text.append(f"<b> {tun}</b>")
 
             names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
             if not names:
@@ -441,7 +441,7 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
-        # Отрисовка 3D подписей Tünel TA и Tünel TB
+        # Отрисовка 3D подписей TA и TB
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
@@ -452,7 +452,7 @@ with col_3d:
             textfont=dict(
                 family="Arial Black, Arial, sans-serif",
                 size=18,
-                color="#000000"  # Яркий неоновый бирюзовый заголовок
+                color="#FFFFFF"  # Яркий неоновый бирюзовый заголовок
             ),
             hoverinfo="none",
             showlegend=False
