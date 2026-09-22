@@ -327,7 +327,14 @@ plotter.camera_position = [(-35.0, 42.0, -32.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0
 # HTML Olarak İzolasyonlu İframe İçinde Gösterim
 with col_3d:
     html_path = f"/tmp/scene_{selected_comp}.html"
-    plotter.export_html(html_path)
-    with open(html_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
-    components.html(html_content, height=660, scrolling=False)
+    plotter.export_vtkjs(f"/tmp/scene_{selected_comp}")
+    # или standalone HTML через встроенный backend:
+    try:
+        plotter.export_html(html_path, backend="panel")
+        with open(html_path, "r", encoding="utf-8") as f:
+            components.html(f.read(), height=660, scrolling=False)
+    except Exception:
+        # Надежный fallback без зависимостей: рендер в буфер и вывод картинки
+        img_path = f"/tmp/scene_{selected_comp}.png"
+        plotter.screenshot(img_path)
+        st.image(img_path, use_container_width=True)
