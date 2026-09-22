@@ -25,7 +25,7 @@ st.markdown("""
     }
     .header-badge {
         font-family: sans-serif;
-        font-weight: 1500;
+        font-weight: 2500;
         font-size: 30px;
         letter-spacing: 2px;
         color: rgba(255, 255, 255, 0.6);
