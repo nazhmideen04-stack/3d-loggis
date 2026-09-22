@@ -340,7 +340,7 @@ def build_operator(names, patches):
         np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
     ])
     wrapped[:, 1] *= angle_scale
-    W = np.empty((query.shape0], len(names)), dtype=np.float32)
+    W = np.empty((query.shape[0], len(names)), dtype=np.float32)
     for j in range(len(names)):
         e = np.zeros(len(names))
         e[j] = 1.0
