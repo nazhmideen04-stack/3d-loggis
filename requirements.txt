@@ -1,6 +1,6 @@
 streamlit
+plotly
 scipy
 numpy
 pandas
-pyvista
 playwright
