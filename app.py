@@ -126,6 +126,7 @@ def fetch_category_data(cat_key, reload_seed=0):
     cat = CATEGORIES[cat_key]
     val_map = {}
     latest_date_str = ""
+    screenshot_b64 = ""
 
     with sync_playwright() as p:
         browser_args = [
@@ -149,92 +150,85 @@ def fetch_category_data(cat_key, reload_seed=0):
         page = context.new_page()
 
         try:
-            # 1. Загрузка страницы
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(4000)
+            page.goto(URL, timeout=60000, wait_until="networkidle")
+            page.wait_for_timeout(3000)
 
-            # 2. Переход на вкладку Types
+            # 1. Клик по вкладке Types
             types_tab = page.locator("text='Types'").first
             if types_tab.is_visible():
                 types_tab.click()
                 page.wait_for_timeout(1000)
 
-            # 3. Клик по строке нужного типа (Temperature, Longitudinal strains или Othoradial strains)
-            # Нажимаем именно по тексту в левой панели
-            target_type = page.locator(f"text='{cat['name']}'").first
-            if target_type.is_visible():
-                target_type.click()
-            else:
-                page.get_by_text(cat["name"]).first.click(force=True)
-            
-            # Даем серверу Blazor время сформировать таблицу
-            page.wait_for_timeout(3000)
+            # 2. Выбор типа сенсора (Temperature, etc.)
+            # Кликаем несколько раз и с принуждением, чтобы точно выделилось Selected: 1/3
+            target = page.locator(f"text='{cat['name']}'").first
+            if target.is_visible():
+                target.click()
+                page.wait_for_timeout(500)
+                # Если не выделилось, эмулируем клик через evaluate
+                page.evaluate(f"""() => {{
+                    const el = Array.from(document.querySelectorAll('*')).find(e => e.textContent && e.textContent.trim() === '{cat['name']}');
+                    if (el) {{
+                        el.click();
+                        el.dispatchEvent(new MouseEvent('dblclick', {{ bubbles: true }}));
+                    }}
+                }}""")
 
-            # 4. Мягкое считывание таблицы без жесткого wait_for_selector (до 30 попыток)
-            for _ in range(30):
-                extracted = page.evaluate("""(tag) => {
-                    const table = document.querySelector('table');
-                    if (!table) return null;
+            page.wait_for_timeout(3500)
 
-                    // Ищем строку с именами датчиков
-                    const trs = Array.from(table.querySelectorAll('tr'));
-                    let headerRow = null;
-                    for (const tr of trs) {
-                        const txt = tr.innerText || '';
-                        if (txt.includes(tag) || txt.includes('TA-') || txt.includes('TB-')) {
-                            headerRow = tr;
-                            break;
-                        }
+            # ДЕЛАЕМ СКРИНШОТ ТОГО, ЧТО ВИДИТ БРАУЗЕР ПРЯМО СЕЙЧАС:
+            img_bytes = page.screenshot()
+            screenshot_b64 = base64.b64encode(img_bytes).decode()
+
+            # 3. Извлечение данных из таблицы
+            extracted = page.evaluate("""(tag) => {
+                const table = document.querySelector('table');
+                if (!table) return null;
+
+                const trs = Array.from(table.querySelectorAll('tr'));
+                let headerRow = null;
+                for (const tr of trs) {
+                    if (tr.innerText.includes(tag) || tr.innerText.includes('TA-')) {
+                        headerRow = tr;
+                        break;
                     }
-                    if (!headerRow) return null;
+                }
+                if (!headerRow && trs.length > 0) headerRow = trs[0];
+                if (!headerRow) return null;
 
-                    const headers = Array.from(headerRow.querySelectorAll('th, td')).map(c => c.innerText.trim());
+                const headers = Array.from(headerRow.querySelectorAll('th, td')).map(c => c.innerText.trim());
 
-                    // Ищем первую строку с данными в теле таблицы
-                    const tbody = table.querySelector('tbody') || table;
-                    const bodyRows = Array.from(tbody.querySelectorAll('tr'));
-                    let firstDataRow = null;
-                    for (const r of bodyRows) {
-                        const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
-                        // Строка с датой (содержит : или /)
-                        if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':'))) {
-                            firstDataRow = cells;
-                            break;
-                        }
+                const tbody = table.querySelector('tbody') || table;
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                let dataRow = null;
+                for (const r of rows) {
+                    const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
+                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':'))) {
+                        dataRow = cells;
+                        break;
                     }
+                }
+                return { headers: headers, values: dataRow };
+            }""", cat["tag"])
 
-                    if (!firstDataRow) return null;
-
-                    return { headers: headers, values: firstDataRow };
-                }""", cat["tag"])
-
-                if extracted and extracted.get("values"):
-                    headers = extracted["headers"]
-                    values = extracted["values"]
-
-                    # Первая колонка — дата замера
-                    latest_date_str = values[0]
-
-                    # Сопоставляем имена датчиков и их значения
-                    for h, v_str in zip(headers[1:], values[1:]):
-                        if cat["tag"] in h or "TA-" in h or "TB-" in h:
-                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                            s_name = m.group(1) if m else h.split()[0].strip()
-                            v = clean_num(v_str)
-                            if not np.isnan(v):
-                                val_map[s_name] = v
-
-                    if len(val_map) > 0:
-                        break
-
-                page.wait_for_timeout(1000)
+            if extracted and extracted.get("values"):
+                headers = extracted["headers"]
+                values = extracted["values"]
+                latest_date_str = values[0]
+                for h, v_str in zip(headers[1:], values[1:]):
+                    if cat["tag"] in h or "TA-" in h or "TB-" in h:
+                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                        s_name = m.group(1) if m else h.split()[0].strip()
+                        v = clean_num(v_str)
+                        if not np.isnan(v):
+                            val_map[s_name] = v
 
         except Exception as e:
             pass
         finally:
             browser.close()
 
-    return {"values": val_map, "date": latest_date_str}
+    return {"values": val_map, "date": latest_date_str, "screenshot": screenshot_b64}
 # Геометрия тоннелей
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
