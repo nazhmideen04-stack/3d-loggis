@@ -60,7 +60,7 @@ with col_head_title:
 
 with col_head_logo:
     if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=150)
+        st.image(LOGO_PATH, width=300)
     else:
         st.markdown("<div style='text-align: right;'><span class='header-badge'>LOGGIS_SYSTEM</span></div>", unsafe_allow_html=True)
 COLORSCALES = {
