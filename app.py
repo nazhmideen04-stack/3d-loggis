@@ -452,10 +452,11 @@ with col_nav:
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
     st.markdown("---")
-    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
-    if selected_sensor != "Seçiniz...":
-        st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
-
+    selected_sensor = st.selectbox(
+    "Sensör Değerini İncele:",
+    options=["Seçiniz..."] + sorted(list(v_map.keys())),
+    key=f"select_sensor_{selected_comp}"  # <--- Добавлен уникальный ключ
+)
 # --- 3B PLOTLY SAHNESİ ---
 with col_3d:
     if not v_map:
