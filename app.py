@@ -65,7 +65,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Считываем логотип в Base64 для точного совмещения по высоте с заголовком
+# Считываем логотип в Base64 для идеального совпадения по высоте с заголовком
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
@@ -150,7 +150,7 @@ def fetch_category_data(cat_key):
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--single-process",
-            "--window-size=1920,1080",
+            "--window-size=1280,720",
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
@@ -159,78 +159,76 @@ def fetch_category_data(cat_key):
             browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 1280, "height": 720},
             timezone_id="Europe/Istanbul",
             locale="tr-TR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"
         )
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
+        
+        # Отключаем загрузку медиа и изображений для ускорения сетевого канала
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media", "font"] else route.continue_())
 
-        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3500)
+        # Загрузка DOM без ожидания аналитики
+        page.goto(URL, timeout=40000, wait_until="domcontentloaded")
 
+        # 1. Открытие Types сразу по готовности
         types_btn = page.get_by_text("Types").first
-        types_btn.wait_for(state="visible", timeout=30000)
+        types_btn.wait_for(state="visible", timeout=25000)
         types_btn.click()
-        page.wait_for_timeout(800)
 
+        # 2. Быстрый выбор категории
+        listbox = page.locator("[role='listbox'], select").first
         try:
-            listbox = page.get_by_role("listbox").first
-            listbox.wait_for(state="visible", timeout=5000)
+            listbox.wait_for(state="visible", timeout=2500)
             listbox.select_option(cat["name"])
         except Exception:
-            try:
-                page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
-            except Exception:
-                page.get_by_text(cat["name"]).first.click(force=True)
+            page.locator(f"text='{cat['name']}'").first.click(force=True)
 
-        page.wait_for_timeout(1200)
-        try:
-            page.keyboard.press("Escape")
-        except Exception:
-            pass
-        page.wait_for_timeout(600)
+        page.keyboard.press("Escape")
 
+        # 3. Фильтры
         combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="visible", timeout=20000)
+        combos.first.wait_for(state="visible", timeout=15000)
 
         try:
             combos.first.select_option(value="ALL")
         except Exception:
             pass
-        page.wait_for_timeout(1000)
 
         try:
             combos.nth(1).select_option("TABLE_MOST_RECENT")
         except Exception:
             pass
-        page.wait_for_timeout(1200)
 
         if combos.count() >= 3:
             try:
                 combos.nth(2).select_option("NONE")
             except Exception:
                 pass
-            page.wait_for_timeout(600)
 
+        # 4. Ожидание таблицы и моментальный отбор
         table_loc = page.locator("table, [role='grid'], .table").first
-        table_loc.wait_for(state="visible", timeout=45000)
+        table_loc.wait_for(state="visible", timeout=30000)
 
-        try:
-            date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
-            if date_header.is_visible():
-                date_header.click()
-                page.wait_for_timeout(1000)
-        except Exception:
-            pass
+        # Сортировка по дате через JS-клик
+        page.evaluate("""() => {
+            const ths = Array.from(document.querySelectorAll('th, [role="columnheader"]'));
+            const dateTh = ths.find(t => /Date|Tarih|Time/i.test(t.innerText));
+            if (dateTh) dateTh.click();
+        }""")
 
-        for _ in range(25):
-            txt = page.locator("table tbody, [role='rowgroup']").inner_text()
-            if cat["tag"] in txt:
-                break
-            page.wait_for_timeout(600)
+        # Быстрое ожидание готовности SignalR через JS-предикат в браузере (без холостых циклов)
+        tag = cat["tag"]
+        page.wait_for_function(
+            f"""() => {{
+                const tbody = document.querySelector('table tbody, [role="rowgroup"]');
+                return tbody && tbody.innerText.includes('{tag}');
+            }}""",
+            timeout=15000
+        )
 
+        # 5. Мгновенное считывание таблицы в массив за 1 вызов
         raw_table_data = page.evaluate("""() => {
             const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
             return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
