@@ -29,32 +29,11 @@ COLORSCALES = {
     "temp_turbo": "Turbo"
 }
 
-CATEGORIES = [
-    {
-        "name": "Othoradial Strains",
-        "key": "hoop",
-        "tag": "-CS",
-        "title": "Çevresel gerinim (CS)",
-        "unit": "µm/m",
-        "cmap": COLORSCALES["hoop_bwr"]
-    },
-    {
-        "name": "Longitudinal Strains",
-        "key": "axial",
-        "tag": "-S",
-        "title": "Boyuna gerinim (S)",
-        "unit": "µm/m",
-        "cmap": COLORSCALES["axial_gvp"]
-    },
-    {
-        "name": "Temperature",
-        "key": "temp",
-        "tag": "-TP",
-        "title": "Sıcaklık (TP)",
-        "unit": "°C",
-        "cmap": COLORSCALES["temp_turbo"]
-    },
-]
+CATEGORIES = {
+    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": COLORSCALES["hoop_bwr"]},
+    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": COLORSCALES["axial_gvp"]},
+    "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C", "cmap": COLORSCALES["temp_turbo"]},
+}
 
 def clean_num(s):
     if not s:
@@ -86,9 +65,10 @@ def parse_robust_timestamp(d_str):
     except Exception:
         return 0.0
 
-@st.cache_data(ttl=120)
-def fetch_all_in_memory():
-    results = {}
+@st.cache_data(ttl=180)
+def fetch_category_data(cat_key):
+    """Качает ТОЛЬКО одну выбранную категорию за один сеанс браузера."""
+    cat = CATEGORIES[cat_key]
     with sync_playwright() as p:
         browser_args = [
             "--no-sandbox",
@@ -96,7 +76,6 @@ def fetch_all_in_memory():
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--single-process",
-            "--window-size=1920,1080",
             "--blink-settings=imagesEnabled=false",
         ]
         try:
@@ -106,121 +85,85 @@ def fetch_all_in_memory():
             browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 1600, "height": 900},
             timezone_id="Europe/Istanbul",
             locale="tr-TR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
-
         page = context.new_page()
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media", "font", "stylesheet"] else route.continue_())
 
-        # Блокируем картинки, шрифты и тяжелые медиа
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media", "font"] else route.continue_())
+        page.goto(URL, timeout=40000, wait_until="domcontentloaded")
 
-        # Загружаем страницу ровно ОДИН раз
-        page.goto(URL, timeout=45000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
+        # 1. Выбор категории
+        types_btn = page.get_by_text("Types").first
+        types_btn.wait_for(state="visible", timeout=20000)
+        types_btn.click()
+        page.wait_for_timeout(300)
 
-        for cat in CATEGORIES:
-            # 1. Открытие меню Types
-            types_btn = page.get_by_text("Types").first
-            types_btn.wait_for(state="visible", timeout=20000)
-            types_btn.click()
-            page.wait_for_timeout(400)
-
-            # 2. Выбор категории
+        try:
+            listbox = page.get_by_role("listbox").first
+            listbox.wait_for(state="visible", timeout=3000)
+            listbox.select_option(cat["name"])
+        except Exception:
             try:
-                listbox = page.get_by_role("listbox").first
-                listbox.wait_for(state="visible", timeout=3000)
-                listbox.select_option(cat["name"])
+                page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
             except Exception:
-                try:
-                    page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
-                except Exception:
-                    page.get_by_text(cat["name"]).first.click(force=True)
+                page.get_by_text(cat["name"]).first.click(force=True)
 
-            page.wait_for_timeout(600)
-            try:
-                page.keyboard.press("Escape")
-            except Exception:
-                pass
+        page.wait_for_timeout(400)
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
 
-            # 3. Фильтры
-            combos = page.get_by_role("combobox")
-            combos.first.wait_for(state="visible", timeout=15000)
+        # 2. Фильтры
+        combos = page.get_by_role("combobox")
+        combos.first.wait_for(state="visible", timeout=15000)
+        try:
+            combos.first.select_option("ALL")
+        except Exception:
+            pass
+        page.wait_for_timeout(400)
 
-            try:
-                combos.first.select_option("ALL")
-            except Exception:
-                pass
-            page.wait_for_timeout(500)
+        try:
+            combos.nth(1).select_option("TABLE_MOST_RECENT")
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
 
-            try:
-                combos.nth(1).select_option("TABLE_MOST_RECENT")
-            except Exception:
-                pass
-            page.wait_for_timeout(800)
+        # 3. Ожидание данных таблицы
+        table_loc = page.locator("table, [role='grid'], .table").first
+        table_loc.wait_for(state="visible", timeout=25000)
 
-            if combos.count() >= 3:
-                try:
-                    combos.nth(2).select_option("NONE")
-                except Exception:
-                    pass
+        # 4. Моментальный сбор строк через JS
+        raw_table_data = page.evaluate("""() => {
+            const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
+            return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
+                       .filter(c => c.length >= 3);
+        }""")
 
-            # 4. Ожидание таблицы
-            table_loc = page.locator("table, [role='grid'], .table").first
-            table_loc.wait_for(state="visible", timeout=25000)
-
-            # Клик по шапке даты для сортировки от самых новых к старым
-            try:
-                date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
-                if date_header.is_visible():
-                    date_header.click()
-                    page.wait_for_timeout(600)
-            except Exception:
-                pass
-
-            for _ in range(15):
-                txt = page.locator("table tbody, [role='rowgroup']").inner_text()
-                if cat["tag"] in txt:
-                    break
-                page.wait_for_timeout(400)
-
-            # 5. МГНОВЕННЫЙ JS-парсинг всей таблицы напрямую из DOM браузера (за миллисекунды)
-            raw_table_data = page.evaluate("""() => {
-                const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
-                return rows.map(r => {
-                    const cells = Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim());
-                    return cells;
-                }).filter(c => c.length >= 3);
-            }""")
-
-            sensor_best = {}
-            for idx, cols in enumerate(raw_table_data):
-                if cat["tag"] in cols[1]:
-                    d_raw = cols[0]
-                    s_name = cols[1]
-                    v = clean_num(cols[2])
-
-                    if not np.isnan(v):
-                        ts = parse_robust_timestamp(d_raw)
-                        if s_name not in sensor_best:
-                            sensor_best[s_name] = (ts, v, d_raw, idx)
-                        else:
-                            prev_ts, _, _, prev_idx = sensor_best[s_name]
-                            if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
-                                sensor_best[s_name] = (ts, v, d_raw, idx)
-
-            val_map = {s: item[1] for s, item in sensor_best.items()}
-            latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
-
-            results[cat["key"]] = {"values": val_map, "date": latest_date_str}
-
-        page.close()
-        context.close()
         browser.close()
 
-    return results
+    sensor_best = {}
+    for idx, cols in enumerate(raw_table_data):
+        if cat["tag"] in cols[1]:
+            d_raw = cols[0]
+            s_name = cols[1]
+            v = clean_num(cols[2])
+            if not np.isnan(v):
+                ts = parse_robust_timestamp(d_raw)
+                if s_name not in sensor_best:
+                    sensor_best[s_name] = (ts, v, d_raw, idx)
+                else:
+                    prev_ts, _, _, prev_idx = sensor_best[s_name]
+                    if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
+                        sensor_best[s_name] = (ts, v, d_raw, idx)
+
+    val_map = {s: item[1] for s, item in sensor_best.items()}
+    latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
+
+    return {"values": val_map, "date": latest_date_str}
 
 # Geometri Tanımları
 GEOMETRY = {
@@ -337,18 +280,18 @@ with col_nav:
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
-        format_func=lambda k: next(c["title"] for c in CATEGORIES if c["key"] == k)
+        format_func=lambda k: CATEGORIES[k]["title"]
     )
 
     if st.button("🔄 Verileri Yenile (LoggIS)"):
         st.cache_data.clear()
         st.rerun()
 
-with st.spinner("LoggIS verileri taranıyor ve en güncel 3B model hesaplanıyor..."):
-    all_data = fetch_all_in_memory()
+cat_cfg = CATEGORIES[selected_comp]
 
-cat_cfg = next(c for c in CATEGORIES if c["key"] == selected_comp)
-cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
+with st.spinner(f"{cat_cfg['title']} verisi alınıyor..."):
+    cur_layer = fetch_category_data(selected_comp)
+
 v_map = cur_layer["values"]
 vals = [v for v in v_map.values() if not np.isnan(v)]
 
@@ -379,12 +322,10 @@ with col_3d:
     else:
         fig = go.Figure()
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
-
         label_x, label_y, label_z, label_text = [], [], [], []
 
         for ti, tun in enumerate(("TA", "TB")):
             off_x = (ti - 0.5) * SP
-            
             label_x.append(off_x)
             label_y.append(R + 3.8)
             label_z.append(-49.0)
@@ -415,12 +356,7 @@ with col_3d:
                 cmax=clim[1],
                 opacity=1.0,
                 name=f"Tünel {tun}",
-                lighting=dict(
-                    ambient=0.98,
-                    diffuse=0.3,
-                    roughness=0.9,
-                    specular=0.0
-                ),
+                lighting=dict(ambient=0.98, diffuse=0.3, roughness=0.9, specular=0.0),
                 colorbar=dict(
                     title=dict(text=f"[{cat_cfg['unit']}]", side="top"),
                     thickness=16,
@@ -444,7 +380,6 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
-        # Крупные 3D-метки над туннелями
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
@@ -452,29 +387,18 @@ with col_3d:
             mode="text",
             text=label_text,
             textposition="top center",
-            textfont=dict(
-                family="Trebuchet MS, Arial, sans-serif",
-                size=26,
-                color="#FFFFFF"
-            ),
+            textfont=dict(family="Trebuchet MS, Arial, sans-serif", size=26, color="#FFFFFF"),
             hoverinfo="none",
             showlegend=False
         ))
 
-        # Маркеры сенсоров
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
                 y=sensor_y,
                 z=sensor_z,
                 mode="markers",
-                marker=dict(
-                    size=6,
-                    color=sensor_colors,
-                    symbol="circle",
-                    opacity=1.0,
-                    line=dict(color="#000000", width=1.5)
-                ),
+                marker=dict(size=6, color=sensor_colors, symbol="circle", opacity=1.0, line=dict(color="#000000", width=1.5)),
                 text=sensor_text,
                 hoverinfo="text",
                 name="Sensörler"
@@ -488,10 +412,7 @@ with col_3d:
                 yaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
                 zaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="Boyuna (Z)", color="#888"),
                 aspectratio=dict(x=1.3, y=0.5, z=2.2),
-                camera=dict(
-                    eye=dict(x=-1.5, y=1.6, z=1.0),
-                    center=dict(x=0, y=0, z=0)
-                )
+                camera=dict(eye=dict(x=-1.5, y=1.6, z=1.0), center=dict(x=0, y=0, z=0))
             ),
             margin=dict(l=0, r=0, b=0, t=10),
             height=720,
