@@ -32,104 +32,26 @@ LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
 # Фирменный стиль DESTECH
 
-st.markdown("""
-
-<style>
-
-    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
-
-
-
-    .stApp {
-
-        background-color: #0B1118;
-
-    }
-
-
-
-    html, body, [class*="css"], p, span, label, .stMarkdown {
-
-        font-family: 'Chakra Petch', sans-serif !important;
-
-        color: #E2ECF7;
-
-    }
-
-
-
-    h1, h2, h3 {
-
-        font-family: 'Syne', sans-serif !important;
-
-        font-weight: 800 !important;
-
-        letter-spacing: 1.5px !important;
-
-        text-transform: uppercase;
-
-        color: #FFFFFF !important;
-
-    }
-
-
-
-    .destech-badge {
-
-        font-family: 'Syne', sans-serif;
-
-        font-size: 16px;
-
-        font-weight: 800;
-
-        letter-spacing: 2px;
-
-        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%);
-
-        color: #000000;
-
-        padding: 6px 18px;
-
-        border-radius: 6px;
-
-        display: inline-block;
-
-        box-shadow: 0 4px 14px rgba(30, 154, 214, 0.35);
-
-    }
-
-
-
-    div.stButton > button {
-
-        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%) !important;
-
-        color: #FFFFFF !important;
-
-        font-family: 'Chakra Petch', sans-serif !important;
-
-        font-weight: 700 !important;
-
-        border: none !important;
-
-        border-radius: 6px !important;
-
-        transition: all 0.3s ease !important;
-
-    }
-
-    div.stButton > button:hover {
-
-        box-shadow: 0 0 15px rgba(30, 154, 214, 0.7) !important;
-
-        transform: translateY(-1px);
-
-    }
-
-</style>
-
+st.markdown(f"""
+<div style="
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-top: -20px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(30, 154, 214, 0.2);
+">
+    <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
+        <div style="color: #1E9AD6; font-weight: 600; font-size: 13px; letter-spacing: 1px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ</div>
+    </div>
+    <div style="display: flex; align-items: center; margin: 0; padding: 0;">
+        {logo_tag}
+    </div>
+</div>
 """, unsafe_allow_html=True)
-
 
 
 # Считываем логотип в Base64 для точного совмещения по высоте с заголовком
