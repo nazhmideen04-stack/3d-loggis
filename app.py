@@ -32,7 +32,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Убираем серый фон у инлайн-кода (бэктиков ` `) */
     code {
         background-color: transparent !important;
         color: #00FF66 !important;
@@ -70,15 +69,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Считываем логотип в Base64 для совмещения по высоте с заголовком
+# Считываем логотип в Base64 для точного позиционирования
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         logo_b64 = base64.b64encode(f.read()).decode()
 
-logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
+logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.90; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
-# Единая строка: заголовок и логотип на строго одной вертикальной координате Y
+# Единая строка: заголовок и логотип на строго одной вертикальной оси Y
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
@@ -129,11 +128,13 @@ def parse_robust_timestamp(d_str):
     if len(nums) < 3:
         return 0.0
     try:
+        # Формат YYYY-MM-DD
         if nums[0] > 1900:
             year, month, day = nums[0], nums[1], nums[2]
             hour = nums[3] if len(nums) > 3 else 0
             minute = nums[4] if len(nums) > 4 else 0
             second = nums[5] if len(nums) > 5 else 0
+        # Формат DD/MM/YYYY
         elif nums[2] > 1900:
             day, month, year = nums[0], nums[1], nums[2]
             hour = nums[3] if len(nums) > 3 else 0
@@ -145,7 +146,7 @@ def parse_robust_timestamp(d_str):
     except Exception:
         return 0.0
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=120)
 def fetch_category_data(cat_key):
     cat = CATEGORIES[cat_key]
     with sync_playwright() as p:
@@ -166,7 +167,7 @@ def fetch_category_data(cat_key):
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
-            locale="fr-FR",
+            locale="tr-TR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
@@ -175,8 +176,8 @@ def fetch_category_data(cat_key):
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(3500)
 
-        # 1. Выбор категории сенсоров (Types)
-        types_btn = page.get_by_text("Types").first
+        # 1. Открытие Types и выбор категории
+        types_btn = page.get_by_text(re.compile(r"^Types?$", re.I)).first
         types_btn.wait_for(state="visible", timeout=30000)
         types_btn.click()
         page.wait_for_timeout(800)
@@ -191,41 +192,38 @@ def fetch_category_data(cat_key):
             except Exception:
                 page.get_by_text(cat["name"]).first.click(force=True)
 
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(1000)
         try:
             page.keyboard.press("Escape")
         except Exception:
             pass
         page.wait_for_timeout(600)
 
-        # 2. Переключение комбобоксов: ALL -> Display mode: Tableau -> Duration: 2 mois
+        # 2. Настройка комбобоксов
         combos = page.get_by_role("combobox")
         combos.first.wait_for(state="visible", timeout=20000)
 
-        # а) Выбор всех сенсоров (ALL)
+        # а) Датчики: ALL
         try:
             combos.first.select_option(value="ALL")
         except Exception:
             pass
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(800)
 
-        # б) Display mode -> Tableau (режим таблицы)
+        # б) Display mode -> Tableau / Table
         try:
             combos.nth(1).select_option(label=re.compile(r"Tableau|Table", re.I))
         except Exception:
             try:
-                combos.nth(1).select_option("TABLE")
+                combos.nth(1).select_option("TABLE_MOST_RECENT")
             except Exception:
-                try:
-                    combos.nth(1).select_option("TABLE_MOST_RECENT")
-                except Exception:
-                    pass
-        page.wait_for_timeout(1200)
+                pass
+        page.wait_for_timeout(1000)
 
-        # в) Duration -> 2 mois (2 месяца)
+        # в) Duration -> 2 mois
         if combos.count() >= 3:
             try:
-                combos.nth(2).select_option(label=re.compile(r"2\s*mois|2\s*month", re.I))
+                combos.nth(2).select_option(label=re.compile(r"2\s*mois|2\s*month|2\s*ay", re.I))
             except Exception:
                 try:
                     combos.nth(2).select_option(value="2M")
@@ -237,21 +235,14 @@ def fetch_category_data(cat_key):
         table_loc = page.locator("table, [role='grid'], .table").first
         table_loc.wait_for(state="visible", timeout=45000)
 
-        try:
-            date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
-            if date_header.is_visible():
-                date_header.click()
-                page.wait_for_timeout(1000)
-        except Exception:
-            pass
-
-        for _ in range(25):
+        # Ждем загрузки строк с нужным тегом
+        for _ in range(30):
             txt = page.locator("table tbody, [role='rowgroup']").inner_text()
             if cat["tag"] in txt:
                 break
             page.wait_for_timeout(600)
 
-        # 4. Считывание строк таблицы
+        # 4. Извлечение строк таблицы
         raw_table_data = page.evaluate("""() => {
             const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
             return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
@@ -260,48 +251,60 @@ def fetch_category_data(cat_key):
 
         browser.close()
 
-    # Надежный сбор сенсоров вне зависимости от перестановок колонок
-    sensor_best = {}
+    # 5. Парсинг: фиксируем точный временной срез самого последнего замера
+    parsed_records = []
     for idx, cols in enumerate(raw_table_data):
+        # Поиск имени сенсора
         s_name = None
-        s_col_idx = -1
-        for c_idx, cell in enumerate(cols):
+        s_idx = -1
+        for ci, cell in enumerate(cols):
             if cat["tag"] in cell:
-                m_name = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", cell)
-                s_name = m_name.group(1) if m_name else cell.strip()
-                s_col_idx = c_idx
+                m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", cell)
+                s_name = m.group(1) if m else cell.strip()
+                s_idx = ci
                 break
 
         if not s_name:
             continue
 
-        v = np.nan
+        # Поиск даты и числового значения
         d_raw = ""
-        for c_idx, cell in enumerate(cols):
-            if c_idx == s_col_idx:
+        v = np.nan
+        for ci, cell in enumerate(cols):
+            if ci == s_idx:
                 continue
             if re.search(r"\d{1,4}[/\-\.]\d{1,2}[/\-\.]\d{1,4}", cell) or ":" in cell:
                 if not d_raw:
                     d_raw = cell
-            val_cand = clean_num(cell)
-            if not np.isnan(val_cand) and np.isnan(v):
-                v = val_cand
+            num_cand = clean_num(cell)
+            if not np.isnan(num_cand) and np.isnan(v):
+                v = num_cand
 
         if not np.isnan(v):
             ts = parse_robust_timestamp(d_raw)
-            if s_name not in sensor_best:
-                sensor_best[s_name] = (ts, v, d_raw, idx)
-            else:
-                prev_ts, _, _, prev_idx = sensor_best[s_name]
-                if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
-                    sensor_best[s_name] = (ts, v, d_raw, idx)
+            parsed_records.append({
+                "sensor": s_name,
+                "val": v,
+                "timestamp": ts,
+                "date_str": d_raw,
+                "row_idx": idx
+            })
 
-    val_map = {s: item[1] for s, item in sensor_best.items()}
-    latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
+    if not parsed_records:
+        return {"values": {}, "date": ""}
+
+    # Находим абсолютное максимальное время замера
+    max_ts = max(r["timestamp"] for r in parsed_records)
+    latest_date_str = max(parsed_records, key=lambda x: x["timestamp"])["date_str"]
+
+    # Для каждого датчика берем самое актуальное значение на момент max_ts
+    val_map = {}
+    for r in sorted(parsed_records, key=lambda x: (x["timestamp"], x["row_idx"])):
+        val_map[r["sensor"]] = r["val"]
 
     return {"values": val_map, "date": latest_date_str}
 
-# Geometri Tanımları
+# Геометрия тоннелей
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
     "tunnel_spacing_m": 15.0,
@@ -427,14 +430,17 @@ with st.spinner(f"{cat_cfg['title']} verisi LoggIS üzerinden alınıyor..."):
     cur_layer = fetch_category_data(selected_comp)
 
 v_map = cur_layer["values"]
-vals = [v for v in v_map.values() if not np.isnan(v)]
+vals = [float(v) for v in v_map.values() if v is not None and not np.isnan(v)]
 
+# Вычисление контрастного диапазона шкалы
 if not vals:
-    clim = [0.0, 1.0]
+    clim = [-1.0, 1.0]
 elif selected_comp == "temp":
-    clim = [round(float(min(vals)), 1), round(float(max(vals)), 1)]
+    vmin, vmax = float(min(vals)), float(max(vals))
+    clim = [vmin - 0.5, vmax + 0.5] if vmin == vmax else [round(vmin, 1), round(vmax, 1)]
 else:
-    m = round(max(abs(min(vals)), abs(max(vals)), 1.0), 1)
+    max_abs = max(abs(min(vals)), abs(max(vals)))
+    m = round(max(max_abs, 1.0), 1)
     clim = [-m, m]
 
 with col_nav:
@@ -473,7 +479,8 @@ with col_3d:
             label_z.append(-49.0)
             label_text.append(f"  {tun}  ")
 
-            names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
+            # Выбираем сенсоры данного тоннеля с известными координатами и числовыми значениями
+            names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c) and not np.isnan(v_map.get(c, np.nan))]
             if not names:
                 continue
 
@@ -482,8 +489,9 @@ with col_3d:
             pos, W = build_operator(names, patches)
             pts, tris = build_mesh_data(patches, off_x)
 
-            cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
+            cur_vals = np.array([v_map[c] for c in names], dtype=np.float32)
             scalars = W @ cur_vals
+            scalars = np.nan_to_num(scalars, nan=float(np.mean(cur_vals)))
 
             fig.add_trace(go.Mesh3d(
                 x=pts[:, 0],
@@ -493,6 +501,7 @@ with col_3d:
                 j=tris[:, 1],
                 k=tris[:, 2],
                 intensity=scalars,
+                intensitymode="vertex",
                 colorscale=cat_cfg["cmap"],
                 cmin=clim[0],
                 cmax=clim[1],
@@ -522,7 +531,7 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
-        # 3D метки TA и TB
+        # Метки названий тоннелей (TA, TB)
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
@@ -539,7 +548,7 @@ with col_3d:
             showlegend=False
         ))
 
-        # Маркеры сенсоров
+        # Маркеры расположения датчиков
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
