@@ -56,19 +56,16 @@ def fetch_all_in_memory():
 
         for cat in CATEGORIES:
             page = context.new_page()
-            page.goto(URL, timeout=90000, wait_until="networkidle")
-            page.wait_for_timeout(3000)
+            # domcontentloaded не ждет закрытия фоновых сокетов Blazor
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
 
-            # 1. Types butonunu bekle ve tıkla
-            types_btn = page.locator("button, div, span, a").filter(has_text=re.compile(r"^Types$", re.IGNORECASE)).first
-            if not types_btn.is_visible():
-                types_btn = page.get_by_text("Types").first
-
-            types_btn.wait_for(state="visible", timeout=60000)
+            # 1. Ждем реального появления кнопки Types в интерфейсе
+            types_btn = page.locator("text=Types").first
+            types_btn.wait_for(state="visible", timeout=45000)
             types_btn.click(force=True)
             page.wait_for_timeout(1000)
 
-            # 2. Kategoriyi seç
+            # 2. Выбор категории
             listbox = page.get_by_role("listbox").first
             listbox.wait_for(state="visible", timeout=15000)
             listbox.select_option(cat["name"])
@@ -80,7 +77,7 @@ def fetch_all_in_memory():
                 pass
             page.wait_for_timeout(500)
 
-            # 3. Filtreler: Duration=ALL, Display=TABLE_MOST_RECENT, Processor=NONE
+            # 3. Фильтры: Duration=ALL, Display=TABLE_MOST_RECENT, Processor=NONE
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
             combos.first.select_option("ALL")
@@ -96,7 +93,7 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
-            # 4. Tabloyu bekle ve oku
+            # 4. Ожидание таблицы
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
 
