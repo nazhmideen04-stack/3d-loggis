@@ -10,10 +10,53 @@ st.set_page_config(page_title="LOGGIS 3B Tünel İzleme", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
+# 3 кардинально разные высококонтрастные шкалы с антонимичными полюсами
+COLORSCALES = {
+    # 1. Чрезвычайно контрастный: Глубокий Синий -> Белый -> Ярко-Красный
+    "hoop_bwr": [
+        [0.0, "#0010D6"],   # Глубокий синий
+        [0.35, "#3388FF"],  # Голубой
+        [0.5, "#FFFFFF"],   # Белый (нейтральный 0)
+        [0.65, "#FF4422"],  # Оранжево-красный
+        [1.0, "#C60000"]    # Насыщенный темно-красный
+    ],
+    # 2. Антонимичный зелёно-пурпурный контраст (резко отличается от первой шкалы)
+    "axial_gvp": [
+        [0.0, "#006428"],   # Темно-изумрудный
+        [0.35, "#00E676"],  # Неоновый зеленый
+        [0.5, "#F0F0F0"],   # Нейтральный
+        [0.65, "#E040FB"],  # Неоновый маджента
+        [1.0, "#6A0080"]    # Глубокий фиолетовый
+    ],
+    # 3. Температурная тепловая шкала
+    "temp_turbo": "Turbo"
+}
+
 CATEGORIES = [
-    {"name": "Othoradial Strains", "key": "hoop", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": "Spectral_r"},
-    {"name": "Longitudinal Strains", "key": "axial", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": "Spectral_r"},
-    {"name": "Temperature", "key": "temp", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C", "cmap": "Turbo"},
+    {
+        "name": "Othoradial Strains",
+        "key": "hoop",
+        "tag": "-CS",
+        "title": "Çevresel gerinim (CS)",
+        "unit": "µm/m",
+        "cmap": COLORSCALES["hoop_bwr"]
+    },
+    {
+        "name": "Longitudinal Strains",
+        "key": "axial",
+        "tag": "-S",
+        "title": "Boyuna gerinim (S)",
+        "unit": "µm/m",
+        "cmap": COLORSCALES["axial_gvp"]
+    },
+    {
+        "name": "Temperature",
+        "key": "temp",
+        "tag": "-TP",
+        "title": "Sıcaklık (TP)",
+        "unit": "°C",
+        "cmap": COLORSCALES["temp_turbo"]
+    },
 ]
 
 def clean_num(s):
@@ -51,7 +94,7 @@ def fetch_all_in_memory():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(4000)
 
-            # 1. Открытие меню Types
+            # 1. Открытие Types
             types_btn = page.get_by_text("Types").first
             types_btn.wait_for(state="visible", timeout=30000)
             types_btn.click()
@@ -76,7 +119,7 @@ def fetch_all_in_memory():
                 pass
             page.wait_for_timeout(500)
 
-            # 3. Фильтры таблицы
+            # 3. Фильтры
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
             combos.first.select_option("ALL")
@@ -92,7 +135,7 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
-            # 4. Считывание таблицы данных
+            # 4. Чтение таблицы
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
 
@@ -271,7 +314,7 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- ПЛОТНЫЙ И НАСЫЩЕННЫЙ 3D PLOTLY ---
+# --- ПЛОТНЫЙ И ВЫСОКОКОНТРАСТНЫЙ 3D PLOTLY ---
 fig = go.Figure()
 
 sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
@@ -301,20 +344,20 @@ for ti, tun in enumerate(("TA", "TB")):
         colorscale=cat_cfg["cmap"],
         cmin=clim[0],
         cmax=clim[1],
-        opacity=1.0,  # Полная непрозрачность
+        opacity=1.0,  # 100% непрозрачный материал
         name=f"Tünel {tun}",
         lighting=dict(
-            ambient=0.95,   # Ровный яркий свет без тёмных затемнений
-            diffuse=0.5,
+            ambient=0.98,   # Прямой яркий свет, цвета не заглушаются
+            diffuse=0.3,
             roughness=0.9,
-            specular=0.05
+            specular=0.0
         ),
         colorbar=dict(
             title=dict(text=f"[{cat_cfg['unit']}]", side="top"),
             thickness=16,
             len=0.7,
             x=0.98,
-            tickfont=dict(color="#DDD")
+            tickfont=dict(color="#FFF", size=11)
         ) if ti == 0 else None,
         showscale=(ti == 0),
         hoverinfo="skip"
@@ -330,7 +373,8 @@ for ti, tun in enumerate(("TA", "TB")):
         sensor_z.append(sz)
         val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
         sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
-        sensor_colors.append("#FFE600" if n == selected_sensor else "#00FFFF")
+        # Выделенный сенсор - ярко-желтый, остальные - контрастный белый
+        sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
 if sensor_x:
     fig.add_trace(go.Scatter3d(
@@ -342,7 +386,7 @@ if sensor_x:
             size=6,
             color=sensor_colors,
             symbol="circle",
-            opacity=1.0,  # Непрозрачные маркеры
+            opacity=1.0,
             line=dict(color="#000000", width=1.5)
         ),
         text=sensor_text,
@@ -352,11 +396,11 @@ if sensor_x:
 
 fig.update_layout(
     dragmode="orbit",
-    paper_bgcolor="#111215",
+    paper_bgcolor="#101216",
     scene=dict(
-        xaxis=dict(showbackground=False, showgrid=True, gridcolor="#2A2E35", zeroline=False, title="", showticklabels=False),
-        yaxis=dict(showbackground=False, showgrid=True, gridcolor="#2A2E35", zeroline=False, title="", showticklabels=False),
-        zaxis=dict(showbackground=False, showgrid=True, gridcolor="#2A2E35", zeroline=False, title="Boyuna (Z)", color="#888"),
+        xaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
+        yaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
+        zaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="Boyuna (Z)", color="#888"),
         aspectratio=dict(x=1.3, y=0.5, z=2.2),
         camera=dict(
             eye=dict(x=-1.5, y=1.6, z=1.0),
