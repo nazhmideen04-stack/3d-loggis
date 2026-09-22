@@ -1,0 +1,6 @@
+streamlit
+pyvista
+stpyvista
+scipy
+numpy
+playwright
