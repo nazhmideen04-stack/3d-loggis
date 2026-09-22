@@ -71,7 +71,7 @@ if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         logo_b64 = base64.b64encode(f.read()).decode()
 
-logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 250px; height: auto; display: block; margin: 0; opacity: 0.95; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
+logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.55; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
 # Единая строка: заголовок и логотип на строго одной вертикальной координате
 st.markdown(f"""
