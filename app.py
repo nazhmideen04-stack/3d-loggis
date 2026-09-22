@@ -1,56 +1,92 @@
+import os
+import re
 import base64
+from datetime import datetime
+import numpy as np
+from scipy.interpolate import RBFInterpolator
+import plotly.graph_objects as go
+import streamlit as st
+from playwright.sync_api import sync_playwright
 
-# Проверяем расширение файла логотипа
+st.set_page_config(page_title="LOGGIS 3B", layout="wide")
+
+URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
+
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-# Читаем картинку в Base64 для точного позиционирования
+# Фирменный стиль DESTECH
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
+
+    .stApp {
+        background-color: #0B1118;
+    }
+
+    html, body, [class*="css"], p, span, label, .stMarkdown {
+        font-family: 'Chakra Petch', sans-serif !important;
+        color: #E2ECF7;
+    }
+
+    h1, h2, h3 {
+        font-family: 'Syne', sans-serif !important;
+        font-weight: 800 !important;
+        letter-spacing: 1.5px !important;
+        text-transform: uppercase;
+        color: #FFFFFF !important;
+    }
+
+    .destech-badge {
+        font-family: 'Syne', sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%);
+        color: #000000;
+        padding: 6px 18px;
+        border-radius: 6px;
+        display: inline-block;
+        box-shadow: 0 4px 14px rgba(30, 154, 214, 0.35);
+    }
+
+    div.stButton > button {
+        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%) !important;
+        color: #FFFFFF !important;
+        font-family: 'Chakra Petch', sans-serif !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 6px !important;
+        transition: all 0.3s ease !important;
+    }
+    div.stButton > button:hover {
+        box-shadow: 0 0 15px rgba(30, 154, 214, 0.7) !important;
+        transform: translateY(-1px);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Считываем логотип в Base64 для точного совмещения по высоте с заголовком
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         logo_b64 = base64.b64encode(f.read()).decode()
 
-# Единый блок: жесткая привязка по координате Y (align-items: center)
+logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 150px; height: auto; display: block; margin: 0; opacity: 0.95; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
+
+# Единая строка: заголовок и логотип на строго одной вертикальной координате
 st.markdown(f"""
-<div style="
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-    margin-top: -30px;
-    margin-bottom: 25px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid rgba(30, 154, 214, 0.25);
-">
+<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(30, 154, 214, 0.2);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
-        <h1 style="
-            margin: 0 !important;
-            padding: 0 !important;
-            font-family: 'Syne', sans-serif !important;
-            font-size: 34px !important;
-            font-weight: 800 !important;
-            line-height: 1 !important;
-            letter-spacing: 1.5px !important;
-            color: #FFFFFF !important;
-        ">LOGGIS 3B</h1>
-        <div style="
-            margin: 4px 0 0 0 !important;
-            padding: 0 !important;
-            font-family: 'Chakra Petch', sans-serif !important;
-            font-size: 13px !important;
-            font-weight: 600 !important;
-            letter-spacing: 1px !important;
-            color: #1E9AD6 !important;
-            line-height: 1 !important;
-        ">STRUCTURAL HEALTH MONITORING SYSTEM</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
+        <div style="color: #1E9AD6; font-weight: 600; font-size: 13px; letter-spacing: 1px; margin-top: 3px;">STRUCTURAL HEALTH MONITORING SYSTEM</div>
     </div>
-    <div style="display: flex; align-items: center; justify-content: flex-end; margin: 0; padding: 0;">
-        {'<img src="data:image/jpeg;base64,' + logo_b64 + '" style="width: 150px; height: auto; display: block; margin: 0; opacity: 0.95; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'}
+    <div style="display: flex; align-items: center; margin: 0; padding: 0;">
+        {logo_tag}
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 COLORSCALES = {
-    # 1. Çevresel gerinim: Синий DESTECH -> Белый (0) -> Красный
     "hoop_bwr": [
         [0.0, "#1858BA"],
         [0.35, "#1E9AD6"],
@@ -58,7 +94,6 @@ COLORSCALES = {
         [0.65, "#FF4422"],
         [1.0, "#C60000"]
     ],
-    # 2. Boyuna gerinim: Изумрудный -> Серый (0) -> Неоновый Пурпурный
     "axial_gvp": [
         [0.0, "#006428"],
         [0.35, "#00E676"],
@@ -66,7 +101,6 @@ COLORSCALES = {
         [0.65, "#E040FB"],
         [1.0, "#6A0080"]
     ],
-    # 3. Sıcaklık: Turbo
     "temp_turbo": "Turbo"
 }
 
@@ -439,7 +473,7 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
-        # 3D метки TA и TB в шрифте Syne под DESTECH
+        # 3D метки TA и TB
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
