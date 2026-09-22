@@ -437,11 +437,19 @@ else:
 with col_nav:
     st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
-    st.write(f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}")
+    # Зеленый информационный блок (как было раньше)
+    st.success(f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}")
+    
     st.write("**Aktif Sensör Sayısı:**")
-    st.write(f"{len(v_map)}")
+    st.markdown(f"<div style='color: #00FF66; font-size: 20px; font-weight: 700; margin-top: -8px; margin-bottom: 12px;'>{len(v_map)}</div>", unsafe_allow_html=True)
+    
     st.write("**Skala Limitleri:**")
-    st.write(f"Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}")
+    st.markdown(f"<div style='color: #00FF66; font-size: 15px; font-weight: 600; margin-top: -8px; margin-bottom: 12px;'>Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}</div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
+    if selected_sensor != "Seçiniz...":
+        st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
     st.markdown("---")
     selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
