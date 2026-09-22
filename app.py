@@ -1,148 +1,50 @@
-import os
-import re
 import base64
-from datetime import datetime
-import numpy as np
-from scipy.interpolate import RBFInterpolator
-import plotly.graph_objects as go
-import streamlit as st
-from playwright.sync_api import sync_playwright
 
-st.set_page_config(page_title="LOGGIS 3B", layout="wide")
-
-URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
-
-# Проверяем оба варианта расширения файла
+# Проверяем расширение файла логотипа
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-def get_image_base64(path):
-    if os.path.exists(path):
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    return None
+# Читаем картинку в Base64 для точного позиционирования
+logo_b64 = ""
+if os.path.exists(LOGO_PATH):
+    with open(LOGO_PATH, "rb") as f:
+        logo_b64 = base64.b64encode(f.read()).decode()
 
-logo_b64 = get_image_base64(LOGO_PATH)
-
-# Фирменный стиль DESTECH (Шрифт Syne + Цветовая гамма)
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
-
-    /* Фон рабочей области под стиль DESTECH */
-    .stApp {
-        background-color: #0B1118;
-    }
-
-    /* Единая строка шапки: заголовок и логотип на одной высоте */
-    .header-bar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 5px 0 15px 0;
-        margin-bottom: 20px;
-        border-bottom: 1px solid rgba(30, 154, 214, 0.2);
-    }
-
-    .header-text {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-    }
-
-    .header-title {
-        font-family: 'Syne', sans-serif !important;
-        font-weight: 800 !important;
-        font-size: 34px !important;
-        letter-spacing: 1.5px !important;
-        text-transform: uppercase;
-        color: #FFFFFF !important;
-        margin: 0 !important;
-        line-height: 1.1 !important;
-    }
-
-    .header-subtitle {
-        font-family: 'Chakra Petch', sans-serif !important;
-        color: #1E9AD6 !important;
-        font-weight: 600 !important;
-        font-size: 13px !important;
-        letter-spacing: 1.5px !important;
-        margin-top: 4px !important;
-    }
-
-    .header-logo-img {
-        max-width: 250px;
-        height: auto;
-        display: block;
-        opacity: 0.95;
-        border-radius: 6px;
-        transition: transform 0.3s ease, opacity 0.3s ease;
-    }
-
-    .header-logo-img:hover {
-        opacity: 1.0;
-        transform: scale(1.02);
-    }
-
-    /* Основной текст и метки */
-    html, body, [class*="css"], p, span, label, .stMarkdown {
-        font-family: 'Chakra Petch', sans-serif !important;
-        color: #E2ECF7;
-    }
-
-    /* Главные заголовки */
-    h1, h2, h3 {
-        font-family: 'Syne', sans-serif !important;
-        font-weight: 800 !important;
-        letter-spacing: 1.5px !important;
-        text-transform: uppercase;
-        color: #FFFFFF !important;
-    }
-
-    /* Градиентный бейдж-акцент DESTECH */
-    .destech-badge {
-        font-family: 'Syne', sans-serif;
-        font-size: 16px;
-        font-weight: 800;
-        letter-spacing: 2px;
-        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%);
-        color: #000000;
-        padding: 8px 22px;
-        border-radius: 6px;
-        display: inline-block;
-        box-shadow: 0 4px 14px rgba(30, 154, 214, 0.35);
-    }
-
-    /* Стиль кнопки обновления */
-    div.stButton > button {
-        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%) !important;
-        color: #FFFFFF !important;
-        font-family: 'Chakra Petch', sans-serif !important;
-        font-weight: 700 !important;
-        border: none !important;
-        border-radius: 6px !important;
-        transition: all 0.3s ease !important;
-    }
-    div.stButton > button:hover {
-        box-shadow: 0 0 15px rgba(30, 154, 214, 0.7) !important;
-        transform: translateY(-1px);
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Отрисовка шапки на едином вертикальном уровне
-if logo_b64:
-    logo_html = f'<img src="data:image/jpeg;base64,{logo_b64}" class="header-logo-img" alt="DESTECH">'
-else:
-    logo_html = '<span class="destech-badge">DESTECH</span>'
-
+# Единый блок: жесткая привязка по координате Y (align-items: center)
 st.markdown(f"""
-<div class="header-bar">
-    <div class="header-text">
-        <h1 class="header-title">LOGGIS 3B</h1>
-        <div class="header-subtitle">STRUCTURAL HEALTH MONITORING SYSTEM</div>
+<div style="
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-top: -30px;
+    margin-bottom: 25px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(30, 154, 214, 0.25);
+">
+    <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
+        <h1 style="
+            margin: 0 !important;
+            padding: 0 !important;
+            font-family: 'Syne', sans-serif !important;
+            font-size: 34px !important;
+            font-weight: 800 !important;
+            line-height: 1 !important;
+            letter-spacing: 1.5px !important;
+            color: #FFFFFF !important;
+        ">LOGGIS 3B</h1>
+        <div style="
+            margin: 4px 0 0 0 !important;
+            padding: 0 !important;
+            font-family: 'Chakra Petch', sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            letter-spacing: 1px !important;
+            color: #1E9AD6 !important;
+            line-height: 1 !important;
+        ">STRUCTURAL HEALTH MONITORING SYSTEM</div>
     </div>
-    <div style="display: flex; align-items: center;">
-        {logo_html}
+    <div style="display: flex; align-items: center; justify-content: flex-end; margin: 0; padding: 0;">
+        {'<img src="data:image/jpeg;base64,' + logo_b64 + '" style="width: 150px; height: auto; display: block; margin: 0; opacity: 0.95; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'}
     </div>
 </div>
 """, unsafe_allow_html=True)
