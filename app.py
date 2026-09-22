@@ -7,67 +7,99 @@ import plotly.graph_objects as go
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-st.set_page_config(page_title="LOGGIS 3B", layout="wide")
+st.set_page_config(page_title="LOGGIS 3B // DESTECH", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
-LOGO_PATH = "logo.png"
+# Проверяем оба варианта расширения файла
+LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-# Инженерный технический стиль (CAD / SCADA Terminal Gothic)
+# Фирменный стиль DESTECH (Шрифт Syne + Цветовая гамма)
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
 
-    /* Основной текст и элементы управления в стиле инженерной консоли */
+    /* Фон рабочей области под стиль DESTECH */
+    .stApp {
+        background-color: #0B1118;
+    }
+
+    /* Основной текст и метки */
     html, body, [class*="css"], p, span, label, .stMarkdown {
-        font-family: 'Share Tech Mono', monospace !important;
+        font-family: 'Chakra Petch', sans-serif !important;
+        color: #E2ECF7;
     }
 
-    /* Заголовки в строгом индустриальном CAD-стиле */
+    /* Главные заголовки в стилистике букв DESTECH */
     h1, h2, h3 {
-        font-family: 'Rajdhani', sans-serif !important;
-        font-weight: 700 !important;
-        letter-spacing: 2px !important;
+        font-family: 'Syne', sans-serif !important;
+        font-weight: 800 !important;
+        letter-spacing: 1.5px !important;
         text-transform: uppercase;
+        color: #FFFFFF !important;
     }
 
+    /* Градиентный бейдж-акцент под стиль плашки DESTECH */
+    .destech-badge {
+        font-family: 'Syne', sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%);
+        color: #000000;
+        padding: 6px 18px;
+        border-radius: 6px;
+        display: inline-block;
+        box-shadow: 0 4px 14px rgba(30, 154, 214, 0.35);
+    }
+
+    /* Стиль кнопки обновления */
+    div.stButton > button {
+        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%) !important;
+        color: #FFFFFF !important;
+        font-family: 'Chakra Petch', sans-serif !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 6px !important;
+        transition: all 0.3s ease !important;
+    }
+    div.stButton > button:hover {
+        box-shadow: 0 0 15px rgba(30, 154, 214, 0.7) !important;
+        transform: translateY(-1px);
+    }
+
+    /* Логотип: увеличен, четкий и контрастный */
     [data-testid="stImage"] img {
-        opacity: 0.8;
-        transition: opacity 0.3s ease;
+        opacity: 0.95;
+        border-radius: 8px;
+        transition: transform 0.3s ease, opacity 0.3s ease;
     }
     [data-testid="stImage"] img:hover {
         opacity: 1.0;
-    }
-    .header-badge {
-        font-family: 'Share Tech Mono', monospace;
-        font-size: 16px;
-        letter-spacing: 3px;
-        color: #00E5FF;
-        border: 1px solid rgba(0, 229, 255, 0.4);
-        background: rgba(0, 229, 255, 0.05);
-        padding: 4px 12px;
-        border-radius: 4px;
-        display: inline-block;
-        margin-top: 10px;
+        transform: scale(1.03);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Шапка
-col_head_title, col_head_logo = st.columns([4, 1])
+# Шапка с увеличенным логотипом DESTECH
+col_head_title, col_head_logo = st.columns([3, 1.2])
+
 with col_head_title:
-    st.markdown("<h1 style='margin-bottom: 0px;'>LOGGIS 3B </h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom: 2px;'>LOGGIS 3B TÜNEL İZLEME</h1>", unsafe_allow_html=True)
+    st.markdown("<span style='color: #1E9AD6; font-weight: 600; font-size: 14px; letter-spacing: 1px;'>STRUCTURAL HEALTH MONITORING SYSTEM</span>", unsafe_allow_html=True)
 
 with col_head_logo:
     if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=300)
+        # Увеличенная ширина логотипа (width=260)
+        st.image(LOGO_PATH, width=260)
     else:
-        st.markdown("<div style='text-align: right;'><span class='header-badge'>LOGGIS_SYSTEM</span></div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: right;'><span class='destech-badge'>DESTECH</span></div>", unsafe_allow_html=True)
+
 COLORSCALES = {
-    # 1. Çevresel gerinim: Синий -> Белый (0) -> Красный
+    # 1. Çevresel gerinim: Синий DESTECH -> Белый (0) -> Красный
     "hoop_bwr": [
-        [0.0, "#0010D6"],
-        [0.35, "#3388FF"],
+        [0.0, "#1858BA"],
+        [0.35, "#1E9AD6"],
         [0.5, "#FFFFFF"],
         [0.65, "#FF4422"],
         [1.0, "#C60000"]
@@ -145,20 +177,16 @@ def fetch_category_data(cat_key):
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-
-        # Блокируем ТОЛЬКО тяжелые изображения и медиа (стили и шрифты оставляем для корректного SignalR)
         page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(3500)
 
-        # 1. Открытие меню Types
         types_btn = page.get_by_text("Types").first
         types_btn.wait_for(state="visible", timeout=30000)
         types_btn.click()
         page.wait_for_timeout(800)
 
-        # 2. Выбор категории
         try:
             listbox = page.get_by_role("listbox").first
             listbox.wait_for(state="visible", timeout=5000)
@@ -176,7 +204,6 @@ def fetch_category_data(cat_key):
             pass
         page.wait_for_timeout(600)
 
-        # 3. Фильтры таблицы
         combos = page.get_by_role("combobox")
         combos.first.wait_for(state="visible", timeout=20000)
 
@@ -199,11 +226,9 @@ def fetch_category_data(cat_key):
                 pass
             page.wait_for_timeout(600)
 
-        # 4. Ожидание таблицы
         table_loc = page.locator("table, [role='grid'], .table").first
         table_loc.wait_for(state="visible", timeout=45000)
 
-        # Сортировка по дате
         try:
             date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
             if date_header.is_visible():
@@ -212,14 +237,12 @@ def fetch_category_data(cat_key):
         except Exception:
             pass
 
-        # Дожидаемся появления тега датчиков в теле таблицы
         for _ in range(25):
             txt = page.locator("table tbody, [role='rowgroup']").inner_text()
             if cat["tag"] in txt:
                 break
             page.wait_for_timeout(600)
 
-        # 5. Мгновенное чтение всех ячеек через JS
         raw_table_data = page.evaluate("""() => {
             const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
             return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
@@ -462,7 +485,7 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
-        # 3D метки TA и TB
+        # 3D метки TA и TB в шрифте Syne под DESTECH
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
@@ -470,12 +493,16 @@ with col_3d:
             mode="text",
             text=label_text,
             textposition="top center",
-            textfont=dict(family="Trebuchet MS, Arial, sans-serif", size=26, color="#FFFFFF"),
+            textfont=dict(
+                family="Syne, Chakra Petch, sans-serif",
+                size=28,
+                color="#1E9AD6"
+            ),
             hoverinfo="none",
             showlegend=False
         ))
 
-        # Сенсоры
+        # Маркеры сенсоров
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
@@ -490,11 +517,11 @@ with col_3d:
 
         fig.update_layout(
             dragmode="orbit",
-            paper_bgcolor="#101216",
+            paper_bgcolor="#0B1118",
             scene=dict(
-                xaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
-                yaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
-                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="Boyuna (Z)", color="#888"),
+                xaxis=dict(showbackground=False, showgrid=True, gridcolor="#1B2636", zeroline=False, title="", showticklabels=False),
+                yaxis=dict(showbackground=False, showgrid=True, gridcolor="#1B2636", zeroline=False, title="", showticklabels=False),
+                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#1B2636", zeroline=False, title="Boyuna (Z)", color="#1E9AD6"),
                 aspectratio=dict(x=1.3, y=0.5, z=2.2),
                 camera=dict(eye=dict(x=-1.5, y=1.6, z=1.0), center=dict(x=0, y=0, z=0))
             ),
