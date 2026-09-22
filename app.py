@@ -151,95 +151,108 @@ def fetch_category_data(cat_key, reload_seed=0):
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(3500)
 
-        # 1. Вкладка Types -> выбор типа датчиков
+        # 1. Переход на вкладку Types
         types_tab = page.locator("text='Types'").first
         types_tab.wait_for(state="visible", timeout=30000)
         types_tab.click()
         page.wait_for_timeout(600)
 
-        # Клик по строке нужного типа (Temperature, Longitudinal strains, Othoradial strains)
-        try:
-            item = page.locator(f"text='{cat['name']}'").first
-            item.wait_for(state="visible", timeout=5000)
-            item.click()
-        except Exception:
-            page.locator(f"*:text-matches('{cat['name']}', 'i')").first.click(force=True)
-
+        # 2. Выбор нужного типа (Longitudinal strains, Othoradial strains или Temperature)
+        type_row = page.get_by_text(cat["name"], exact=True).first
+        if not type_row.is_visible():
+            type_row = page.locator(f"div:has-text('{cat['name']}'), span:has-text('{cat['name']}')").last
+        type_row.click()
         page.wait_for_timeout(1000)
 
-        # 2. Установка Duration: 2 mois и Display mode: Tableau
-        page.evaluate("""() => {
-            const selects = Array.from(document.querySelectorAll('select'));
-            for (let s of selects) {
-                for (let opt of s.options) {
-                    if (/tableau/i.test(opt.text) || /tableau/i.test(opt.value)) {
-                        s.value = opt.value;
-                        s.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                    if (/2\\s*mois/i.test(opt.text) || /2\\s*mois/i.test(opt.value)) {
-                        s.value = opt.value;
-                        s.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                }
-            }
-        }""")
+        # 3. Выбор Duration (2 mois) и Display mode (Tableau)
+        # Нажимаем на селектор под Duration, если там еще не 2 mois
+        try:
+            dur_container = page.locator("div, table").filter(has_text=re.compile(r"Duration", re.I)).last
+            dur_btn = dur_container.locator("button, select, div[role='combobox'], input").first
+            if "2 mois" not in dur_btn.inner_text():
+                dur_btn.click()
+                page.wait_for_timeout(400)
+                page.get_by_text("2 mois").first.click()
+        except Exception:
+            pass
+
+        # Нажимаем на селектор под Display mode, если там еще не Tableau
+        try:
+            disp_container = page.locator("div, table").filter(has_text=re.compile(r"Display mode", re.I)).last
+            disp_btn = disp_container.locator("button, select, div[role='combobox'], input").first
+            if "Tableau" not in disp_btn.inner_text():
+                disp_btn.click()
+                page.wait_for_timeout(400)
+                page.get_by_text("Tableau").first.click()
+        except Exception:
+            pass
+
         page.wait_for_timeout(1500)
 
-        # 3. Ожидание таблицы
-        table_loc = page.locator("table").first
-        table_loc.wait_for(state="visible", timeout=45000)
+        # 4. Ожидание таблицы с данными
+        table = page.locator("table").first
+        table.wait_for(state="visible", timeout=40000)
 
-        # Дожидаемся появления датчиков с нужным тегом в шапке
+        # Ждем, пока в таблице появится нужный тег (-CS, -S или -TP)
         for _ in range(30):
-            th_text = page.locator("table thead").inner_text()
-            if cat["tag"] in th_text:
+            th_all = page.locator("table thead").inner_text()
+            if cat["tag"] in th_all:
                 break
             page.wait_for_timeout(500)
 
-        # 4. Извлечение названий датчиков из <th> и первой (самой последней по времени) строки данных <td>
-        extracted_data = page.evaluate("""() => {
+        # 5. Считывание: Заголовки (датчики) из ПЕРВОЙ строки thead tr и значения из САМОЙ ПЕРВОЙ строки tbody tr
+        extracted = page.evaluate("""(tag) => {
             const table = document.querySelector('table');
             if (!table) return null;
 
-            // Считываем заголовки колонок (сенсоры)
-            const thElements = Array.from(table.querySelectorAll('thead th, thead td'));
-            const headers = thElements.map(th => th.innerText.trim());
+            // Находим строку заголовка с именами датчиков
+            const headerRows = Array.from(table.querySelectorAll('thead tr'));
+            let sensorRow = headerRows[0];
+            for (const hr of headerRows) {
+                if (hr.innerText.includes(tag)) {
+                    sensorRow = hr;
+                    break;
+                }
+            }
 
-            // Считываем самую верхнюю строку (самый свежий замер)
-            const firstRow = table.querySelector('tbody tr');
-            if (!firstRow) return { headers: headers, latestRow: [] };
+            const ths = Array.from(sensorRow.querySelectorAll('th, td')).map(c => c.innerText.trim());
 
-            const cells = Array.from(firstRow.querySelectorAll('td')).map(td => td.innerText.trim());
+            // Находим первую строку с цифрами (самый свежий замер)
+            const bodyRow = table.querySelector('tbody tr');
+            if (!bodyRow) return { headers: ths, values: [] };
+
+            const tds = Array.from(bodyRow.querySelectorAll('td')).map(c => c.innerText.trim());
+
             return {
-                headers: headers,
-                latestRow: cells
+                headers: ths,
+                values: tds
             };
-        }""")
+        }""", cat["tag"])
 
         browser.close()
 
     val_map = {}
     latest_date_str = ""
 
-    if extracted_data and extracted_data.get("latestRow"):
-        headers = extracted_data["headers"]
-        row_vals = extracted_data["latestRow"]
+    if extracted and extracted.get("values"):
+        headers = extracted["headers"]
+        values = extracted["values"]
 
-        # Первая ячейка — дата и время замера
-        if len(row_vals) > 0:
-            latest_date_str = row_vals[0]
+        # Первая колонка - это всегда дата/время
+        if len(values) > 0:
+            latest_date_str = values[0]
 
-        # Остальные ячейки соответствуют сенсорам в заголовках
-        for h_name, val_str in zip(headers[1:], row_vals[1:]):
-            if cat["tag"] in h_name:
-                m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h_name)
-                s_name = m.group(1) if m else h_name.split()[0].strip()
-                v = clean_num(val_str)
+        # Остальные колонки - значения датчиков
+        for h, v_str in zip(headers[1:], values[1:]):
+            if cat["tag"] in h:
+                # Извлекаем чистое имя вида TA-CS1-L-TP или TB-S2-M3
+                m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                s_name = m.group(1) if m else h.split()[0].strip()
+                v = clean_num(v_str)
                 if not np.isnan(v):
                     val_map[s_name] = v
 
     return {"values": val_map, "date": latest_date_str}
-
 # Геометрия тоннелей
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
