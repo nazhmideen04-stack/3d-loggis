@@ -124,9 +124,6 @@ def clean_num(s):
 @st.cache_data(ttl=60)
 def fetch_category_data(cat_key, reload_seed=0):
     cat = CATEGORIES[cat_key]
-    val_map = {}
-    latest_date_str = ""
-
     with sync_playwright() as p:
         browser_args = [
             "--no-sandbox",
@@ -151,91 +148,68 @@ def fetch_category_data(cat_key, reload_seed=0):
         page = context.new_page()
         page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
+        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+        page.wait_for_timeout(3500)
+
+        # 1. Открываем Types и жмем на нужный тип (Temperature / Longitudinal / Othoradial)
         try:
-            page.goto(URL, timeout=60000, wait_until="networkidle")
+            page.locator("text='Types'").first.click()
+            page.wait_for_timeout(800)
+            page.get_by_text(cat["name"]).first.click()
             page.wait_for_timeout(2000)
-
-            # 1. Открываем вкладку Types
-            types_tab = page.locator("text='Types'").first
-            if types_tab.is_visible():
-                types_tab.click()
-                page.wait_for_timeout(800)
-
-            # 2. Выбираем категорию (Temperature / Longitudinal / Othoradial)
-            page.locator(f"text='{cat['name']}'").first.click(force=True)
-            page.wait_for_timeout(2000)
-
-            # 3. Переключаем на Tableau и 2 mois только если они не активны
-            page.evaluate("""() => {
-                const clickMatchingText = (selector, regex) => {
-                    const els = Array.from(document.querySelectorAll(selector));
-                    for (const el of els) {
-                        if (regex.test(el.innerText || '')) {
-                            el.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                };
-
-                // Проверяем кнопки/селекторы Display mode и Duration
-                clickMatchingText('button, select, div, span', /tableau/i);
-                clickMatchingText('button, select, div, span', /2\\s*mois/i);
-            }""")
-            page.wait_for_timeout(2500)
-
-            # 4. Мягкое извлечение данных (до 20 попыток с интервалом 1 сек, без крэша по timeout)
-            for _ in range(20):
-                extracted = page.evaluate("""(tag) => {
-                    const table = document.querySelector('table');
-                    if (!table) return null;
-
-                    // Ищем строку с названиями сенсоров в thead
-                    const theadRows = Array.from(table.querySelectorAll('thead tr'));
-                    let headerRow = null;
-                    for (const r of theadRows) {
-                        if (r.innerText.includes(tag) || r.innerText.includes('TA-') || r.innerText.includes('TB-')) {
-                            headerRow = r;
-                            break;
-                        }
-                    }
-                    if (!headerRow && theadRows.length > 0) headerRow = theadRows[0];
-                    if (!headerRow) return null;
-
-                    const headers = Array.from(headerRow.querySelectorAll('th, td')).map(c => c.innerText.trim());
-
-                    // Первая строка данных в tbody (самый свежий замер)
-                    const firstRow = table.querySelector('tbody tr');
-                    if (!firstRow) return null;
-
-                    const cells = Array.from(firstRow.querySelectorAll('td')).map(c => c.innerText.trim());
-                    if (cells.length < 2) return null;
-
-                    return { headers: headers, values: cells };
-                }""", cat["tag"])
-
-                if extracted and extracted.get("values"):
-                    headers = extracted["headers"]
-                    values = extracted["values"]
-
-                    latest_date_str = values[0]  # Дата из первой колонки
-                    for h, v_str in zip(headers[1:], values[1:]):
-                        if cat["tag"] in h or "TA-" in h or "TB-" in h:
-                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                            s_name = m.group(1) if m else h.split()[0].strip()
-                            v = clean_num(v_str)
-                            if not np.isnan(v):
-                                val_map[s_name] = v
-
-                    if len(val_map) > 0:
-                        break
-
-                page.wait_for_timeout(1000)
-
-        except Exception as e:
+        except Exception:
             pass
-        finally:
-            browser.close()
+
+        # 2. Выбираем 2 mois и Tableau только если они не выбраны
+        try:
+            page.locator("select, [role='combobox']").nth(1).select_option(label=re.compile(r"Tableau|Table", re.I))
+            page.wait_for_timeout(800)
+            page.locator("select, [role='combobox']").nth(2).select_option(label=re.compile(r"2\s*mois", re.I))
+            page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
+        # 3. Ждем появления таблицы
+        page.wait_for_selector("table", timeout=40000)
+
+        # 4. Вытаскиваем датчики из шапки и значения из САМОЙ ПЕРВОЙ строки таблицы
+        extracted = page.evaluate("""(tag) => {
+            const table = document.querySelector('table');
+            if (!table) return null;
+
+            // Находим все заголовки th в первой строке
+            const ths = Array.from(table.querySelectorAll('thead th, tr:first-child th')).map(el => el.innerText.trim());
+
+            // Находим самую первую строку значений в теле таблицы
+            const firstTr = table.querySelector('tbody tr');
+            if (!firstTr) return null;
+
+            const tds = Array.from(firstTr.querySelectorAll('td')).map(el => el.innerText.trim());
+
+            return { headers: ths, values: tds };
+        }""", cat["tag"])
+
+        browser.close()
+
+    val_map = {}
+    latest_date_str = ""
+
+    if extracted and extracted.get("headers") and extracted.get("values"):
+        headers = extracted["headers"]
+        values = extracted["values"]
+
+        # Первая колонка - это всегда дата/время
+        if len(values) > 0:
+            latest_date_str = values[0]
+
+        # Сопоставляем имена колонок (TA-CS1-L-TP и т.д.) со значениями первой строки
+        for h, v_str in zip(headers[1:], values[1:]):
+            if cat["tag"] in h:
+                m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                s_name = m.group(1) if m else h.strip()
+                val = clean_num(v_str)
+                if not np.isnan(val):
+                    val_map[s_name] = val
 
     return {"values": val_map, "date": latest_date_str}
 # Геометрия тоннелей
