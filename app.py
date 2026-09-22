@@ -14,7 +14,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-# Фирменный стиль DESTECH
+# Фирменный стиль DESTECH (без темно-синего фона страницы)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -32,9 +32,10 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
+    /* Убираем серый фон у инлайн-кода (бэктиков ` `) */
     code {
         background-color: transparent !important;
-        color: #00FF66 !important;
+        color: #FFFFFF !important;
         border: none !important;
         padding: 0 !important;
         font-weight: 600 !important;
@@ -69,15 +70,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Логотип в Base64
+# Считываем логотип в Base64 для точного совмещения по высоте с заголовком
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         logo_b64 = base64.b64encode(f.read()).decode()
 
-logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.90; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
+logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.55; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
-# Заголовок и логотип строго по одной оси Y
+# Единая строка: заголовок и логотип на строго одной вертикальной координате
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
@@ -109,8 +110,8 @@ COLORSCALES = {
 }
 
 CATEGORIES = {
-    "hoop": {"name": "Othoradial strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": COLORSCALES["hoop_bwr"]},
-    "axial": {"name": "Longitudinal strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": COLORSCALES["axial_gvp"]},
+    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m", "cmap": COLORSCALES["hoop_bwr"]},
+    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m", "cmap": COLORSCALES["axial_gvp"]},
     "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C", "cmap": COLORSCALES["temp_turbo"]},
 }
 
@@ -121,19 +122,39 @@ def clean_num(s):
     m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
     return float(m.group()) if m else np.nan
 
-@st.cache_data(ttl=60)
-def fetch_category_data(cat_key, reload_seed=0):
-    cat = CATEGORIES[cat_key]
-    val_map = {}
-    latest_date_str = ""
-    screenshot_b64 = ""
+def parse_robust_timestamp(d_str):
+    if not d_str:
+        return 0.0
+    nums = [int(n) for n in re.findall(r"\d+", str(d_str))]
+    if len(nums) < 3:
+        return 0.0
+    try:
+        if nums[0] > 1900:
+            year, month, day = nums[0], nums[1], nums[2]
+            hour = nums[3] if len(nums) > 3 else 0
+            minute = nums[4] if len(nums) > 4 else 0
+            second = nums[5] if len(nums) > 5 else 0
+        elif nums[2] > 1900:
+            day, month, year = nums[0], nums[1], nums[2]
+            hour = nums[3] if len(nums) > 3 else 0
+            minute = nums[4] if len(nums) > 4 else 0
+            second = nums[5] if len(nums) > 5 else 0
+        else:
+            return 0.0
+        return datetime(year, month, day, hour, minute, second).timestamp()
+    except Exception:
+        return 0.0
 
+@st.cache_data(ttl=180)
+def fetch_category_data(cat_key):
+    cat = CATEGORIES[cat_key]
     with sync_playwright() as p:
         browser_args = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
+            "--single-process",
             "--window-size=1920,1080",
         ]
         try:
@@ -144,92 +165,107 @@ def fetch_category_data(cat_key, reload_seed=0):
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
-            locale="fr-FR",
+            timezone_id="Europe/Istanbul",
+            locale="tr-TR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
+
+        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+        page.wait_for_timeout(3500)
+
+        types_btn = page.get_by_text("Types").first
+        types_btn.wait_for(state="visible", timeout=30000)
+        types_btn.click()
+        page.wait_for_timeout(800)
 
         try:
-            page.goto(URL, timeout=60000, wait_until="networkidle")
-            page.wait_for_timeout(3000)
+            listbox = page.get_by_role("listbox").first
+            listbox.wait_for(state="visible", timeout=5000)
+            listbox.select_option(cat["name"])
+        except Exception:
+            try:
+                page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
+            except Exception:
+                page.get_by_text(cat["name"]).first.click(force=True)
 
-            # 1. Клик по вкладке Types
-            types_tab = page.locator("text='Types'").first
-            if types_tab.is_visible():
-                types_tab.click()
-                page.wait_for_timeout(1000)
-
-            # 2. Выбор типа сенсора (Temperature, etc.)
-            # Кликаем несколько раз и с принуждением, чтобы точно выделилось Selected: 1/3
-            target = page.locator(f"text='{cat['name']}'").first
-            if target.is_visible():
-                target.click()
-                page.wait_for_timeout(500)
-                # Если не выделилось, эмулируем клик через evaluate
-                page.evaluate(f"""() => {{
-                    const el = Array.from(document.querySelectorAll('*')).find(e => e.textContent && e.textContent.trim() === '{cat['name']}');
-                    if (el) {{
-                        el.click();
-                        el.dispatchEvent(new MouseEvent('dblclick', {{ bubbles: true }}));
-                    }}
-                }}""")
-
-            page.wait_for_timeout(3500)
-
-            # ДЕЛАЕМ СКРИНШОТ ТОГО, ЧТО ВИДИТ БРАУЗЕР ПРЯМО СЕЙЧАС:
-            img_bytes = page.screenshot()
-            screenshot_b64 = base64.b64encode(img_bytes).decode()
-
-            # 3. Извлечение данных из таблицы
-            extracted = page.evaluate("""(tag) => {
-                const table = document.querySelector('table');
-                if (!table) return null;
-
-                const trs = Array.from(table.querySelectorAll('tr'));
-                let headerRow = null;
-                for (const tr of trs) {
-                    if (tr.innerText.includes(tag) || tr.innerText.includes('TA-')) {
-                        headerRow = tr;
-                        break;
-                    }
-                }
-                if (!headerRow && trs.length > 0) headerRow = trs[0];
-                if (!headerRow) return null;
-
-                const headers = Array.from(headerRow.querySelectorAll('th, td')).map(c => c.innerText.trim());
-
-                const tbody = table.querySelector('tbody') || table;
-                const rows = Array.from(tbody.querySelectorAll('tr'));
-                let dataRow = null;
-                for (const r of rows) {
-                    const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
-                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':'))) {
-                        dataRow = cells;
-                        break;
-                    }
-                }
-                return { headers: headers, values: dataRow };
-            }""", cat["tag"])
-
-            if extracted and extracted.get("values"):
-                headers = extracted["headers"]
-                values = extracted["values"]
-                latest_date_str = values[0]
-                for h, v_str in zip(headers[1:], values[1:]):
-                    if cat["tag"] in h or "TA-" in h or "TB-" in h:
-                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                        s_name = m.group(1) if m else h.split()[0].strip()
-                        v = clean_num(v_str)
-                        if not np.isnan(v):
-                            val_map[s_name] = v
-
-        except Exception as e:
+        page.wait_for_timeout(1200)
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
             pass
-        finally:
-            browser.close()
+        page.wait_for_timeout(600)
 
-    return {"values": val_map, "date": latest_date_str, "screenshot": screenshot_b64}
-# Геометрия тоннелей
+        combos = page.get_by_role("combobox")
+        combos.first.wait_for(state="visible", timeout=20000)
+
+        try:
+            combos.first.select_option(value="2 mois")
+        except Exception:
+            pass
+        page.wait_for_timeout(1000)
+
+        try:
+            combos.nth(1).select_option("TABLE")
+        except Exception:
+            pass
+        page.wait_for_timeout(1200)
+
+        if combos.count() >= 3:
+            try:
+                combos.nth(2).select_option("NONE")
+            except Exception:
+                pass
+            page.wait_for_timeout(600)
+
+        table_loc = page.locator("table, [role='grid'], .table").first
+        table_loc.wait_for(state="visible", timeout=45000)
+
+        try:
+            date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
+            if date_header.is_visible():
+                date_header.click()
+                page.wait_for_timeout(1000)
+        except Exception:
+            pass
+
+        for _ in range(25):
+            txt = page.locator("table tbody, [role='rowgroup']").inner_text()
+            if cat["tag"] in txt:
+                break
+            page.wait_for_timeout(600)
+
+        raw_table_data = page.evaluate("""() => {
+            const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
+            return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
+                       .filter(c => c.length >= 3);
+        }""")
+
+        browser.close()
+
+    sensor_best = {}
+    for idx, cols in enumerate(raw_table_data):
+        if len(cols) >= 3 and cat["tag"] in cols[1]:
+            d_raw = cols[0]
+            s_name = cols[1]
+            v = clean_num(cols[2])
+
+            if not np.isnan(v):
+                ts = parse_robust_timestamp(d_raw)
+                if s_name not in sensor_best:
+                    sensor_best[s_name] = (ts, v, d_raw, idx)
+                else:
+                    prev_ts, _, _, prev_idx = sensor_best[s_name]
+                    if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
+                        sensor_best[s_name] = (ts, v, d_raw, idx)
+
+    val_map = {s: item[1] for s, item in sensor_best.items()}
+    latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
+
+    return {"values": val_map, "date": latest_date_str}
+
+# Geometri Tanımları
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
     "tunnel_spacing_m": 15.0,
@@ -304,7 +340,7 @@ def build_operator(names, patches):
         np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
     ])
     wrapped[:, 1] *= angle_scale
-    W = np.empty((query.shape[0], len(names)), dtype=np.float32)
+    W = np.empty((query.shape0], len(names)), dtype=np.float32)
     for j in range(len(names)):
         e = np.zeros(len(names))
         e[j] = 1.0
@@ -335,13 +371,10 @@ def build_mesh_data(patches, offset_x):
     return np.array(pts, dtype=np.float32), np.array(triangles, dtype=np.int32)
 
 # --- ИНТЕРФЕЙС STREAMLIT ---
-if "reload_counter" not in st.session_state:
-    st.session_state.reload_counter = 0
-
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
-    st.subheader("Kontrol Paneli")
+    st.subheader("Kontrol Panelİ")
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
@@ -349,50 +382,40 @@ with col_nav:
     )
 
     if st.button("Verileri Yenile"):
-        st.session_state.reload_counter += 1
         st.cache_data.clear()
         st.rerun()
 
 cat_cfg = CATEGORIES[selected_comp]
 
 with st.spinner(f"{cat_cfg['title']} verisi LoggIS üzerinden alınıyor..."):
-    cur_layer = fetch_category_data(selected_comp, reload_seed=st.session_state.reload_counter)
+    cur_layer = fetch_category_data(selected_comp)
 
 v_map = cur_layer["values"]
-vals = [float(v) for v in v_map.values() if v is not None and not np.isnan(v)]
+vals = [v for v in v_map.values() if not np.isnan(v)]
 
-# Вычисление контрастной шкалы
 if not vals:
-    clim = [-1.0, 1.0]
+    clim = [0.0, 1.0]
 elif selected_comp == "temp":
-    vmin, vmax = float(min(vals)), float(max(vals))
-    clim = [vmin - 0.5, vmax + 0.5] if vmin == vmax else [round(vmin, 1), round(vmax, 1)]
+    clim = [round(float(min(vals)), 1), round(float(max(vals)), 1)]
 else:
-    max_abs = max(abs(min(vals)), abs(max(vals)))
-    m = round(max(max_abs, 1.0), 1)
+    m = round(max(abs(min(vals)), abs(max(vals)), 1.0), 1)
     clim = [-m, m]
 
 with col_nav:
     st.markdown("---")
     st.write("📅 **En Son Veri Zamanı:**")
-    st.success(f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}")
-    
+    st.write(f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}")
     st.write("📡 **Aktif Sensör Sayısı:**")
-    st.markdown(f"<div style='color: #00FF66; font-size: 20px; font-weight: 700; margin-top: -8px; margin-bottom: 12px;'>{len(v_map)}</div>", unsafe_allow_html=True)
-    
+    st.write(f"{len(v_map)}")
     st.write("📊 **Skala Limitleri:**")
-    st.markdown(f"<div style='color: #00FF66; font-size: 15px; font-weight: 600; margin-top: -8px; margin-bottom: 12px;'>Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}</div>", unsafe_allow_html=True)
+    st.write(f"Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}")
 
     st.markdown("---")
-    selected_sensor = st.selectbox(
-        "Sensör Değerini İncele:",
-        options=["Seçiniz..."] + sorted(list(v_map.keys())),
-        key=f"select_sensor_{selected_comp}"
-    )
+    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B PLOTLY SAHNESИ ---
+# --- 3B PLOTLY SAHNESİ ---
 with col_3d:
     if not v_map:
         st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı. Lütfen 'Verileri Yenile' butonunu deneyiniz.")
@@ -408,7 +431,7 @@ with col_3d:
             label_z.append(-49.0)
             label_text.append(f"  {tun}  ")
 
-            names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c) and not np.isnan(v_map.get(c, np.nan))]
+            names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
             if not names:
                 continue
 
@@ -417,9 +440,8 @@ with col_3d:
             pos, W = build_operator(names, patches)
             pts, tris = build_mesh_data(patches, off_x)
 
-            cur_vals = np.array([v_map[c] for c in names], dtype=np.float32)
+            cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
             scalars = W @ cur_vals
-            scalars = np.nan_to_num(scalars, nan=float(np.mean(cur_vals)))
 
             fig.add_trace(go.Mesh3d(
                 x=pts[:, 0],
@@ -429,7 +451,6 @@ with col_3d:
                 j=tris[:, 1],
                 k=tris[:, 2],
                 intensity=scalars,
-                intensitymode="vertex",
                 colorscale=cat_cfg["cmap"],
                 cmin=clim[0],
                 cmax=clim[1],
@@ -459,7 +480,7 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
-        # Названия тоннелей TA и TB
+        # 3D метки TA и TB
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
@@ -476,7 +497,7 @@ with col_3d:
             showlegend=False
         ))
 
-        # Маркеры датчиков
+        # Маркеры сенсоров
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
