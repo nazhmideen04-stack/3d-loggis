@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-st.set_page_config(page_title="LOGGIS 3B // DESTECH", layout="wide")
+st.set_page_config(page_title="LOGGIS 3B", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -85,7 +85,7 @@ st.markdown("""
 col_head_title, col_head_logo = st.columns([3, 1.2])
 
 with col_head_title:
-    st.markdown("<h1 style='margin-bottom: 2px;'>LOGGIS 3B TÜNEL İZLEME</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom: 2px;'>LOGGIS 3B</h1>", unsafe_allow_html=True)
     st.markdown("<span style='color: #1E9AD6; font-weight: 600; font-size: 14px; letter-spacing: 1px;'>STRUCTURAL HEALTH MONITORING SYSTEM</span>", unsafe_allow_html=True)
 
 with col_head_logo:
