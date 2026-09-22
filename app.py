@@ -455,7 +455,7 @@ with col_3d:
             textfont=dict(
                 family="Trebuchet MS, Arial, sans-serif",
                 size=26,
-                color="#00FFFF"
+                color="#FFFFFF"
             ),
             hoverinfo="none",
             showlegend=False
