@@ -7,13 +7,12 @@ import plotly.graph_objects as go
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-st.set_page_config(page_title="LOGGIS 3B", layout="wide")
+st.set_page_config(page_title="LOGGIS 3B Tünel İzleme", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
 # 3 кардинально разные высококонтрастные шкалы с антонимичными полюсами
 COLORSCALES = {
-    # 1. Çevresel gerinim: Глубокий Синий -> Белый (0) -> Ярко-Красный
     "hoop_bwr": [
         [0.0, "#0010D6"],
         [0.35, "#3388FF"],
@@ -21,7 +20,6 @@ COLORSCALES = {
         [0.65, "#FF4422"],
         [1.0, "#C60000"]
     ],
-    # 2. Boyuna gerinim: Изумрудно-Зеленый -> Нейтральный (0) -> Неоновый Пурпурный
     "axial_gvp": [
         [0.0, "#006428"],
         [0.35, "#00E676"],
@@ -29,7 +27,6 @@ COLORSCALES = {
         [0.65, "#E040FB"],
         [1.0, "#6A0080"]
     ],
-    # 3. Sıcaklık: Непрерывный тепловой спектр
     "temp_turbo": "Turbo"
 }
 
@@ -70,9 +67,14 @@ def clean_num(s):
 def parse_date_key(d_str):
     if not d_str:
         return 0.0
-    for fmt in ("%d.%m.%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%d.%m.%Y %H:%M", "%Y-%m-%d %H:%M"):
+    cleaned = d_str.strip().replace("T", " ")
+    for fmt in (
+        "%d.%m.%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S",
+        "%d.%m.%Y %H:%M", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M",
+        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M"
+    ):
         try:
-            return datetime.strptime(d_str.strip(), fmt).timestamp()
+            return datetime.strptime(cleaned, fmt).timestamp()
         except ValueError:
             pass
     return 0.0
@@ -128,18 +130,27 @@ def fetch_all_in_memory():
                 page.keyboard.press("Escape")
             except Exception:
                 pass
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(800)
 
-            # 3. Фильтры: гарантируем выбор самых последних измерений
+            # 3. Фильтры: Duration=ALL ОБЯЗАТЕЛЕН, Display=TABLE_MOST_RECENT
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
+            
+            # Duration -> ALL
+            try:
+                combos.first.select_option("ALL")
+            except Exception:
+                pass
+            page.wait_for_timeout(1200)
 
+            # Display -> TABLE_MOST_RECENT
             try:
                 combos.nth(1).select_option("TABLE_MOST_RECENT")
             except Exception:
                 pass
             page.wait_for_timeout(1500)
 
+            # Processor -> NONE
             if combos.count() >= 3:
                 try:
                     combos.nth(2).select_option("NONE")
@@ -151,17 +162,17 @@ def fetch_all_in_memory():
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
 
-            for _ in range(20):
+            for _ in range(25):
                 txt = page.locator("table tbody, [role='rowgroup']").inner_text()
                 if cat["tag"] in txt:
                     break
                 page.wait_for_timeout(1000)
 
-            # Сбор строго самых свежих данных по timestamp
+            # Извлечение самых свежих данных
             sensor_latest = {}
             rows = page.locator("table tbody tr, [role='row']").all()
 
-            for r in rows:
+            for row_idx, r in enumerate(rows):
                 cols = [td.inner_text().strip() for td in r.locator("td, [role='gridcell']").all()]
                 if len(cols) >= 3 and cat["tag"] in cols[1]:
                     d_raw = cols[0]
@@ -170,15 +181,18 @@ def fetch_all_in_memory():
 
                     if not np.isnan(v):
                         ts = parse_date_key(d_raw)
-                        if s_name not in sensor_latest or ts >= sensor_latest[s_name]["ts"]:
+                        # Если дата не распарсилась (ts == 0), используем row_idx как относительный порядок
+                        effective_time = ts if ts > 0.0 else float(row_idx)
+                        
+                        if s_name not in sensor_latest or effective_time >= sensor_latest[s_name]["effective_time"]:
                             sensor_latest[s_name] = {
                                 "val": v,
-                                "ts": ts,
+                                "effective_time": effective_time,
                                 "date_str": d_raw
                             }
 
             val_map = {k: item["val"] for k, item in sensor_latest.items()}
-            latest_date_str = max(sensor_latest.values(), key=lambda x: x["ts"])["date_str"] if sensor_latest else ""
+            latest_date_str = max(sensor_latest.values(), key=lambda x: x["effective_time"])["date_str"] if sensor_latest else ""
 
             page.close()
             results[cat["key"]] = {"values": val_map, "date": latest_date_str}
@@ -314,7 +328,7 @@ with st.spinner("LoggIS verileri taranıyor ve 3B model hesaplanıyor..."):
     all_data = fetch_all_in_memory()
 
 cat_cfg = next(c for c in CATEGORIES if c["key"] == selected_comp)
-cur_layer = all_data[selected_comp]
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
 v_map = cur_layer["values"]
 vals = [v for v in v_map.values() if not np.isnan(v)]
 
@@ -337,109 +351,111 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- ПЛОТНЫЙ И ВЫСОКОКОНТРАСТНЫЙ 3D PLOTLY ---
-fig = go.Figure()
-
-sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
-
-for ti, tun in enumerate(("TA", "TB")):
-    off_x = (ti - 0.5) * SP
-    names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
-    if not names:
-        continue
-
-    pos = np.array([position(n) for n in names])
-    patches = patches_for(selected_comp, pos)
-    pos, W = build_operator(names, patches)
-    pts, tris = build_mesh_data(patches, off_x)
-
-    cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
-    scalars = W @ cur_vals
-
-    fig.add_trace(go.Mesh3d(
-        x=pts[:, 0],
-        y=pts[:, 1],
-        z=pts[:, 2],
-        i=tris[:, 0],
-        j=tris[:, 1],
-        k=tris[:, 2],
-        intensity=scalars,
-        colorscale=cat_cfg["cmap"],
-        cmin=clim[0],
-        cmax=clim[1],
-        opacity=1.0,
-        name=f"Tünel {tun}",
-        lighting=dict(
-            ambient=0.98,
-            diffuse=0.3,
-            roughness=0.9,
-            specular=0.0
-        ),
-        colorbar=dict(
-            title=dict(text=f"[{cat_cfg['unit']}]", side="top"),
-            thickness=16,
-            len=0.7,
-            x=0.98,
-            tickfont=dict(color="#FFF", size=11)
-        ) if ti == 0 else None,
-        showscale=(ti == 0),
-        hoverinfo="skip"
-    ))
-
-    for n, pt in zip(names, pos):
-        ang = np.radians(pt[1])
-        sx = off_x + (R + 0.12) * np.sin(ang)
-        sy = (R + 0.12) * np.cos(ang)
-        sz = pt[0] - 45.0
-        sensor_x.append(sx)
-        sensor_y.append(sy)
-        sensor_z.append(sz)
-        val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
-        sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
-        sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
-
-if sensor_x:
-    fig.add_trace(go.Scatter3d(
-        x=sensor_x,
-        y=sensor_y,
-        z=sensor_z,
-        mode="markers",
-        marker=dict(
-            size=6,
-            color=sensor_colors,
-            symbol="circle",
-            opacity=1.0,
-            line=dict(color="#000000", width=1.5)
-        ),
-        text=sensor_text,
-        hoverinfo="text",
-        name="Sensörler"
-    ))
-
-fig.update_layout(
-    dragmode="orbit",
-    paper_bgcolor="#101216",
-    scene=dict(
-        xaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
-        yaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
-        zaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="Boyuna (Z)", color="#888"),
-        aspectratio=dict(x=1.3, y=0.5, z=2.2),
-        camera=dict(
-            eye=dict(x=-1.5, y=1.6, z=1.0),
-            center=dict(x=0, y=0, z=0)
-        )
-    ),
-    margin=dict(l=0, r=0, b=0, t=10),
-    height=720,
-    showlegend=False
-)
-
-config = {
-    "scrollZoom": True,
-    "displayModeBar": True,
-    "modeBarButtonsToRemove": ["resetCameraDefault3d", "hoverClosest3d"],
-    "displaylogo": False
-}
-
+# --- 3B PLOTLY SAHNESİ ---
 with col_3d:
-    st.plotly_chart(fig, use_container_width=True, config=config)
+    if not v_map:
+        st.warning("⚠️ LoggIS'ten şu anda veri çekilemedi veya seçilen kategori için sensör tablosu boş. Lütfen 'Verileri Yenile' butonuna tıklayınız.")
+    else:
+        fig = go.Figure()
+        sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
+
+        for ti, tun in enumerate(("TA", "TB")):
+            off_x = (ti - 0.5) * SP
+            names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
+            if not names:
+                continue
+
+            pos = np.array([position(n) for n in names])
+            patches = patches_for(selected_comp, pos)
+            pos, W = build_operator(names, patches)
+            pts, tris = build_mesh_data(patches, off_x)
+
+            cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
+            scalars = W @ cur_vals
+
+            fig.add_trace(go.Mesh3d(
+                x=pts[:, 0],
+                y=pts[:, 1],
+                z=pts[:, 2],
+                i=tris[:, 0],
+                j=tris[:, 1],
+                k=tris[:, 2],
+                intensity=scalars,
+                colorscale=cat_cfg["cmap"],
+                cmin=clim[0],
+                cmax=clim[1],
+                opacity=1.0,
+                name=f"Tünel {tun}",
+                lighting=dict(
+                    ambient=0.98,
+                    diffuse=0.3,
+                    roughness=0.9,
+                    specular=0.0
+                ),
+                colorbar=dict(
+                    title=dict(text=f"[{cat_cfg['unit']}]", side="top"),
+                    thickness=16,
+                    len=0.7,
+                    x=0.98,
+                    tickfont=dict(color="#FFF", size=11)
+                ) if ti == 0 else None,
+                showscale=(ti == 0),
+                hoverinfo="skip"
+            ))
+
+            for n, pt in zip(names, pos):
+                ang = np.radians(pt[1])
+                sx = off_x + (R + 0.12) * np.sin(ang)
+                sy = (R + 0.12) * np.cos(ang)
+                sz = pt[0] - 45.0
+                sensor_x.append(sx)
+                sensor_y.append(sy)
+                sensor_z.append(sz)
+                val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
+                sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
+                sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
+
+        if sensor_x:
+            fig.add_trace(go.Scatter3d(
+                x=sensor_x,
+                y=sensor_y,
+                z=sensor_z,
+                mode="markers",
+                marker=dict(
+                    size=6,
+                    color=sensor_colors,
+                    symbol="circle",
+                    opacity=1.0,
+                    line=dict(color="#000000", width=1.5)
+                ),
+                text=sensor_text,
+                hoverinfo="text",
+                name="Sensörler"
+            ))
+
+        fig.update_layout(
+            dragmode="orbit",
+            paper_bgcolor="#101216",
+            scene=dict(
+                xaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
+                yaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="", showticklabels=False),
+                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#252830", zeroline=False, title="Boyuna (Z)", color="#888"),
+                aspectratio=dict(x=1.3, y=0.5, z=2.2),
+                camera=dict(
+                    eye=dict(x=-1.5, y=1.6, z=1.0),
+                    center=dict(x=0, y=0, z=0)
+                )
+            ),
+            margin=dict(l=0, r=0, b=0, t=10),
+            height=720,
+            showlegend=False
+        )
+
+        config = {
+            "scrollZoom": True,
+            "displayModeBar": True,
+            "modeBarButtonsToRemove": ["resetCameraDefault3d", "hoverClosest3d"],
+            "displaylogo": False
+        }
+
+        st.plotly_chart(fig, use_container_width=True, config=config)
