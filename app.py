@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-st.set_page_config(page_title="LOGGIS 3B", layout="wide")
+st.set_page_config(page_title="LOGGIS 3B Tünel İzleme", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -109,7 +109,6 @@ def fetch_all_in_memory():
             os.system("playwright install chromium")
             browser = p.chromium.launch(headless=True, args=browser_args)
 
-        # Передаем явную таймзону Europe/Istanbul
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
@@ -324,7 +323,7 @@ def build_mesh_data(patches, offset_x):
     return np.array(pts, dtype=np.float32), np.array(triangles, dtype=np.int32)
 
 # --- ИНТЕРФЕЙС STREAMLIT ---
-st.title("LOGGIS 3B")
+st.title("LOGGIS 3B TÜNEL İZLEME SİSTEMİ")
 
 col_nav, col_3d = st.columns([1, 4])
 
@@ -376,8 +375,18 @@ with col_3d:
         fig = go.Figure()
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
 
+        # Метки туннелей TA и TB
+        label_x, label_y, label_z, label_text = [], [], [], []
+
         for ti, tun in enumerate(("TA", "TB")):
             off_x = (ti - 0.5) * SP
+            
+            # Добавляем 3D-подпись названия над порталом каждого туннеля
+            label_x.append(off_x)
+            label_y.append(R + 2.2)     # на 2.2 метра выше свода
+            label_z.append(-48.0)       # у самого входа (Z = -45м)
+            label_text.append(f"<b>TÜNEL {tun}</b>")
+
             names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
             if not names:
                 continue
@@ -432,6 +441,24 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
+        # Отрисовка 3D подписей Tünel TA и Tünel TB
+        fig.add_trace(go.Scatter3d(
+            x=label_x,
+            y=label_y,
+            z=label_z,
+            mode="text",
+            text=label_text,
+            textposition="middle center",
+            textfont=dict(
+                family="Arial Black, Arial, sans-serif",
+                size=18,
+                color="#00E5FF"  # Яркий неоновый бирюзовый заголовок
+            ),
+            hoverinfo="none",
+            showlegend=False
+        ))
+
+        # Отрисовка маркеров датчиков
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
