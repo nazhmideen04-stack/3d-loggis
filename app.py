@@ -11,8 +11,8 @@ st.set_page_config(page_title="LOGGIS 3B Tünel İzleme", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
-# 3 кардинально разные высококонтрастные шкалы с антонимичными полюсами
 COLORSCALES = {
+    # 1. Çevresel gerinim: Синий -> Белый (0) -> Красный
     "hoop_bwr": [
         [0.0, "#0010D6"],
         [0.35, "#3388FF"],
@@ -20,6 +20,7 @@ COLORSCALES = {
         [0.65, "#FF4422"],
         [1.0, "#C60000"]
     ],
+    # 2. Boyuna gerinim: Изумрудный -> Белый/Серый (0) -> Неоновый Пурпурный
     "axial_gvp": [
         [0.0, "#006428"],
         [0.35, "#00E676"],
@@ -27,6 +28,7 @@ COLORSCALES = {
         [0.65, "#E040FB"],
         [1.0, "#6A0080"]
     ],
+    # 3. Sıcaklık: Turbo
     "temp_turbo": "Turbo"
 }
 
@@ -64,22 +66,41 @@ def clean_num(s):
     m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
     return float(m.group()) if m else np.nan
 
-def parse_date_key(d_str):
+def parse_robust_timestamp(d_str):
+    """
+    Универсальный парсер даты: находит числа года, месяца, дня, часов, минут, секунд
+    даже если в строке LoggIS есть пробелы, точки, слэши или буквы T/Z.
+    """
     if not d_str:
         return 0.0
-    cleaned = d_str.strip().replace("T", " ")
-    for fmt in (
-        "%d.%m.%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S",
-        "%d.%m.%Y %H:%M", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M",
-        "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M"
-    ):
-        try:
-            return datetime.strptime(cleaned, fmt).timestamp()
-        except ValueError:
-            pass
-    return 0.0
+    
+    # Ищем последовательности цифр
+    nums = [int(n) for n in re.findall(r"\d+", str(d_str))]
+    if len(nums) < 3:
+        return 0.0
+    
+    try:
+        # Формат YYYY-MM-DD
+        if nums[0] > 1900:
+            year, month, day = nums[0], nums[1], nums[2]
+            hour = nums[3] if len(nums) > 3 else 0
+            minute = nums[4] if len(nums) > 4 else 0
+            second = nums[5] if len(nums) > 5 else 0
+        # Формат DD.MM.YYYY
+        elif nums[2] > 1900:
+            day, month, year = nums[0], nums[1], nums[2]
+            hour = nums[3] if len(nums) > 3 else 0
+            minute = nums[4] if len(nums) > 4 else 0
+            second = nums[5] if len(nums) > 5 else 0
+        else:
+            return 0.0
 
-@st.cache_data(ttl=300)
+        dt = datetime(year, month, day, hour, minute, second)
+        return dt.timestamp()
+    except Exception:
+        return 0.0
+
+@st.cache_data(ttl=120)
 def fetch_all_in_memory():
     results = {}
     with sync_playwright() as p:
@@ -132,21 +153,23 @@ def fetch_all_in_memory():
                 pass
             page.wait_for_timeout(800)
 
-            # 3. Фильтры
+            # 3. Фильтры интервала
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
 
+            # Пробуем выбрать "Son 1 Gün" / "Son 1 Saat", если нет - ставим "ALL"
             try:
-                combos.first.select_option("ALL")
+                combos.first.select_option(value="ALL")
             except Exception:
                 pass
-            page.wait_for_timeout(1200)
+            page.wait_for_timeout(1000)
 
+            # Переключаем отображение на последние
             try:
                 combos.nth(1).select_option("TABLE_MOST_RECENT")
             except Exception:
                 pass
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(1200)
 
             if combos.count() >= 3:
                 try:
@@ -155,9 +178,18 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
-            # 4. Чтение строк таблицы
+            # 4. Дожидаемся таблицы
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
+
+            # Клик по шапке даты для сортировки от самых новых к старым (Descending)
+            try:
+                date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
+                if date_header.is_visible():
+                    date_header.click()
+                    page.wait_for_timeout(1500)
+            except Exception:
+                pass
 
             for _ in range(25):
                 txt = page.locator("table tbody, [role='rowgroup']").inner_text()
@@ -165,10 +197,11 @@ def fetch_all_in_memory():
                     break
                 page.wait_for_timeout(1000)
 
-            parsed_rows = []
+            # 5. Считываем все строки и берем СТРОГО максимальный timestamp для каждого сенсора
+            sensor_best = {}  # {sensor: (timestamp, val, date_str)}
             rows = page.locator("table tbody tr, [role='row']").all()
 
-            for row_idx, r in enumerate(rows):
+            for idx, r in enumerate(rows):
                 cols = [td.inner_text().strip() for td in r.locator("td, [role='gridcell']").all()]
                 if len(cols) >= 3 and cat["tag"] in cols[1]:
                     d_raw = cols[0]
@@ -176,49 +209,25 @@ def fetch_all_in_memory():
                     v = clean_num(cols[2])
 
                     if not np.isnan(v):
-                        ts = parse_date_key(d_raw)
-                        parsed_rows.append({
-                            "sensor": s_name,
-                            "val": v,
-                            "ts": ts,
-                            "row_idx": row_idx,
-                            "date_str": d_raw
-                        })
+                        ts = parse_robust_timestamp(d_raw)
+                        
+                        # Если датчика еще нет или текущая строка новее по дате/времени
+                        if s_name not in sensor_best:
+                            sensor_best[s_name] = (ts, v, d_raw, idx)
+                        else:
+                            prev_ts, _, _, prev_idx = sensor_best[s_name]
+                            # Приоритет строго по дате. Если даты равны или не распознаны — берем строку с наибольшим индексом
+                            if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
+                                sensor_best[s_name] = (ts, v, d_raw, idx)
 
-            val_map = {}
-            latest_date_str = ""
-
-            if parsed_rows:
-                # Находим самый свежий момент времени среди всех измерений
-                max_ts = max(r["ts"] for r in parsed_rows)
-
-                # Если даты распарсились корректно:
-                if max_ts > 0.0:
-                    # Фильтруем данные строго за последний 1 час (3600 секунд от самого свежего замера)
-                    one_hour_threshold = max_ts - 3600.0
-                    recent_rows = [r for r in parsed_rows if r["ts"] >= one_hour_threshold]
-
-                    # Если датчиков за этот час оказалось слишком мало (например, прибор скинул всего 1 точку),
-                    # плавно берем замеры, совпадающие с последним сеансом связи
-                    if not recent_rows:
-                        recent_rows = [r for r in parsed_rows if r["ts"] == max_ts]
-
-                    for r in recent_rows:
-                        # Берем максимальный замер по времени для каждого датчика в этом часе
-                        s = r["sensor"]
-                        if s not in val_map or r["ts"] >= val_map[s]["ts"]:
-                            val_map[s] = {"val": r["val"], "ts": r["ts"]}
-
-                    val_map = {k: v["val"] for k, v in val_map.items()}
-                    latest_item = max(parsed_rows, key=lambda x: x["ts"])
-                    latest_date_str = latest_item["date_str"]
-
-                else:
-                    # Fallback: если LoggIS отдает формат без стандартных дат,
-                    # берем последние физические строки таблицы
-                    for r in parsed_rows:
-                        val_map[r["sensor"]] = r["val"]
-                        latest_date_str = r["date_str"]
+            val_map = {s: item[1] for s, item in sensor_best.items()}
+            
+            # Находим абсолютную максимальную дату среди всех датчиков
+            if sensor_best:
+                latest_entry = max(sensor_best.values(), key=lambda x: x[0])
+                latest_date_str = latest_entry[2]
+            else:
+                latest_date_str = ""
 
             page.close()
             results[cat["key"]] = {"values": val_map, "date": latest_date_str}
@@ -350,7 +359,7 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-with st.spinner("LoggIS verileri taranıyor ve 3B model hesaplanıyor..."):
+with st.spinner("LoggIS verileri taranıyor ve en güncel 3B model hesaplanıyor..."):
     all_data = fetch_all_in_memory()
 
 cat_cfg = next(c for c in CATEGORIES if c["key"] == selected_comp)
@@ -368,9 +377,10 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write(f"📅 **En Son Ölçüm Saati:** `{cur_layer['date'] if cur_layer['date'] else 'Canlı'}`")
-    st.write(f"📡 **Son Saatteki Aktif Sensör:** `{len(v_map)}` adet")
-    st.write(f"📊 **Limitler:** `Min: {clim[0]}`, `Maks: {clim[1]} {cat_cfg['unit']}`")
+    st.write(f"📅 **En Son Veri Zamanı:**")
+    st.info(f"🕒 `{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}`")
+    st.write(f"📡 **Aktif Sensör Sayısı:** `{len(v_map)}` adet")
+    st.write(f"📊 **Skala Limitleri:** `Min: {clim[0]}`, `Maks: {clim[1]} {cat_cfg['unit']}`")
 
     st.markdown("---")
     selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
@@ -380,7 +390,7 @@ with col_nav:
 # --- 3B PLOTLY SAHNESİ ---
 with col_3d:
     if not v_map:
-        st.warning("⚠️ LoggIS'te son 1 saat içerisinde ölçüm bulunamadı veya tablo boş.")
+        st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı. Lütfen 'Verileri Yenile' butonunu deneyiniz.")
     else:
         fig = go.Figure()
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
