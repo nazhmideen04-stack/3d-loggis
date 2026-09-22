@@ -1,6 +1,6 @@
 streamlit
-pyvista
-stpyvista
 scipy
 numpy
+pandas
+pyvista
 playwright
