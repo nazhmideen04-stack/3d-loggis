@@ -149,83 +149,104 @@ def fetch_category_data(cat_key, reload_seed=0):
         page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3500)
+        page.wait_for_timeout(4000)
 
-        # 1. Переход на вкладку Types
-        types_tab = page.locator("text='Types'").first
-        types_tab.wait_for(state="visible", timeout=30000)
-        types_tab.click()
-        page.wait_for_timeout(600)
-
-        # 2. Выбор нужного типа (Longitudinal strains, Othoradial strains или Temperature)
-        type_row = page.get_by_text(cat["name"], exact=True).first
-        if not type_row.is_visible():
-            type_row = page.locator(f"div:has-text('{cat['name']}'), span:has-text('{cat['name']}')").last
-        type_row.click()
-        page.wait_for_timeout(1000)
-
-        # 3. Выбор Duration (2 mois) и Display mode (Tableau)
-        # Нажимаем на селектор под Duration, если там еще не 2 mois
+        # 1. Types sekmesine tıkla
         try:
-            dur_container = page.locator("div, table").filter(has_text=re.compile(r"Duration", re.I)).last
-            dur_btn = dur_container.locator("button, select, div[role='combobox'], input").first
-            if "2 mois" not in dur_btn.inner_text():
-                dur_btn.click()
-                page.wait_for_timeout(400)
-                page.get_by_text("2 mois").first.click()
+            types_tab = page.locator("text='Types'").first
+            types_tab.wait_for(state="visible", timeout=25000)
+            types_tab.click()
+            page.wait_for_timeout(800)
         except Exception:
             pass
 
-        # Нажимаем на селектор под Display mode, если там еще не Tableau
+        # 2. İlgili türü listeden seç (Longitudinal strains, Othoradial strains, Temperature)
         try:
-            disp_container = page.locator("div, table").filter(has_text=re.compile(r"Display mode", re.I)).last
-            disp_btn = disp_container.locator("button, select, div[role='combobox'], input").first
-            if "Tableau" not in disp_btn.inner_text():
-                disp_btn.click()
-                page.wait_for_timeout(400)
-                page.get_by_text("Tableau").first.click()
+            type_item = page.locator(f"text='{cat['name']}'").first
+            type_item.wait_for(state="visible", timeout=10000)
+            type_item.click()
+            page.wait_for_timeout(1000)
+        except Exception:
+            page.get_by_text(cat["name"]).first.click(force=True)
+            page.wait_for_timeout(1000)
+
+        # 3. Duration: 2 mois ve Display mode: Tableau ayarlarını tıkla
+        try:
+            # Duration kutusu
+            dur_box = page.locator("div, th, td").filter(has_text=re.compile(r"^Duration$", re.I)).locator("..").first
+            if "2 mois" not in dur_box.inner_text():
+                dur_clickable = dur_box.locator("button, select, div, span").filter(has_text=re.compile(r"mois|jour|an|week", re.I)).first
+                dur_clickable.click()
+                page.wait_for_timeout(500)
+                page.locator("text='2 mois'").first.click(force=True)
+                page.wait_for_timeout(800)
         except Exception:
             pass
 
-        page.wait_for_timeout(1500)
+        try:
+            # Display mode kutusu
+            disp_box = page.locator("div, th, td").filter(has_text=re.compile(r"^Display mode$", re.I)).locator("..").first
+            if "Tableau" not in disp_box.inner_text():
+                disp_clickable = disp_box.locator("button, select, div, span").filter(has_text=re.compile(r"Graphique|Tableau|Courbe", re.I)).first
+                disp_clickable.click()
+                page.wait_for_timeout(500)
+                page.locator("text='Tableau'").first.click(force=True)
+                page.wait_for_timeout(1000)
+        except Exception:
+            pass
 
-        # 4. Ожидание таблицы с данными
-        table = page.locator("table").first
-        table.wait_for(state="visible", timeout=40000)
+        # 4. Tablo veya ızgaranın (table / role='grid') yüklenmesini bekle
+        table_selector = "table, [role='grid'], .table, div:has(> table)"
+        page.locator(table_selector).first.wait_for(state="visible", timeout=45000)
 
-        # Ждем, пока в таблице появится нужный тег (-CS, -S или -TP)
+        # Başlıklarda etiket (-CS, -S veya -TP) görünene kadar bekle
         for _ in range(30):
-            th_all = page.locator("table thead").inner_text()
-            if cat["tag"] in th_all:
+            content = page.locator(table_selector).first.inner_text()
+            if cat["tag"] in content:
                 break
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(600)
 
-        # 5. Считывание: Заголовки (датчики) из ПЕРВОЙ строки thead tr и значения из САМОЙ ПЕРВОЙ строки tbody tr
+        # 5. Doğrudan JS ile Başlıkları (Sensör İsimleri) ve En Üstteki Satırı (En Son Veri) Çek
         extracted = page.evaluate("""(tag) => {
-            const table = document.querySelector('table');
+            // Tablo elemanını bul
+            let table = document.querySelector('table');
+            if (!table) {
+                const grid = document.querySelector('[role="grid"]');
+                if (grid) table = grid;
+            }
             if (!table) return null;
 
-            // Находим строку заголовка с именами датчиков
-            const headerRows = Array.from(table.querySelectorAll('thead tr'));
-            let sensorRow = headerRows[0];
-            for (const hr of headerRows) {
-                if (hr.innerText.includes(tag)) {
-                    sensorRow = hr;
+            // Başlık satırlarını tara ve sensör etiketini içeren satırı seç
+            let headerCells = [];
+            const trHeaders = Array.from(table.querySelectorAll('thead tr, [role="row"]'));
+            for (let tr of trHeaders) {
+                const cells = Array.from(tr.querySelectorAll('th, td, [role="columnheader"]')).map(c => c.innerText.trim());
+                if (cells.some(c => c.includes(tag))) {
+                    headerCells = cells;
                     break;
                 }
             }
 
-            const ths = Array.from(sensorRow.querySelectorAll('th, td')).map(c => c.innerText.trim());
+            // Eğer thead içinde bulunamadıysa ilk satırı al
+            if (headerCells.length === 0 && trHeaders.length > 0) {
+                headerCells = Array.from(trHeaders[0].querySelectorAll('th, td, [role="columnheader"]')).map(c => c.innerText.trim());
+            }
 
-            // Находим первую строку с цифрами (самый свежий замер)
-            const bodyRow = table.querySelector('tbody tr');
-            if (!bodyRow) return { headers: ths, values: [] };
-
-            const tds = Array.from(bodyRow.querySelectorAll('td')).map(c => c.innerText.trim());
+            // En üstteki veri satırını al (en güncel tarih ve değerler)
+            let dataCells = [];
+            const bodyRows = Array.from(table.querySelectorAll('tbody tr, [role="row"]'));
+            for (let tr of bodyRows) {
+                const cells = Array.from(tr.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim());
+                // İlk sütununda tarih (içinde / veya : olan) bulunan ilk satırı seç
+                if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
+                    dataCells = cells;
+                    break;
+                }
+            }
 
             return {
-                headers: ths,
-                values: tds
+                headers: headerCells,
+                values: dataCells
             };
         }""", cat["tag"])
 
@@ -234,18 +255,17 @@ def fetch_category_data(cat_key, reload_seed=0):
     val_map = {}
     latest_date_str = ""
 
-    if extracted and extracted.get("values"):
+    if extracted and extracted.get("values") and extracted.get("headers"):
         headers = extracted["headers"]
         values = extracted["values"]
 
-        # Первая колонка - это всегда дата/время
+        # En son ölçümün tarih bilgisi (İlk hücre)
         if len(values) > 0:
             latest_date_str = values[0]
 
-        # Остальные колонки - значения датчиков
+        # Başlık sütunlarını sırayla ilk satırdaki değerlerle eşleştir
         for h, v_str in zip(headers[1:], values[1:]):
             if cat["tag"] in h:
-                # Извлекаем чистое имя вида TA-CS1-L-TP или TB-S2-M3
                 m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                 s_name = m.group(1) if m else h.split()[0].strip()
                 v = clean_num(v_str)
