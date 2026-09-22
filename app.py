@@ -124,13 +124,15 @@ def clean_num(s):
 @st.cache_data(ttl=60)
 def fetch_category_data(cat_key, reload_seed=0):
     cat = CATEGORIES[cat_key]
+    val_map = {}
+    latest_date_str = ""
+
     with sync_playwright() as p:
         browser_args = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
-            "--single-process",
             "--window-size=1920,1080",
         ]
         try:
@@ -141,75 +143,96 @@ def fetch_category_data(cat_key, reload_seed=0):
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul",
             locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
-        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3500)
-
-        # 1. Открываем Types и жмем на нужный тип (Temperature / Longitudinal / Othoradial)
         try:
-            page.locator("text='Types'").first.click()
-            page.wait_for_timeout(800)
-            page.get_by_text(cat["name"]).first.click()
-            page.wait_for_timeout(2000)
-        except Exception:
+            # 1. Загрузка страницы
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(4000)
+
+            # 2. Переход на вкладку Types
+            types_tab = page.locator("text='Types'").first
+            if types_tab.is_visible():
+                types_tab.click()
+                page.wait_for_timeout(1000)
+
+            # 3. Клик по строке нужного типа (Temperature, Longitudinal strains или Othoradial strains)
+            # Нажимаем именно по тексту в левой панели
+            target_type = page.locator(f"text='{cat['name']}'").first
+            if target_type.is_visible():
+                target_type.click()
+            else:
+                page.get_by_text(cat["name"]).first.click(force=True)
+            
+            # Даем серверу Blazor время сформировать таблицу
+            page.wait_for_timeout(3000)
+
+            # 4. Мягкое считывание таблицы без жесткого wait_for_selector (до 30 попыток)
+            for _ in range(30):
+                extracted = page.evaluate("""(tag) => {
+                    const table = document.querySelector('table');
+                    if (!table) return null;
+
+                    // Ищем строку с именами датчиков
+                    const trs = Array.from(table.querySelectorAll('tr'));
+                    let headerRow = null;
+                    for (const tr of trs) {
+                        const txt = tr.innerText || '';
+                        if (txt.includes(tag) || txt.includes('TA-') || txt.includes('TB-')) {
+                            headerRow = tr;
+                            break;
+                        }
+                    }
+                    if (!headerRow) return null;
+
+                    const headers = Array.from(headerRow.querySelectorAll('th, td')).map(c => c.innerText.trim());
+
+                    // Ищем первую строку с данными в теле таблицы
+                    const tbody = table.querySelector('tbody') || table;
+                    const bodyRows = Array.from(tbody.querySelectorAll('tr'));
+                    let firstDataRow = null;
+                    for (const r of bodyRows) {
+                        const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
+                        // Строка с датой (содержит : или /)
+                        if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':'))) {
+                            firstDataRow = cells;
+                            break;
+                        }
+                    }
+
+                    if (!firstDataRow) return null;
+
+                    return { headers: headers, values: firstDataRow };
+                }""", cat["tag"])
+
+                if extracted and extracted.get("values"):
+                    headers = extracted["headers"]
+                    values = extracted["values"]
+
+                    # Первая колонка — дата замера
+                    latest_date_str = values[0]
+
+                    # Сопоставляем имена датчиков и их значения
+                    for h, v_str in zip(headers[1:], values[1:]):
+                        if cat["tag"] in h or "TA-" in h or "TB-" in h:
+                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                            s_name = m.group(1) if m else h.split()[0].strip()
+                            v = clean_num(v_str)
+                            if not np.isnan(v):
+                                val_map[s_name] = v
+
+                    if len(val_map) > 0:
+                        break
+
+                page.wait_for_timeout(1000)
+
+        except Exception as e:
             pass
-
-        # 2. Выбираем 2 mois и Tableau только если они не выбраны
-        try:
-            page.locator("select, [role='combobox']").nth(1).select_option(label=re.compile(r"Tableau|Table", re.I))
-            page.wait_for_timeout(800)
-            page.locator("select, [role='combobox']").nth(2).select_option(label=re.compile(r"2\s*mois", re.I))
-            page.wait_for_timeout(1000)
-        except Exception:
-            pass
-
-        # 3. Ждем появления таблицы
-        page.wait_for_selector("table", timeout=40000)
-
-        # 4. Вытаскиваем датчики из шапки и значения из САМОЙ ПЕРВОЙ строки таблицы
-        extracted = page.evaluate("""(tag) => {
-            const table = document.querySelector('table');
-            if (!table) return null;
-
-            // Находим все заголовки th в первой строке
-            const ths = Array.from(table.querySelectorAll('thead th, tr:first-child th')).map(el => el.innerText.trim());
-
-            // Находим самую первую строку значений в теле таблицы
-            const firstTr = table.querySelector('tbody tr');
-            if (!firstTr) return null;
-
-            const tds = Array.from(firstTr.querySelectorAll('td')).map(el => el.innerText.trim());
-
-            return { headers: ths, values: tds };
-        }""", cat["tag"])
-
-        browser.close()
-
-    val_map = {}
-    latest_date_str = ""
-
-    if extracted and extracted.get("headers") and extracted.get("values"):
-        headers = extracted["headers"]
-        values = extracted["values"]
-
-        # Первая колонка - это всегда дата/время
-        if len(values) > 0:
-            latest_date_str = values[0]
-
-        # Сопоставляем имена колонок (TA-CS1-L-TP и т.д.) со значениями первой строки
-        for h, v_str in zip(headers[1:], values[1:]):
-            if cat["tag"] in h:
-                m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                s_name = m.group(1) if m else h.strip()
-                val = clean_num(v_str)
-                if not np.isnan(val):
-                    val_map[s_name] = val
+        finally:
+            browser.close()
 
     return {"values": val_map, "date": latest_date_str}
 # Геометрия тоннелей
