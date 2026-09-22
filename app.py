@@ -1,60 +1,32 @@
-import os
-import re
-from datetime import datetime
-import numpy as np
-from scipy.interpolate import RBFInterpolator
-import plotly.graph_objects as go
-import streamlit as st
-from playwright.sync_api import sync_playwright
+import base64
 
-st.set_page_config(page_title="LOGGIS 3B", layout="wide")
+LOGO_PATH = "logo.png"
 
-URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
+def get_base64_image(image_path):
+    if os.path.exists(image_path):
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return None
 
-# Путь к локальному логотипу или прямая ссылка
-LOGO_PATH = "logo.jpg"
-
-# Внедряем стили для полупрозрачного логотипа в шапке
-st.markdown("""
-    <style>
-    .header-container {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding-bottom: 10px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        margin-bottom: 20px;
-    }
-    .header-logo {
-        max-height: 48px;
-        opacity: 0.65;
-        transition: opacity 0.3s ease;
-    }
-    .header-logo:hover {
-        opacity: 0.95;
-    }
-    .header-badge {
-        font-family: 'Arial Black', sans-serif;
-        font-size: 20px;
-        letter-spacing: 2px;
-        color: rgba(255, 255, 255, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        padding: 4px 14px;
-        border-radius: 6px;
-    }
-    </style>
-""", unsafe_allow_html=True)
+logo_b64 = get_base64_image(LOGO_PATH)
 
 # Верхняя брендовая панель с полупрозрачным логотипом
 col_head_title, col_head_logo = st.columns([4, 1])
 with col_head_title:
-    st.markdown("<h1 style='margin-bottom: 0px;'>LOGGIS 3B TÜNEL İZLEME</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom: 0px;'>LOGGIS 3B</h1>", unsafe_allow_html=True)
 
 with col_head_logo:
-    if os.path.exists(LOGO_PATH):
+    if logo_b64:
         st.markdown(
             f"""<div style='text-align: right;'>
-                <img src='app/static/{LOGO_PATH}' class='header-logo' alt='Company Logo'>
+                <img src='data:image/png;base64,{logo_b64}' class='header-logo' alt='Company Logo'>
+            </div>""",
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            """<div style='text-align: right; margin-top: 15px;'>
+                <span class='header-badge'>LOGGIS</span>
             </div>""",
             unsafe_allow_html=True
         )
