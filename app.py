@@ -277,21 +277,54 @@ def fetch_category_data(cat_key):
             browser.close()
 
     # Filtreleme
+# Sütun sırasından bağımsız akıllı veri ayrıştırma
     sensor_best = {}
     for idx, cols in enumerate(raw_table_data):
-        if len(cols) >= 3 and cat["tag"] in cols[1]:
-            d_raw = cols[0]
-            s_name = cols[1]
-            v = clean_num(cols[2])
+        if len(cols) < 2:
+            continue
 
-            if not np.isnan(v):
-                ts = parse_robust_timestamp(d_raw)
-                if s_name not in sensor_best:
-                    sensor_best[s_name] = (ts, v, d_raw, idx)
+        # 1. İlgili etiketi (-CS, -S, -TP) içeren hücreyi bul
+        s_name = None
+        s_col_idx = -1
+        for c_idx, cell in enumerate(cols):
+            if cat["tag"] in cell:
+                # Sensör formatı: TA-... veya TB-...
+                m_name = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", cell)
+                if m_name:
+                    s_name = m_name.group(1)
                 else:
-                    prev_ts, _, _, prev_idx = sensor_best[s_name]
-                    if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
-                        sensor_best[s_name] = (ts, v, d_raw, idx)
+                    s_name = cell.strip()
+                s_col_idx = c_idx
+                break
+
+        if not s_name:
+            continue
+
+        # 2. Değeri ve Tarihi bul
+        v = np.nan
+        d_raw = ""
+
+        # Kalan hücrelerde sayı ve tarih ara
+        for c_idx, cell in enumerate(cols):
+            if c_idx == s_col_idx:
+                continue
+            # Tarih kontrolü (içinde yıl/saat/dakika veya / . - olan metin)
+            if re.search(r"\d{1,4}[/\-\.]\d{1,2}[/\-\.]\d{1,4}", cell) or ":" in cell:
+                if not d_raw:
+                    d_raw = cell
+            # Sayısal değer kontrolü
+            val_cand = clean_num(cell)
+            if not np.isnan(val_cand) and np.isnan(v):
+                v = val_cand
+
+        if not np.isnan(v):
+            ts = parse_robust_timestamp(d_raw)
+            if s_name not in sensor_best:
+                sensor_best[s_name] = (ts, v, d_raw, idx)
+            else:
+                prev_ts, _, _, prev_idx = sensor_best[s_name]
+                if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
+                    sensor_best[s_name] = (ts, v, d_raw, idx)
 
     val_map = {s: item[1] for s, item in sensor_best.items()}
     latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
