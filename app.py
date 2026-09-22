@@ -148,6 +148,9 @@ def parse_robust_timestamp(d_str):
 @st.cache_data(ttl=180)
 def fetch_category_data(cat_key):
     cat = CATEGORIES[cat_key]
+    raw_table_data = []
+    debug_info = ""
+
     with sync_playwright() as p:
         browser_args = [
             "--no-sandbox",
@@ -172,13 +175,13 @@ def fetch_category_data(cat_key):
         page = context.new_page()
         page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
-        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3500)
-
-        # 1. Types Butonu ve Kategori Seçimi
         try:
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
+
+            # 1. Kategori Seçimi (Types)
             types_btn = page.get_by_text(re.compile(r"^Types?$", re.I)).first
-            types_btn.wait_for(state="visible", timeout=30000)
+            types_btn.wait_for(state="visible", timeout=25000)
             types_btn.click()
             page.wait_for_timeout(800)
 
@@ -193,81 +196,87 @@ def fetch_category_data(cat_key):
                     page.get_by_text(cat["name"]).first.click(force=True)
 
             page.wait_for_timeout(1000)
-            page.keyboard.press("Escape")
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
             page.wait_for_timeout(600)
-        except Exception:
-            pass
 
-        # 2. Combobox ve Filtrelerin Güvenli Ayarlanması (Display Mode: Tableau & Duration: 2 mois)
-        page.evaluate("""() => {
-            const selects = Array.from(document.querySelectorAll('select'));
-            
-            // Tüm sensörler (ALL)
-            if (selects.length > 0) {
-                const s0 = selects[0];
-                for (let opt of s0.options) {
-                    if (opt.value === 'ALL' || /tous|all|hepsi/i.test(opt.text)) {
-                        s0.value = opt.value;
-                        s0.dispatchEvent(new Event('change', { bubbles: true }));
-                        break;
-                    }
-                }
-            }
+            # 2. Combobox'ları Sırayla Ayarla
+            combos = page.get_by_role("combobox")
+            combos.first.wait_for(state="visible", timeout=20000)
+            c_count = combos.count()
 
-            // Display Mode: Tableau / Tablo
-            for (let s of selects) {
-                for (let opt of s.options) {
-                    if (/tableau|table/i.test(opt.text) || /TABLE/i.test(opt.value)) {
-                        s.value = opt.value;
-                        s.dispatchEvent(new Event('change', { bubbles: true }));
-                        break;
-                    }
-                }
-            }
-
-            // Duration: 2 mois
-            for (let s of selects) {
-                for (let opt of s.options) {
-                    if (/2\\s*mois|2\\s*month|2\\s*ay/i.test(opt.text) || /2M|2_MONTHS/i.test(opt.value)) {
-                        s.value = opt.value;
-                        s.dispatchEvent(new Event('change', { bubbles: true }));
-                        break;
-                    }
-                }
-            }
-        }""")
-        page.wait_for_timeout(1500)
-
-        # 3. Tablo Görünümünün Beklenmesi
-        table_loc = page.locator("table, [role='grid'], .table").first
-        table_loc.wait_for(state="visible", timeout=45000)
-
-        # Tarihe göre sıralama (en güncel kayıtlar üste gelsin)
-        try:
-            date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
-            if date_header.is_visible():
-                date_header.click()
+            # Combobox 0: Tüm Sensörler (ALL)
+            if c_count >= 1:
+                try:
+                    combos.nth(0).select_option(value="ALL")
+                except Exception:
+                    pass
                 page.wait_for_timeout(1000)
-        except Exception:
-            pass
 
-        # İlgili sensör etiketinin (-CS, -S veya -TP) tabloda belirmesini bekle
-        for _ in range(35):
-            txt = page.locator("table tbody, [role='rowgroup']").inner_text()
-            if cat["tag"] in txt:
-                break
-            page.wait_for_timeout(600)
+            # Combobox 1: Display Mode (Tableau / TABLE_MOST_RECENT)
+            if c_count >= 2:
+                try:
+                    # Önce varsa Tableau metnini dene, yoksa TABLE_MOST_RECENT seç
+                    opts = combos.nth(1).locator("option").all_inner_texts()
+                    tableau_match = [o for o in opts if re.search(r"tableau|table", o, re.I)]
+                    if tableau_match:
+                        combos.nth(1).select_option(label=tableau_match[0])
+                    else:
+                        combos.nth(1).select_option("TABLE_MOST_RECENT")
+                except Exception:
+                    try:
+                        combos.nth(1).select_option(index=1)
+                    except Exception:
+                        pass
+                page.wait_for_timeout(1200)
 
-        # 4. Tablodaki Tüm Verileri JS Üzerinden Toplama
-        raw_table_data = page.evaluate("""() => {
-            const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
-            return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
-                       .filter(c => c.length >= 3);
-        }""")
+            # Duration (2 mois) seçimi: Varsa 3. veya 4. combobox'tan
+            for i in range(2, c_count):
+                try:
+                    opts = combos.nth(i).locator("option").all_inner_texts()
+                    dur_match = [o for o in opts if re.search(r"2\s*mois|2\s*month|2\s*ay", o, re.I)]
+                    if dur_match:
+                        combos.nth(i).select_option(label=dur_match[0])
+                        page.wait_for_timeout(1000)
+                        break
+                except Exception:
+                    pass
 
-        browser.close()
+            # 3. Tabloyu Bekle
+            table_loc = page.locator("table, [role='grid'], .table").first
+            table_loc.wait_for(state="visible", timeout=35000)
 
-    # En güncel sensör değerlerini filtreleme
+            # Tarih sıralaması
+            try:
+                date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
+                if date_header.is_visible():
+                    date_header.click()
+                    page.wait_for_timeout(800)
+            except Exception:
+                pass
+
+            # Verilerin gelmesini bekle
+            for _ in range(25):
+                txt = page.locator("table tbody, [role='rowgroup']").inner_text()
+                if cat["tag"] in txt:
+                    break
+                page.wait_for_timeout(600)
+
+            # 4. Tablo Satırlarını Oku
+            raw_table_data = page.evaluate("""() => {
+                const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
+                return rows.map(r => Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim()))
+                           .filter(c => c.length >= 3);
+            }""")
+
+        except Exception as e:
+            debug_info = str(e)
+        finally:
+            browser.close()
+
+    # Filtreleme
     sensor_best = {}
     for idx, cols in enumerate(raw_table_data):
         if len(cols) >= 3 and cat["tag"] in cols[1]:
@@ -287,7 +296,7 @@ def fetch_category_data(cat_key):
     val_map = {s: item[1] for s, item in sensor_best.items()}
     latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
 
-    return {"values": val_map, "date": latest_date_str}
+    return {"values": val_map, "date": latest_date_str, "debug": debug_info, "raw_count": len(raw_table_data)}
 # Geometri Tanımları
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
@@ -451,7 +460,11 @@ with col_nav:
 with col_3d:
     if not v_map:
         st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı. Lütfen 'Verileri Yenile' butonunu deneyiniz.")
+        if cur_layer.get("debug"):
+            st.error(f"Hata Detayı: {cur_layer['debug']}")
+        st.info(f"Okunan Ham Satır Sayısı: {cur_layer.get('raw_count', 0)}")
     else:
+        # (Plotly çizim kodları aynen devam ediyor...)
         fig = go.Figure()
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
         label_x, label_y, label_z, label_text = [], [], [], []
