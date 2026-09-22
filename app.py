@@ -57,18 +57,27 @@ def fetch_all_in_memory():
         for cat in CATEGORIES:
             page = context.new_page()
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(4000)
 
-            # 1. Types menüsünü aç
-            types_btn = page.locator("text=Types").first
-            types_btn.wait_for(state="visible", timeout=45000)
-            types_btn.click(force=True)
+            # 1. Открываем меню Types
+            types_btn = page.get_by_text("Types").first
+            types_btn.wait_for(state="visible", timeout=30000)
+            types_btn.click()
             page.wait_for_timeout(1000)
 
-            # 2. Kategoriyi seç
-            opt = page.locator(f"text={cat['name']}").last
-            opt.wait_for(state="visible", timeout=20000)
-            opt.click(force=True)
-            page.wait_for_timeout(1000)
+            # 2. Надежный выбор опции в listbox
+            try:
+                listbox = page.get_by_role("listbox").first
+                listbox.wait_for(state="visible", timeout=5000)
+                listbox.select_option(cat["name"])
+            except Exception:
+                # Fallback: прямой поиск по тегу option или тексту внутри списка
+                try:
+                    page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
+                except Exception:
+                    page.get_by_text(cat["name"]).first.click(force=True)
+
+            page.wait_for_timeout(1500)
 
             try:
                 page.keyboard.press("Escape")
@@ -76,7 +85,7 @@ def fetch_all_in_memory():
                 pass
             page.wait_for_timeout(500)
 
-            # 3. Filtreler: Duration=ALL, Display=TABLE_MOST_RECENT, Processor=NONE
+            # 3. Фильтры: Duration=ALL, Display=TABLE_MOST_RECENT, Processor=NONE
             combos = page.get_by_role("combobox")
             combos.first.wait_for(state="visible", timeout=20000)
             combos.first.select_option("ALL")
@@ -92,7 +101,7 @@ def fetch_all_in_memory():
                     pass
                 page.wait_for_timeout(800)
 
-            # 4. Tabloyu bekle ve veriyi topla
+            # 4. Ожидание таблицы и извлечение строк
             table_loc = page.locator("table, [role='grid'], .table").first
             table_loc.wait_for(state="visible", timeout=45000)
 
