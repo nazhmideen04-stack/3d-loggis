@@ -1,19 +1,17 @@
 import os
 import re
-import asyncio
 from datetime import datetime
 import numpy as np
 from scipy.interpolate import RBFInterpolator
 import plotly.graph_objects as go
 import streamlit as st
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 
 st.set_page_config(page_title="LOGGIS 3B", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
 COLORSCALES = {
-    # 1. Çevresel gerinim: Синий -> Белый (0) -> Красный
     "hoop_bwr": [
         [0.0, "#0010D6"],
         [0.35, "#3388FF"],
@@ -21,7 +19,6 @@ COLORSCALES = {
         [0.65, "#FF4422"],
         [1.0, "#C60000"]
     ],
-    # 2. Boyuna gerinim: Изумрудный -> Серый (0) -> Неоновый Пурпурный
     "axial_gvp": [
         [0.0, "#006428"],
         [0.35, "#00E676"],
@@ -29,7 +26,6 @@ COLORSCALES = {
         [0.65, "#E040FB"],
         [1.0, "#6A0080"]
     ],
-    # 3. Sıcaklık: Turbo
     "temp_turbo": "Turbo"
 }
 
@@ -86,121 +82,14 @@ def parse_robust_timestamp(d_str):
             second = nums[5] if len(nums) > 5 else 0
         else:
             return 0.0
-
-        dt = datetime(year, month, day, hour, minute, second)
-        return dt.timestamp()
+        return datetime(year, month, day, hour, minute, second).timestamp()
     except Exception:
         return 0.0
 
-async def fetch_single_category(context, cat):
-    page = await context.new_page()
-    
-    # Ускорение: блокируем тяжелые ресурсы (картинки, шрифты, медиа)
-    await page.route(
-        "**/*",
-        lambda route: route.abort() if route.request.resource_type in ["image", "media", "font"] else route.continue_()
-    )
-
-    try:
-        await page.goto(URL, timeout=45000, wait_until="domcontentloaded")
-        
-        # 1. Меню выбора типов
-        types_btn = page.get_by_text("Types").first
-        await types_btn.wait_for(state="visible", timeout=25000)
-        await types_btn.click()
-        await asyncio.sleep(0.6)
-
-        # 2. Выбор категории
-        try:
-            listbox = page.get_by_role("listbox").first
-            await listbox.wait_for(state="visible", timeout=4000)
-            await listbox.select_option(cat["name"])
-        except Exception:
-            try:
-                opt = page.locator(f"option:has-text('{cat['name']}')").first
-                await opt.click(force=True)
-            except Exception:
-                await page.get_by_text(cat["name"]).first.click(force=True)
-
-        await asyncio.sleep(0.8)
-        try:
-            await page.keyboard.press("Escape")
-        except Exception:
-            pass
-
-        # 3. Фильтры таблицы
-        combos = page.get_by_role("combobox")
-        await combos.first.wait_for(state="visible", timeout=15000)
-
-        try:
-            await combos.first.select_option(value="ALL")
-        except Exception:
-            pass
-        await asyncio.sleep(0.6)
-
-        try:
-            await combos.nth(1).select_option("TABLE_MOST_RECENT")
-        except Exception:
-            pass
-        await asyncio.sleep(0.8)
-
-        if await combos.count() >= 3:
-            try:
-                await combos.nth(2).select_option("NONE")
-            except Exception:
-                pass
-
-        # 4. Ожидание таблицы
-        table_loc = page.locator("table, [role='grid'], .table").first
-        await table_loc.wait_for(state="visible", timeout=30000)
-
-        # Сортировка по убыванию даты
-        try:
-            date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
-            if await date_header.is_visible():
-                await date_header.click()
-                await asyncio.sleep(0.8)
-        except Exception:
-            pass
-
-        for _ in range(20):
-            txt = await page.locator("table tbody, [role='rowgroup']").inner_text()
-            if cat["tag"] in txt:
-                break
-            await asyncio.sleep(0.5)
-
-        sensor_best = {}
-        rows = await page.locator("table tbody tr, [role='row']").all()
-
-        for idx, r in enumerate(rows):
-            td_locs = await r.locator("td, [role='gridcell']").all()
-            cols = [await td.inner_text() for td in td_locs]
-            cols = [c.strip() for c in cols]
-
-            if len(cols) >= 3 and cat["tag"] in cols[1]:
-                d_raw = cols[0]
-                s_name = cols[1]
-                v = clean_num(cols[2])
-
-                if not np.isnan(v):
-                    ts = parse_robust_timestamp(d_raw)
-                    if s_name not in sensor_best:
-                        sensor_best[s_name] = (ts, v, d_raw, idx)
-                    else:
-                        prev_ts, _, _, prev_idx = sensor_best[s_name]
-                        if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
-                            sensor_best[s_name] = (ts, v, d_raw, idx)
-
-        val_map = {s: item[1] for s, item in sensor_best.items()}
-        latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
-
-        return cat["key"], {"values": val_map, "date": latest_date_str}
-
-    finally:
-        await page.close()
-
-async def fetch_parallel():
-    async with async_playwright() as p:
+@st.cache_data(ttl=120)
+def fetch_all_in_memory():
+    results = {}
+    with sync_playwright() as p:
         browser_args = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
@@ -208,37 +97,130 @@ async def fetch_parallel():
             "--disable-gpu",
             "--single-process",
             "--window-size=1920,1080",
+            "--blink-settings=imagesEnabled=false",
         ]
         try:
-            browser = await p.chromium.launch(headless=True, args=browser_args)
+            browser = p.chromium.launch(headless=True, args=browser_args)
         except Exception:
             os.system("playwright install chromium")
-            browser = await p.chromium.launch(headless=True, args=browser_args)
+            browser = p.chromium.launch(headless=True, args=browser_args)
 
-        context = await browser.new_context(
+        context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="tr-TR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
 
-        # Параллельный сбор по всем 3 категориям
-        tasks = [fetch_single_category(context, cat) for cat in CATEGORIES]
-        gathered = await asyncio.gather(*tasks)
+        page = context.new_page()
 
-        await context.close()
-        await browser.close()
-        return dict(gathered)
+        # Блокируем картинки, шрифты и тяжелые медиа
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media", "font"] else route.continue_())
 
-@st.cache_data(ttl=120)
-def fetch_all_in_memory():
-    # Запуск асинхронного сбора внутри синхронного Streamlit
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(fetch_parallel())
+        # Загружаем страницу ровно ОДИН раз
+        page.goto(URL, timeout=45000, wait_until="domcontentloaded")
+        page.wait_for_timeout(2000)
+
+        for cat in CATEGORIES:
+            # 1. Открытие меню Types
+            types_btn = page.get_by_text("Types").first
+            types_btn.wait_for(state="visible", timeout=20000)
+            types_btn.click()
+            page.wait_for_timeout(400)
+
+            # 2. Выбор категории
+            try:
+                listbox = page.get_by_role("listbox").first
+                listbox.wait_for(state="visible", timeout=3000)
+                listbox.select_option(cat["name"])
+            except Exception:
+                try:
+                    page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
+                except Exception:
+                    page.get_by_text(cat["name"]).first.click(force=True)
+
+            page.wait_for_timeout(600)
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+
+            # 3. Фильтры
+            combos = page.get_by_role("combobox")
+            combos.first.wait_for(state="visible", timeout=15000)
+
+            try:
+                combos.first.select_option("ALL")
+            except Exception:
+                pass
+            page.wait_for_timeout(500)
+
+            try:
+                combos.nth(1).select_option("TABLE_MOST_RECENT")
+            except Exception:
+                pass
+            page.wait_for_timeout(800)
+
+            if combos.count() >= 3:
+                try:
+                    combos.nth(2).select_option("NONE")
+                except Exception:
+                    pass
+
+            # 4. Ожидание таблицы
+            table_loc = page.locator("table, [role='grid'], .table").first
+            table_loc.wait_for(state="visible", timeout=25000)
+
+            # Клик по шапке даты для сортировки от самых новых к старым
+            try:
+                date_header = page.locator("th, [role='columnheader']").filter(has_text=re.compile(r"Date|Tarih|Time", re.I)).first
+                if date_header.is_visible():
+                    date_header.click()
+                    page.wait_for_timeout(600)
+            except Exception:
+                pass
+
+            for _ in range(15):
+                txt = page.locator("table tbody, [role='rowgroup']").inner_text()
+                if cat["tag"] in txt:
+                    break
+                page.wait_for_timeout(400)
+
+            # 5. МГНОВЕННЫЙ JS-парсинг всей таблицы напрямую из DOM браузера (за миллисекунды)
+            raw_table_data = page.evaluate("""() => {
+                const rows = Array.from(document.querySelectorAll('table tbody tr, [role="row"]'));
+                return rows.map(r => {
+                    const cells = Array.from(r.querySelectorAll('td, [role="gridcell"]')).map(c => c.innerText.trim());
+                    return cells;
+                }).filter(c => c.length >= 3);
+            }""")
+
+            sensor_best = {}
+            for idx, cols in enumerate(raw_table_data):
+                if cat["tag"] in cols[1]:
+                    d_raw = cols[0]
+                    s_name = cols[1]
+                    v = clean_num(cols[2])
+
+                    if not np.isnan(v):
+                        ts = parse_robust_timestamp(d_raw)
+                        if s_name not in sensor_best:
+                            sensor_best[s_name] = (ts, v, d_raw, idx)
+                        else:
+                            prev_ts, _, _, prev_idx = sensor_best[s_name]
+                            if ts > prev_ts or (ts == prev_ts and idx > prev_idx):
+                                sensor_best[s_name] = (ts, v, d_raw, idx)
+
+            val_map = {s: item[1] for s, item in sensor_best.items()}
+            latest_date_str = max(sensor_best.values(), key=lambda x: x[0])[2] if sensor_best else ""
+
+            results[cat["key"]] = {"values": val_map, "date": latest_date_str}
+
+        page.close()
+        context.close()
+        browser.close()
+
+    return results
 
 # Geometri Tanımları
 GEOMETRY = {
@@ -398,7 +380,6 @@ with col_3d:
         fig = go.Figure()
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
 
-        # Метки туннелей TA и TB (вынесены выше свода)
         label_x, label_y, label_z, label_text = [], [], [], []
 
         for ti, tun in enumerate(("TA", "TB")):
@@ -463,7 +444,7 @@ with col_3d:
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
                 sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
 
-        # 3D-подписи TA и TB
+        # Крупные 3D-метки над туннелями
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
@@ -480,7 +461,7 @@ with col_3d:
             showlegend=False
         ))
 
-        # Сенсоры
+        # Маркеры сенсоров
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
