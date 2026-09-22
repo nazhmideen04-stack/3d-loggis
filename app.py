@@ -15,25 +15,22 @@ LOGO_PATH = "logo.png"
 
 # Стили для полупрозрачного логотипа
 st.markdown("""
+st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&display=swap');
+
+    /* Применяем готический шрифт ко всем текстам и заголовкам */
+    html, body, [class*="css"], h1, h2, h3, p, span, label, .stMarkdown {
+        font-family: 'UnifrakturMaguntia', cursive !important;
+        letter-spacing: 1px;
+    }
+
     [data-testid="stImage"] img {
-        opacity: 0.55;
+        opacity: 0.75;
         transition: opacity 0.3s ease;
     }
     [data-testid="stImage"] img:hover {
         opacity: 1.0;
-    }
-    .header-badge {
-        font-family: sans-serif;
-        font-weight: 2500;
-        font-size: 30px;
-        letter-spacing: 2px;
-        color: rgba(255, 255, 255, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        padding: 4px 12px;
-        border-radius: 6px;
-        display: inline-block;
-        margin-top: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
