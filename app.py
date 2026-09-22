@@ -71,14 +71,14 @@ if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         logo_b64 = base64.b64encode(f.read()).decode()
 
-logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 150px; height: auto; display: block; margin: 0; opacity: 0.95; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
+logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 250px; height: auto; display: block; margin: 0; opacity: 0.95; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
 # Единая строка: заголовок и логотип на строго одной вертикальной координате
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(30, 154, 214, 0.2);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
-        <div style="color: #1E9AD6; font-weight: 600; font-size: 13px; letter-spacing: 1px; margin-top: 3px;">STRUCTURAL HEALTH MONITORING SYSTEM</div>
+        <div style="color: #1E9AD6; font-weight: 600; font-size: 13px; letter-spacing: 1px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center; margin: 0; padding: 0;">
         {logo_tag}
