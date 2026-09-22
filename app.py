@@ -1,5 +1,6 @@
 import os
 import re
+import base64
 from datetime import datetime
 import numpy as np
 from scipy.interpolate import RBFInterpolator
@@ -14,6 +15,14 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 # Проверяем оба варианта расширения файла
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
+def get_image_base64(path):
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
+logo_b64 = get_image_base64(LOGO_PATH)
+
 # Фирменный стиль DESTECH (Шрифт Syne + Цветовая гамма)
 st.markdown("""
 <style>
@@ -24,13 +33,63 @@ st.markdown("""
         background-color: #0B1118;
     }
 
+    /* Единая строка шапки: заголовок и логотип на одной высоте */
+    .header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 0 15px 0;
+        margin-bottom: 20px;
+        border-bottom: 1px solid rgba(30, 154, 214, 0.2);
+    }
+
+    .header-text {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .header-title {
+        font-family: 'Syne', sans-serif !important;
+        font-weight: 800 !important;
+        font-size: 34px !important;
+        letter-spacing: 1.5px !important;
+        text-transform: uppercase;
+        color: #FFFFFF !important;
+        margin: 0 !important;
+        line-height: 1.1 !important;
+    }
+
+    .header-subtitle {
+        font-family: 'Chakra Petch', sans-serif !important;
+        color: #1E9AD6 !important;
+        font-weight: 600 !important;
+        font-size: 13px !important;
+        letter-spacing: 1.5px !important;
+        margin-top: 4px !important;
+    }
+
+    .header-logo-img {
+        max-width: 250px;
+        height: auto;
+        display: block;
+        opacity: 0.95;
+        border-radius: 6px;
+        transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+
+    .header-logo-img:hover {
+        opacity: 1.0;
+        transform: scale(1.02);
+    }
+
     /* Основной текст и метки */
     html, body, [class*="css"], p, span, label, .stMarkdown {
         font-family: 'Chakra Petch', sans-serif !important;
         color: #E2ECF7;
     }
 
-    /* Главные заголовки в стилистике букв DESTECH */
+    /* Главные заголовки */
     h1, h2, h3 {
         font-family: 'Syne', sans-serif !important;
         font-weight: 800 !important;
@@ -39,7 +98,7 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Градиентный бейдж-акцент под стиль плашки DESTECH */
+    /* Градиентный бейдж-акцент DESTECH */
     .destech-badge {
         font-family: 'Syne', sans-serif;
         font-size: 16px;
@@ -47,7 +106,7 @@ st.markdown("""
         letter-spacing: 2px;
         background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%);
         color: #000000;
-        padding: 6px 18px;
+        padding: 8px 22px;
         border-radius: 6px;
         display: inline-block;
         box-shadow: 0 4px 14px rgba(30, 154, 214, 0.35);
@@ -67,33 +126,26 @@ st.markdown("""
         box-shadow: 0 0 15px rgba(30, 154, 214, 0.7) !important;
         transform: translateY(-1px);
     }
-
-    /* Логотип: увеличен, четкий и контрастный */
-    [data-testid="stImage"] img {
-        opacity: 0.95;
-        border-radius: 8px;
-        transition: transform 0.3s ease, opacity 0.3s ease;
-    }
-    [data-testid="stImage"] img:hover {
-        opacity: 1.0;
-        transform: scale(1.03);
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Шапка с увеличенным логотипом DESTECH
-col_head_title, col_head_logo = st.columns([3, 1.2])
+# Отрисовка шапки на едином вертикальном уровне
+if logo_b64:
+    logo_html = f'<img src="data:image/jpeg;base64,{logo_b64}" class="header-logo-img" alt="DESTECH">'
+else:
+    logo_html = '<span class="destech-badge">DESTECH</span>'
 
-with col_head_title:
-    st.markdown("<h1 style='margin-bottom: 2px;'>LOGGIS 3B</h1>", unsafe_allow_html=True)
-    st.markdown("<span style='color: #1E9AD6; font-weight: 600; font-size: 14px; letter-spacing: 1px;'>STRUCTURAL HEALTH MONITORING SYSTEM</span>", unsafe_allow_html=True)
-
-with col_head_logo:
-    if os.path.exists(LOGO_PATH):
-        # Увеличенная ширина логотипа (width=260)
-        st.image(LOGO_PATH, width=260)
-    else:
-        st.markdown("<div style='text-align: right;'><span class='destech-badge'>DESTECH</span></div>", unsafe_allow_html=True)
+st.markdown(f"""
+<div class="header-bar">
+    <div class="header-text">
+        <h1 class="header-title">LOGGIS 3B</h1>
+        <div class="header-subtitle">STRUCTURAL HEALTH MONITORING SYSTEM</div>
+    </div>
+    <div style="display: flex; align-items: center;">
+        {logo_html}
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 COLORSCALES = {
     # 1. Çevresel gerinim: Синий DESTECH -> Белый (0) -> Красный
