@@ -6,6 +6,7 @@ import base64
 import subprocess
 from datetime import datetime
 import numpy as np
+from scipy.interpolate import RBFInterpolator
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
@@ -43,11 +44,17 @@ st.markdown("""
         text-shadow: none !important;
     }
 
+    code {
+        background-color: transparent !important;
+        color: #00C8E6 !important;
+        border: none !important;
+        padding: 0 !important;
+        font-weight: 700 !important;
+    }
+
     [data-testid="stMetricValue"], .neon-data {
         color: #00C8E6 !important;
         font-weight: 700 !important;
-        text-shadow: none !important;
-        box-shadow: none !important;
     }
     
     [data-testid="stMetricLabel"] {
@@ -57,7 +64,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки выбора компонента */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -88,7 +94,6 @@ st.markdown("""
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
-        box-shadow: none !important;
     }
 
     .destech-badge {
@@ -103,7 +108,6 @@ st.markdown("""
         display: inline-block;
     }
 
-    /* Кнопка Verileri Yenile */
     div.stButton > button {
         background-color: #0E2238 !important;
         color: #00C8E6 !important;
@@ -113,8 +117,6 @@ st.markdown("""
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
         padding: 9px 20px !important;
-        box-shadow: none !important;
-        text-shadow: none !important;
         transition: background-color 0.2s ease, border-color 0.2s ease !important;
     }
 
@@ -122,12 +124,10 @@ st.markdown("""
         background-color: #132E4C !important;
         border-color: #00C8E6 !important;
         color: #FFFFFF !important;
-        box-shadow: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Загрузка логотипа
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
@@ -139,7 +139,7 @@ st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ (3DS MAX BIM)</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR VE TÜNEL İNTERPOLASYON SİSTEMİ (3DS MAX)</div>
     </div>
     <div style="display: flex; align-items: center;">
         {logo_tag}
@@ -282,7 +282,110 @@ def fetch_all_categories_data():
 
     return all_results
 
-# Кодирование GLB в base64 для прямой передачи в Three.js
+# Базовая геометрия для RBF-интерполяции облака данных
+GEOMETRY = {
+    "tunnel_radius_m": 3.0,
+    "tunnel_spacing_m": 15.0,
+    "cs_angle_deg": {
+        ("R", "M1"): 0.0, ("R", "M2"): 45.0, ("R", "M3"): 90.0,
+        ("R", "M4"): 135.0, ("R", "M5"): 180.0,
+        ("L", "M1"): 225.0, ("L", "M2"): 270.0, ("L", "M3"): 315.0,
+    },
+    "cs_chainage_m": {"CS1": 0.0, "CS2": 30.0, "CS3": 60.0, "CS4": 90.0},
+    "s_line_angle_deg": {"L1": 270.0, "L2": 90.0},
+    "s_chainage_m": {
+        ("S1", "M1"): 0.0, ("S1", "M2"): 5.0, ("S1", "M3"): 10.0,
+        ("S1", "M4"): 15.0, ("S1", "M5"): 20.0,
+        ("S2", "M1"): 35.0, ("S2", "M2"): 40.0, ("S2", "M3"): 45.0,
+        ("S2", "M4"): 50.0, ("S2", "M5"): 55.0,
+        ("S3", "M1"): 70.0, ("S3", "M2"): 75.0, ("S3", "M3"): 80.0,
+        ("S3", "M4"): 85.0, ("S3", "M5"): 90.0,
+    },
+}
+
+R = GEOMETRY["tunnel_radius_m"]
+SP = GEOMETRY["tunnel_spacing_m"]
+angle_scale = 2 * np.pi * R / 360.0
+
+def parse_channel(name: str):
+    parts = name.strip().split("-")
+    if len(parts) != 4 or parts[0] not in ("TA", "TB"):
+        return None
+    return parts[0], ("CS" if parts[1].startswith("CS") else "S"), parts[1], parts[2], parts[3]
+
+def position(name: str):
+    parsed = parse_channel(name)
+    if not parsed:
+        return None
+    _, kind, section, place, point = parsed
+    if kind == "CS":
+        if point == "TP":
+            angles = [v for (side, _), v in GEOMETRY["cs_angle_deg"].items() if side == place]
+            return GEOMETRY["cs_chainage_m"][section], float(np.mean(angles))
+        return (GEOMETRY["cs_chainage_m"][section], GEOMETRY["cs_angle_deg"].get((place, point)))
+    if point == "TP":
+        chain = [v for (sec, _), v in GEOMETRY["s_chainage_m"].items() if sec == section]
+        return float(np.mean(chain)), GEOMETRY["s_line_angle_deg"].get(place)
+    return (GEOMETRY["s_chainage_m"].get((section, point)), GEOMETRY["s_line_angle_deg"].get(place))
+
+def build_interpolation_mesh(v_map, comp):
+    meshes_payload = []
+    for ti, tun in enumerate(("TA", "TB")):
+        off_x = (ti - 0.5) * SP
+        names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
+        if len(names) < 3:
+            continue
+
+        pos = np.array([position(n) for n in names])
+        x0, x1 = float(pos[:, 0].min()), float(pos[:, 0].max())
+        
+        nA, nC = 28, 26
+        angles = np.linspace(0, 360.0, nA, endpoint=False)
+        chain = np.linspace(x0, x1, nC)
+
+        grid_rows = []
+        for a in angles:
+            for c in chain:
+                grid_rows.append([c, a])
+        grid = np.array(grid_rows, dtype=np.float32)
+
+        query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
+        wrapped = np.vstack([
+            np.column_stack([pos[:, 0], pos[:, 1] - 360.0]),
+            pos,
+            np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
+        ])
+        wrapped[:, 1] *= angle_scale
+
+        cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
+        rbf = RBFInterpolator(wrapped, np.concatenate([cur_vals, cur_vals, cur_vals]), kernel="linear", smoothing=1.0)
+        scalars = rbf(query).tolist()
+
+        vertices, indices = [], []
+        for a in angles:
+            rad = np.radians(a)
+            for c in chain:
+                vertices.extend([round(float(off_x + (R - 0.05) * np.sin(rad)), 3),
+                                 round(float((R - 0.05) * np.cos(rad)), 3),
+                                 round(float(c - 45.0), 3)])
+
+        for a in range(nA):
+            next_a = (a + 1) % nA
+            for c in range(nC - 1):
+                p0 = a * nC + c
+                p1 = a * nC + c + 1
+                p2 = next_a * nC + c
+                p3 = next_a * nC + c + 1
+                indices.extend([p0, p2, p1, p1, p2, p3])
+
+        meshes_payload.append({
+            "tunnel": tun,
+            "vertices": vertices,
+            "indices": indices,
+            "scalars": scalars
+        })
+    return meshes_payload
+
 @st.cache_data
 def get_model_b64(path):
     if not os.path.exists(path):
@@ -337,20 +440,23 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B THREE.JS ОБЛАСТЬ ---
+# --- 3B СЦЕНА THREE.JS ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
     if not model_b64:
-        st.error(f"⚠️ `{MODEL_PATH}` dosyası bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb dosyasını `app.py` ile aynı klasöre yükleyiniz.")
     else:
-        # Передаем данные сенсоров и конфигурацию в Three.js через JSON
+        # Генерация интерполированного слоя напряжений и температур
+        heat_meshes = build_interpolation_mesh(v_map, selected_comp)
+
         payload_data = {
             "sensorValues": v_map,
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
-            "comp": selected_comp
+            "comp": selected_comp,
+            "heatMeshes": heat_meshes
         }
         json_payload = json.dumps(payload_data)
 
@@ -383,7 +489,7 @@ with col_3d:
                     font-size: 13px;
                     pointer-events: none;
                     z-index: 100;
-                    box-shadow: 0 4px 12px rgba(0, 200, 230, 0.25);
+                    box-shadow: 0 4px 14px rgba(0, 200, 230, 0.3);
                 }}
                 #loader {{
                     position: absolute;
@@ -391,12 +497,11 @@ with col_3d:
                     left: 50%;
                     transform: translate(-50%, -50%);
                     color: #00C8E6;
-                    font-size: 18px;
+                    font-size: 17px;
                     font-weight: 700;
                     letter-spacing: 1px;
                 }}
             </style>
-            <!-- Подключение Three.js, GLTFLoader, OrbitControls и TWEEN -->
             <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -404,7 +509,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE SENSÖRLER YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE İNTERPOLASYON YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
             </div>
 
@@ -416,50 +521,46 @@ with col_3d:
                 const tooltip = document.getElementById('sensor-tooltip');
                 const loaderText = document.getElementById('loader');
 
-                // Инициализация Three.js сцены
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
                 const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
-                camera.position.set(-25, 20, 30);
+                camera.position.set(-30, 24, 45);
 
                 const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.2;
+                renderer.toneMappingExposure = 1.25;
                 container.appendChild(renderer.domElement);
 
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.05;
-                controls.maxDistance = 250;
+                controls.maxDistance = 300;
                 controls.minDistance = 1;
 
-                // Освещение сцены
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
                 scene.add(ambientLight);
 
-                const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.2);
-                dirLight1.position.set(30, 50, 40);
+                const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.4);
+                dirLight1.position.set(40, 60, 50);
                 scene.add(dirLight1);
 
-                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
-                dirLight2.position.set(-30, -20, -40);
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.7);
+                dirLight2.position.set(-40, -20, -50);
                 scene.add(dirLight2);
 
-                // Вспомогательная сетка (Ground grid)
-                const grid = new THREE.GridHelper(100, 50, 0x00C8E6, 0x172238);
+                const grid = new THREE.GridHelper(120, 60, 0x00C8E6, 0x141E30);
                 grid.position.y = -5;
                 scene.add(grid);
 
-                // Коллекция сенсоров для Raycaster
                 const sensorMeshes = [];
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
-                // Цветовая интерполяция для сенсоров
-                function getSensorColor(val, clim, comp) {{
+                // Цветовая шкала
+                function getColorForValue(val, clim, comp) {{
                     if (val === undefined || isNaN(val)) return new THREE.Color(0x555555);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
@@ -467,19 +568,53 @@ with col_3d:
 
                     const c = new THREE.Color();
                     if (comp === "temp") {{
-                        c.setHSL((1 - t) * 0.7, 1.0, 0.5); // Шкала теплоты
-                    }} else {{
-                        // Синий -> Белый -> Красный
+                        c.setHSL((1.0 - t) * 0.7, 1.0, 0.5);
+                    }} else if (comp === "axial") {{
+                        // Green -> Violet
                         if (t < 0.5) {{
-                            c.setRGB(0.1 + t * 1.8, 0.4 + t * 1.2, 0.8 + t * 0.4);
+                            c.setRGB(0.0, 0.4 + t * 1.2, 0.15 + t * 0.5);
                         }} else {{
-                            c.setRGB(1.0, (1 - t) * 1.5, (1 - t) * 0.4);
+                            c.setRGB(0.5 + (t - 0.5) * 1.0, 0.1, 0.6 + (t - 0.5) * 0.8);
+                        }}
+                    }} else {{
+                        // Hoop: Blue -> White -> Red
+                        if (t < 0.5) {{
+                            c.setRGB(0.1 + t * 1.8, 0.35 + t * 1.3, 0.8 + t * 0.4);
+                        }} else {{
+                            c.setRGB(1.0, (1.0 - t) * 1.4, (1.0 - t) * 0.3);
                         }}
                     }}
                     return c;
                 }}
 
-                // Конвертация base64 в ArrayBuffer и загрузка GLB
+                // 1. Построение интерполированных оболочек (RBF Heatmap)
+                if (payload.heatMeshes && payload.heatMeshes.length > 0) {{
+                    payload.heatMeshes.forEach(hm => {{
+                        const geom = new THREE.BufferGeometry();
+                        geom.setAttribute('position', new THREE.Float32BufferAttribute(hm.vertices, 3));
+                        geom.setIndex(hm.indices);
+
+                        const colors = [];
+                        hm.scalars.forEach(val => {{
+                            const col = getColorForValue(val, payload.clim, payload.comp);
+                            colors.push(col.r, col.g, col.b);
+                        }});
+                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                        geom.computeVertexNormals();
+
+                        const heatMat = new THREE.MeshStandardMaterial({{
+                            vertexColors: true,
+                            roughness: 0.5,
+                            metalness: 0.1,
+                            side: THREE.DoubleSide
+                        }});
+
+                        const heatMesh = new THREE.Mesh(geom, heatMat);
+                        scene.add(heatMesh);
+                    }});
+                }}
+
+                // 2. Загрузка 3D-модели из 3ds Max
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -492,14 +627,11 @@ with col_3d:
                     scene.add(model);
                     loaderText.style.display = 'none';
 
-                    // Перебор объектов сцены: поиск совпадений с названиями датчиков
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
+                            const isSensor = (name.includes("-CS") || name.includes("-S") || name.includes("-TP") || payload.sensorValues.hasOwnProperty(name));
 
-                            // Проверяем, является ли объект датчиком
-                            const isSensor = (name.startsWith("TA-") || name.startsWith("TB-") || payload.sensorValues.hasOwnProperty(name));
-                            
                             if (isSensor) {{
                                 sensorMeshes.push(child);
                                 child.userData.sensorName = name;
@@ -508,35 +640,39 @@ with col_3d:
                                 const val = payload.sensorValues[name];
                                 child.userData.val = val;
 
-                                // Назначаем яркий материал сенсора
                                 const isSelected = (name === payload.selectedSensor);
-                                const baseColor = isSelected ? new THREE.Color(0xFFD700) : getSensorColor(val, payload.clim, payload.comp);
+                                const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(val, payload.clim, payload.comp);
 
                                 child.material = new THREE.MeshStandardMaterial({{
-                                    color: baseColor,
-                                    emissive: isSelected ? new THREE.Color(0xFFD700) : baseColor,
-                                    emissiveIntensity: isSelected ? 0.8 : 0.25,
-                                    roughness: 0.3,
-                                    metalness: 0.2
+                                    color: sensorColor,
+                                    emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
+                                    emissiveIntensity: isSelected ? 0.9 : 0.35,
+                                    roughness: 0.2,
+                                    metalness: 0.3
                                 }});
 
                                 if (isSelected) {{
-                                    child.scale.set(1.5, 1.5, 1.5);
+                                    child.scale.set(1.6, 1.6, 1.6);
                                     flyCameraTo(child, true);
                                 }}
-                            }} else {{
-                                // Материал тоннеля / конструкций
-                                child.material = new THREE.MeshStandardMaterial({{
-                                    color: 0x1C2838,
-                                    roughness: 0.8,
+                            }} else {
+                                // ПОЛУПРОЗРАЧНОЕ ТЕЛО ТОННЕЛЕЙ (TA / TB)
+                                const isTunnelBody = (name.toUpperCase().includes("TA") || name.toUpperCase().includes("TB") || name.toLowerCase().includes("tunnel"));
+                                
+                                child.material = new THREE.MeshPhysicalMaterial({{
+                                    color: isTunnelBody ? 0x0E2038 : 0x1A2634,
+                                    transparent: true,
+                                    opacity: isTunnelBody ? 0.28 : 0.6,
+                                    roughness: 0.15,
                                     metalness: 0.1,
-                                    wireframe: false
+                                    transmission: isTunnelBody ? 0.6 : 0.0,
+                                    depthWrite: false, // Обеспечивает сквозную видимость сенсоров внутри
+                                    side: THREE.DoubleSide
                                 }});
-                            }}
+                            }
                         }}
                     }});
 
-                    // Центрирование камеры, если ничего не выбрано
                     if (!payload.selectedSensor || payload.selectedSensor === "Seçiniz...") {{
                         const box = new THREE.Box3().setFromObject(model);
                         const center = box.getCenter(new THREE.Vector3());
@@ -547,17 +683,15 @@ with col_3d:
                     console.error(err);
                 }});
 
-                // Плавный кинематографичный облет TWEEN лицом к выбранному объекту
+                // Плавный кинематографичный облет к выбранному сенсору
                 function flyCameraTo(targetMesh, animate = true) {{
                     const targetPos = new THREE.Vector3();
                     targetMesh.getWorldPosition(targetPos);
 
-                    // Вычисляем нормальный вектор от центра тоннеля наружу для взгляда "в лицо"
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    // Положение камеры: строго напротив точки на комфортном расстоянии
-                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.5)).add(new THREE.Vector3(0, 1.2, 0));
+                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.8)).add(new THREE.Vector3(0, 1.2, 0));
 
                     if (!animate) {{
                         camera.position.copy(endCamPos);
@@ -565,20 +699,18 @@ with col_3d:
                         return;
                     }}
 
-                    // Анимация фокуса
                     new TWEEN.Tween(controls.target)
                         .to(targetPos, 1200)
                         .easing(TWEEN.Easing.Cubic.InOut)
                         .start();
 
-                    // Анимация полета камеры
                     new TWEEN.Tween(camera.position)
                         .to(endCamPos, 1200)
                         .easing(TWEEN.Easing.Cubic.InOut)
                         .start();
                 }}
 
-                // Hover подсказки мышью
+                // Интерактивные подсказки при наведении мыши
                 window.addEventListener('mousemove', function(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -604,14 +736,12 @@ with col_3d:
                     }}
                 }});
 
-                // Resize
                 window.addEventListener('resize', function() {{
                     camera.aspect = container.clientWidth / container.clientHeight;
                     camera.updateProjectionMatrix();
                     renderer.setSize(container.clientWidth, container.clientHeight);
                 }});
 
-                // Цикл рендеринга
                 function animate(time) {{
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
@@ -624,4 +754,4 @@ with col_3d:
         </html>
         """
 
-        st.components.v1.html(threejs_html, height=720, scrolling=False)
+        st.components.v1.html(threejs_html, height=740, scrolling=False)
