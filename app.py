@@ -16,10 +16,15 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-# Фирменный стиль DESTECH (без темно-синего фона страницы)
+# Фирменный стиль DESTECH с темным фоном и неоново-синими акцентами
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
+
+    /* Глубокий темный фон всего приложения */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+        background-color: #0A0E17 !important;
+    }
 
     html, body, [class*="css"], p, span, label, .stMarkdown {
         font-family: 'Chakra Petch', sans-serif !important;
@@ -34,58 +39,125 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Убираем серый фон у инлайн-кода (бэктиков ` `) */
+    /* Убираем фон у инлайн-кода */
     code {
         background-color: transparent !important;
-        color: #FFFFFF !important;
+        color: #00F0FF !important;
         border: none !important;
         padding: 0 !important;
-        font-weight: 600 !important;
+        font-weight: 700 !important;
     }
 
+    /* Неоново-синие значения данных и метрик */
+    [data-testid="stMetricValue"], .neon-data {
+        color: #00F0FF !important;
+        font-weight: 700 !important;
+        text-shadow: 0 0 10px rgba(0, 240, 255, 0.55), 0 0 20px rgba(0, 240, 255, 0.25) !important;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        color: #8CA3BA !important;
+        font-size: 13px !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /* Крупные стилизованные переключатели (Radio) */
+    div[data-testid="stRadio"] > label {
+        font-size: 15px !important;
+        font-weight: 700 !important;
+        color: #8CA3BA !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] > label {
+        background: rgba(14, 25, 45, 0.6) !important;
+        border: 1px solid rgba(0, 240, 255, 0.15) !important;
+        padding: 10px 14px !important;
+        border-radius: 8px !important;
+        margin-bottom: 8px !important;
+        transition: all 0.25s ease-in-out !important;
+        cursor: pointer !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {
+        border-color: rgba(0, 240, 255, 0.6) !important;
+        background: rgba(0, 240, 255, 0.08) !important;
+        box-shadow: 0 0 12px rgba(0, 240, 255, 0.25) !important;
+    }
+
+    /* Размер шрифта самих названий режимов */
+    div[data-testid="stRadio"] div[role="radiogroup"] > label p {
+        font-size: 17px !important;
+        font-weight: 700 !important;
+        color: #E2ECF7 !important;
+        letter-spacing: 0.5px !important;
+    }
+
+    /* Неоново-синий кружок выбора */
+    div[data-testid="stRadio"] input[type="radio"]:checked + div {
+        background-color: #00F0FF !important;
+        border-color: #00F0FF !important;
+        box-shadow: 0 0 10px #00F0FF !important;
+    }
+
+    /* Селектор выпадающего списка */
+    div[data-baseweb="select"] {
+        background-color: #0D1626 !important;
+        border: 1px solid rgba(0, 240, 255, 0.3) !important;
+        border-radius: 6px !important;
+    }
+
+    /* Бейдж логотипа */
     .destech-badge {
         font-family: 'Syne', sans-serif;
         font-size: 16px;
         font-weight: 800;
         letter-spacing: 2px;
-        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%);
+        background: linear-gradient(90deg, #00F0FF 0%, #1858BA 100%);
         color: #000000;
         padding: 6px 18px;
         border-radius: 6px;
         display: inline-block;
-        box-shadow: 0 4px 14px rgba(30, 154, 214, 0.35);
+        box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
     }
 
+    /* Кнопка "Verileri Yenile" в неоновом стиле */
     div.stButton > button {
-        background: linear-gradient(90deg, #1E9AD6 0%, #1858BA 100%) !important;
+        background: linear-gradient(90deg, #00D2FF 0%, #0066FF 100%) !important;
         color: #FFFFFF !important;
         font-family: 'Chakra Petch', sans-serif !important;
+        font-size: 15px !important;
         font-weight: 700 !important;
         border: none !important;
         border-radius: 6px !important;
+        padding: 8px 20px !important;
+        box-shadow: 0 0 15px rgba(0, 210, 255, 0.35) !important;
         transition: all 0.3s ease !important;
     }
     div.stButton > button:hover {
-        box-shadow: 0 0 15px rgba(30, 154, 214, 0.7) !important;
+        box-shadow: 0 0 25px rgba(0, 240, 255, 0.8) !important;
         transform: translateY(-1px);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Считываем логотип в Base64 для точного совмещения по высоте с заголовком
+# Считываем логотип в Base64
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         logo_b64 = base64.b64encode(f.read()).decode()
 
-logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.55; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
+logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.75; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
-# Единая строка: заголовок и логотип на строго одной вертикальной координате
+# Заголовок и логотип
 st.markdown(f"""
-<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 240, 255, 0.18);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
-        <div style="color: #1E9AD6; font-weight: 600; font-size: 13px; letter-spacing: 1px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important; text-shadow: 0 0 15px rgba(255,255,255,0.2);">LOGGIS 3B</h1>
+        <div style="color: #00F0FF; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px; text-shadow: 0 0 8px rgba(0,240,255,0.4);">SENSÖR CANLI TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center; margin: 0; padding: 0;">
         {logo_tag}
@@ -166,7 +238,7 @@ def fetch_category_data(cat_key):
         page.get_by_text("Types").click()
         page.wait_for_timeout(800)
 
-        # 2. Переключение селекторов (точные ID из codegen)
+        # 2. Селекторы периода и режима
         try:
             page.get_by_role("combobox").first.select_option("MONTH_02")
         except Exception:
@@ -179,7 +251,7 @@ def fetch_category_data(cat_key):
             pass
         page.wait_for_timeout(800)
 
-        # 3. Выбор типа датчика через listbox
+        # 3. Выбор датчика из listbox
         try:
             page.get_by_role("listbox").select_option(cat["name"])
         except Exception:
@@ -189,7 +261,7 @@ def fetch_category_data(cat_key):
                 page.get_by_text(cat["name"]).first.click(force=True)
         page.wait_for_timeout(3000)
 
-        # 4. Считывание таблицы с датчиками
+        # 4. Считывание матрицы данных
         for _ in range(25):
             extracted = page.evaluate("""() => {
                 const table = document.querySelector('table');
@@ -245,7 +317,7 @@ def fetch_category_data(cat_key):
 
     return {"values": val_map, "date": latest_date_str}
 
-# Geometri Tanımları
+# Геометрия тоннелей
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
     "tunnel_spacing_m": 15.0,
@@ -315,7 +387,6 @@ def build_operator(names, patches):
     grid = np.array(rows, dtype=np.float32)
     query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
 
-    # Защита от LinAlgError при малом количестве активных сенсоров (< 3)
     if len(names) < 3:
         W = np.full((query.shape[0], len(names)), 1.0 / max(len(names), 1), dtype=np.float32)
         return pos, W
@@ -361,7 +432,7 @@ def build_mesh_data(patches, offset_x):
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
-    st.subheader("Kontrol Panelİ")
+    st.subheader("KONTROL PANELİ")
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
@@ -390,12 +461,14 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write("**En Son Veri Zamanı:**")
-    st.write(f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}")
-    st.write("**Aktif Sensör Sayısı:**")
-    st.write(f"{len(v_map)}")
-    st.write("**Skala Limitleri:**")
-    st.write(f"Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}")
+    st.write("📅 **En Son Veri Zamanı:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
+    
+    st.write("📡 **Aktif Sensör Sayısı:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 20px;'>{len(v_map)}</span>", unsafe_allow_html=True)
+    
+    st.write("📊 **Skala Limitleri:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
     selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
@@ -465,7 +538,7 @@ with col_3d:
                 sensor_z.append(sz)
                 val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
-                sensor_colors.append("#FFFF00" if n == selected_sensor else "#FFFFFF")
+                sensor_colors.append("#00F0FF" if n == selected_sensor else "#FFFFFF")
 
         # 3D метки TA и TB
         fig.add_trace(go.Scatter3d(
@@ -478,7 +551,7 @@ with col_3d:
             textfont=dict(
                 family="Syne, Chakra Petch, sans-serif",
                 size=28,
-                color="#1E9AD6"
+                color="#00F0FF"
             ),
             hoverinfo="none",
             showlegend=False
@@ -499,11 +572,12 @@ with col_3d:
 
         fig.update_layout(
             dragmode="orbit",
-            paper_bgcolor="#0E1117",
+            paper_bgcolor="#0A0E17",
+            plot_bgcolor="#0A0E17",
             scene=dict(
-                xaxis=dict(showbackground=False, showgrid=True, gridcolor="#262730", zeroline=False, title="", showticklabels=False),
-                yaxis=dict(showbackground=False, showgrid=True, gridcolor="#262730", zeroline=False, title="", showticklabels=False),
-                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#262730", zeroline=False, title="Boyuna (Z)", color="#1E9AD6"),
+                xaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="", showticklabels=False),
+                yaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="", showticklabels=False),
+                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="Boyuna (Z)", color="#00F0FF"),
                 aspectratio=dict(x=1.3, y=0.5, z=2.2),
                 camera=dict(eye=dict(x=-1.5, y=1.6, z=1.0), center=dict(x=0, y=0, z=0))
             ),
