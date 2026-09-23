@@ -138,7 +138,7 @@ st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">CANLI SENSÖR TAKİP SİSTEMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR VE TÜNEL İNTERPOLASYON SİSTEMİ (3DS MAX)</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -341,6 +341,7 @@ with col_nav:
     st.subheader("GÖRÜNÜM AYARLARI")
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
+    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster (Kırmızı)", value=False)
 
     st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
@@ -371,7 +372,8 @@ with col_3d:
             "clim": clim,
             "comp": selected_comp,
             "tunnelOpacity": float(tunnel_opacity),
-            "showMeters": show_meters
+            "showMeters": show_meters,
+            "showNoDataRed": show_no_data_red
         }
         json_payload = json.dumps(payload_data)
 
@@ -535,7 +537,7 @@ with col_3d:
                 dirLight2.position.set(-40, -20, -50);
                 scene.add(dirLight2);
 
-                const visibleSensors = [];
+                const interactiveSensors = [];
                 const tunnelMeshes = [];
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
@@ -603,6 +605,14 @@ with col_3d:
                 function extractSensorId(name) {{
                     const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
                     return m ? m[0] : name;
+                }}
+
+                function isCategoryMatch(name, comp) {{
+                    const u = name.toUpperCase();
+                    if (comp === "hoop") return u.includes("-CS");
+                    if (comp === "axial") return (u.includes("-S") || u.includes("-S1") || u.includes("-S2") || u.includes("-S3")) && !u.includes("-CS");
+                    if (comp === "temp") return u.includes("-TP") || u.includes("-CS") || u.includes("-S");
+                    return false;
                 }}
 
                 function createPortalMarker(text) {{
@@ -675,7 +685,6 @@ with col_3d:
                             const name = child.name;
                             const uName = name.toUpperCase();
 
-                            // ОБЪЕКТ BOX001: ПОЛУПРОЗРАЧНОЕ ТОНИРОВАННОЕ СТЕКЛО
                             if (uName.includes("BOX001")) {{
                                 child.material = new THREE.MeshStandardMaterial({{
                                     color: 0x0E2238,
@@ -688,7 +697,6 @@ with col_3d:
                                     side: THREE.DoubleSide
                                 }});
 
-                                // Тонкий полупрозрачный каркас для сохранения четкости геометрии
                                 const edges = new THREE.EdgesGeometry(child.geometry);
                                 const lineMat = new THREE.LineBasicMaterial({{
                                     color: 0x00C8E6,
@@ -725,13 +733,16 @@ with col_3d:
                                 }}
 
                                 const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
+                                const isCategory = isCategoryMatch(sensorId, payload.comp);
 
                                 if (hasData) {{
+                                    // 1. АКТИВНЫЙ СЕНСОР С ДАННЫМИ: ЦВЕТ И ИНТЕРПОЛЯЦИЯ
                                     child.visible = true;
                                     const rawVal = payload.activeCategoryValues[resolvedSensorId];
                                     child.userData.val = rawVal;
                                     child.userData.isUsable = true;
-                                    visibleSensors.push(child);
+                                    child.userData.isNoData = false;
+                                    interactiveSensors.push(child);
 
                                     const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
                                     const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(rawVal, payload.clim, payload.comp);
@@ -747,9 +758,25 @@ with col_3d:
                                     if (isSelected) {{
                                         selectedMeshRef = child;
                                     }}
+                                }} else if (isCategory && payload.showNoDataRed) {{
+                                    // 2. СЕНСОР ТЕКУЩЕЙ КАТЕГОРИИ БЕЗ ДАННЫХ: КРАСНЫЙ МАРКЕР (БЕЗ ИНТЕРПОЛЯЦИИ)
+                                    child.visible = true;
+                                    child.userData.isUsable = false;
+                                    child.userData.isNoData = true;
+                                    interactiveSensors.push(child);
+
+                                    child.material = new THREE.MeshStandardMaterial({{
+                                        color: 0xFF1744,
+                                        emissive: 0xFF1744,
+                                        emissiveIntensity: 0.85,
+                                        roughness: 0.2,
+                                        metalness: 0.1
+                                    }});
                                 }} else {{
+                                    // ЧУЖИЕ КАТЕГОРИИ ПОЛНОСТЬЮ СКРЫТЫ
                                     child.visible = false;
                                     child.userData.isUsable = false;
+                                    child.userData.isNoData = false;
                                 }}
                             }} else {{
                                 const isTunnel = (
@@ -773,15 +800,16 @@ with col_3d:
                         }}
                     }});
 
-                    const activeSensors = [];
-                    visibleSensors.forEach(sMesh => {{
-                        if (sMesh.userData.isUsable) {{
+                    // СБОР ТОЛЬКО ВАЛИДНЫХ ДАТЧИКОВ ДЛЯ ИНТЕРПОЛЯЦИИ (КРАСНЫЕ ИСКЛЮЧЕНЫ)
+                    const interpolationSensors = [];
+                    interactiveSensors.forEach(sMesh => {{
+                        if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {{
                             const wPos = new THREE.Vector3();
                             sMesh.getWorldPosition(wPos);
                             const uName = sMesh.userData.sensorName.toUpperCase();
                             const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
 
-                            activeSensors.push({{
+                            interpolationSensors.push({{
                                 pos: wPos,
                                 val: sMesh.userData.val,
                                 tun: tun,
@@ -805,8 +833,8 @@ with col_3d:
                         const isTB = uName.includes("TB");
                         const activeTun = isTB ? "TB" : "TA";
                         
-                        let pool = activeSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
-                        if (pool.length < 2) pool = activeSensors;
+                        let pool = interpolationSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
+                        if (pool.length < 2) pool = interpolationSensors;
 
                         tMesh.updateMatrixWorld(true);
 
@@ -873,7 +901,7 @@ with col_3d:
                         tMesh.material.needsUpdate = true;
                     }});
 
-                    // 1. КРУПНЫЕ ПЛАШКИ TA И TB
+                    // КРУПНЫЕ ПЛАШКИ TA И TB
                     const boxTA = new THREE.Box3();
                     const boxTB = new THREE.Box3();
                     let hasTA = false, hasTB = false;
@@ -907,7 +935,7 @@ with col_3d:
 
                     scene.add(portalsGroup);
 
-                    // 2. ПИКЕТАЖНАЯ ЛИНЕЙКА
+                    // ПИКЕТАЖНАЯ ЛИНЕЙКА
                     if (payload.showMeters) {{
                         const overallBox = new THREE.Box3();
                         tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
@@ -971,7 +999,7 @@ with col_3d:
                         }}
                     }}
 
-                    // 3. УПРАВЛЕНИЕ КАМЕРОЙ
+                    // УПРАВЛЕНИЕ КАМЕРОЙ
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1055,13 +1083,14 @@ with col_3d:
                     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
                     raycaster.setFromCamera(mouse, camera);
-                    const intersects = raycaster.intersectObjects(visibleSensors);
+                    const intersects = raycaster.intersectObjects(interactiveSensors);
 
                     if (intersects.length > 0) {{
                         const mesh = intersects[0].object;
                         const name = mesh.userData.sensorName;
                         const val = mesh.userData.val;
                         const isUsable = mesh.userData.isUsable;
+                        const isNoData = mesh.userData.isNoData;
 
                         tooltip.style.display = 'block';
                         tooltip.style.left = (e.clientX + 14) + 'px';
@@ -1070,6 +1099,9 @@ with col_3d:
                         if (isUsable) {{
                             const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00C8E6;">Değer: ' + valTxt + '</span>';
+                            renderer.domElement.style.cursor = 'pointer';
+                        }} else if (isNoData) {{
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF1744; font-weight:700;">Durum: Veri Yok / Belirsiz</span>';
                             renderer.domElement.style.cursor = 'pointer';
                         }} else {{
                             tooltip.style.display = 'none';
