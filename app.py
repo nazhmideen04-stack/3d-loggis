@@ -138,7 +138,7 @@ st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR VE TÜNEL İNTERPOLASYON SİSTEMİ (3DS MAX)</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -341,7 +341,7 @@ with col_nav:
     st.subheader("GÖRÜNÜM AYARLARI")
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
-    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster (Kırmızı)", value=False)
+    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörler", value=False)
 
     st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
@@ -1101,7 +1101,7 @@ with col_3d:
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00C8E6;">Değer: ' + valTxt + '</span>';
                             renderer.domElement.style.cursor = 'pointer';
                         }} else if (isNoData) {{
-                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF1744; font-weight:700;">Durum: Veri Yok / Belirsiz</span>';
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0000; font-weight:700;">Durum: Veri Yok / Belirsiz</span>';
                             renderer.domElement.style.cursor = 'pointer';
                         }} else {{
                             tooltip.style.display = 'none';
