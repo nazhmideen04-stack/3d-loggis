@@ -310,7 +310,7 @@ cat_cfg = CATEGORIES[selected_comp]
 cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
 raw_v_map = cur_layer["values"]
 
-# --- СТРОГАЯ ФИЛЬТРАЦИЯ НА БЭКЕНДЕ ДЛЯ ИЗОЛЯЦИИ КАТЕГОРИИ ---
+# --- СТРОГАЯ ИЗОЛЯЦИЯ АКТИВНОЙ КАТЕГОРИИ НА СТОРОНЕ PYTHON ---
 active_category_values = {}
 for s_name, val in raw_v_map.items():
     if val is None or np.isnan(val):
@@ -521,7 +521,7 @@ with col_3d:
                 dirLight2.position.set(-40, -20, -50);
                 scene.add(dirLight2);
 
-                const sensorMeshes = [];
+                const visibleSensors = [];
                 const tunnelMeshes = [];
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
@@ -551,7 +551,6 @@ with col_3d:
                     return c;
                 }}
 
-                // Извлечение стандартного имени датчика
                 function extractSensorId(name) {{
                     const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
                     return m ? m[0] : name;
@@ -565,16 +564,6 @@ with col_3d:
 
                 let selectedMeshRef = null;
 
-                // Материал по умолчанию для неактивных/чужих объектов (абсолютно темный, без цвета)
-                const neutralMutedMaterial = new THREE.MeshStandardMaterial({{
-                    color: 0x1A222D,
-                    emissive: new THREE.Color(0x000000),
-                    roughness: 1.0,
-                    metalness: 0.0,
-                    transparent: true,
-                    opacity: 0.25
-                }});
-
                 const gltfLoader = new THREE.GLTFLoader();
                 gltfLoader.parse(bytes.buffer, '', function(gltf) {{
                     const model = gltf.scene;
@@ -582,7 +571,7 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. СТРОГИЙ ОБХОД ОБЪЕКТОВ И ПРИНУДИТЕЛЬНОЕ ОБНУЛЕНИЕ ЧУЖИХ МАТЕРИАЛОВ
+                    // 1. СТРОГИЙ ОБХОД ОБЪЕКТОВ С ПОЛНЫМ СКРЫТИЕМ ЧУЖИХ КАТЕГОРИЙ
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -598,7 +587,7 @@ with col_3d:
                                 return;
                             }}
 
-                            const isSensorLike = (
+                            const isSensorObject = (
                                 uName.startsWith("TA-") || 
                                 uName.startsWith("TB-") || 
                                 uName.includes("-CS") || 
@@ -606,23 +595,35 @@ with col_3d:
                                 uName.includes("-TP")
                             );
 
-                            if (isSensorLike) {{
-                                sensorMeshes.push(child);
+                            if (isSensorObject) {{
                                 const sensorId = extractSensorId(name);
                                 child.userData.sensorName = sensorId;
                                 child.userData.isSensor = true;
 
-                                // Проверяем, есть ли датчик в строго отфильтрованном бэкенд-списке активной категории
-                                const hasData = payload.activeCategoryValues.hasOwnProperty(sensorId);
-                                const rawVal = hasData ? payload.activeCategoryValues[sensorId] : undefined;
-                                
-                                child.userData.val = rawVal;
-                                child.userData.isUsable = hasData;
+                                // Для категории "temp": если геометрия датчиков в 3ds Max названа как CS или S,
+                                // мы связываем температурные показания с этими же сечениями
+                                let resolvedSensorId = sensorId;
+                                if (payload.comp === "temp" && !sensorId.includes("-TP")) {{
+                                    const baseMatch = sensorId.match(/^(T[AB]-(?:CS|S)\d+-[LR](?:-M\d+)?)/i);
+                                    if (baseMatch) {{
+                                        const tpCandidate = baseMatch[1].replace(/-CS|-S/i, "-TP");
+                                        if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
+                                            resolvedSensorId = tpCandidate;
+                                        }}
+                                    }}
+                                }}
 
-                                const isSelected = (sensorId === payload.selectedSensor);
+                                const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
 
                                 if (hasData) {{
-                                    // ТОЛЬКО ДАТЧИКИ ТЕКУЩЕЙ АКТИВНОЙ КАТЕГОРИИ ИМЕЮТ ЦВЕТ
+                                    // ВИДИМ ТОЛЬКО ДАТЧИКИ ТЕКУЩЕЙ АКТИВНОЙ КАТЕГОРИИ
+                                    child.visible = true;
+                                    const rawVal = payload.activeCategoryValues[resolvedSensorId];
+                                    child.userData.val = rawVal;
+                                    child.userData.isUsable = true;
+                                    visibleSensors.push(child);
+
+                                    const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
                                     const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(rawVal, payload.clim, payload.comp);
 
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -637,8 +638,9 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
-                                    // ВСЕ ОСТАЛЬНЫЕ: ПРИНУДИТЕЛЬНО ПЕРЕЗАПИСЫВАЮТСЯ В МАТОВЫЙ СЕРЫЙ
-                                    child.material = neutralMutedMaterial.clone();
+                                    // ЧУЖИЕ КАТЕГОРИИ И БЕЗ ДАННЫХ — ПОЛНОСТЬЮ СКРЫВАЮТСЯ С ЭКРАНА
+                                    child.visible = false;
+                                    child.userData.isUsable = false;
                                 }}
                             }} else {{
                                 const isTunnel = (
@@ -662,9 +664,9 @@ with col_3d:
                         }}
                     }});
 
-                    // 2. СБОР ТОЛЬКО ВАЛИДНЫХ ДАТЧИКОВ ТЕКУЩЕЙ КАТЕГОРИИ В МИРОВЫХ КООРДИНАТАХ
+                    // 2. СБОР ТОЛЬКО АКТИВНЫХ ДАТЧИКОВ ТЕКУЩЕЙ КАТЕГОРИИ
                     const activeSensors = [];
-                    sensorMeshes.forEach(sMesh => {{
+                    visibleSensors.forEach(sMesh => {{
                         if (sMesh.userData.isUsable) {{
                             const wPos = new THREE.Vector3();
                             sMesh.getWorldPosition(wPos);
@@ -680,8 +682,8 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. НОВЫЙ АЛГОРИТМ ИНТЕРПОЛЯЦИИ С РАДИУСОМ ВЛИЯНИЯ (COMPACT SUPPORT IDW)
-                    const R_INFLUENCE = 12.0; // Радиус затухания влияния каждого кольца датчиков в метрах
+                    // 3. ИНТЕРПОЛЯЦИЯ С ЛОКАЛИЗОВАННЫМ РАДИУСОМ ВЛИЯНИЯ
+                    const R_INFLUENCE = 12.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -701,7 +703,6 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
-                        // Если данных для этого тоннеля нет вообще — чистый нейтральный белый (#E6ECF2)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
@@ -721,7 +722,6 @@ with col_3d:
                                     const s = pool[j];
                                     const d = worldV.distanceTo(s.pos);
                                     
-                                    // Локализованный вес с плавным спадом до 0 на границе R_INFLUENCE
                                     if (d < R_INFLUENCE) {{
                                         const wDist = (1.0 - (d / R_INFLUENCE));
                                         const w = (wDist * wDist) / (d * d + 0.1);
@@ -740,7 +740,7 @@ with col_3d:
                                     colors[idx + 1] = accumG / totalWeight;
                                     colors[idx + 2] = accumB / totalWeight;
                                 }} else {{
-                                    // Вне радиуса действия датчиков: чистый нейтральный тон #E6ECF2
+                                    // Нейтральный фон вне зоны датчиков (#E6ECF2)
                                     colors[idx] = 0.902;
                                     colors[idx + 1] = 0.925;
                                     colors[idx + 2] = 0.949;
@@ -828,7 +828,7 @@ with col_3d:
                     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
                     raycaster.setFromCamera(mouse, camera);
-                    const intersects = raycaster.intersectObjects(sensorMeshes);
+                    const intersects = raycaster.intersectObjects(visibleSensors);
 
                     if (intersects.length > 0) {{
                         const mesh = intersects[0].object;
@@ -843,10 +843,11 @@ with col_3d:
                         if (isUsable) {{
                             const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00C8E6;">Değer: ' + valTxt + '</span>';
+                            renderer.domElement.style.cursor = 'pointer';
                         }} else {{
-                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#8899AA;">Veri: Belirsiz / Başka Kategori</span>';
+                            tooltip.style.display = 'none';
+                            renderer.domElement.style.cursor = 'default';
                         }}
-                        renderer.domElement.style.cursor = 'pointer';
                     }} else {{
                         tooltip.style.display = 'none';
                         renderer.domElement.style.cursor = 'default';
