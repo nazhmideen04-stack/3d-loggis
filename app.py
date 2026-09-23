@@ -335,7 +335,7 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B THREE.JS ОБЛАСТЬ (ТОЛЬКО ВАША МОДЕЛЬ) ---
+# --- 3B THREE.JS ОБЛАСТЬ (ПРЯМАЯ ИНТЕРПОЛЯЦИЯ И СТАРТ С МОДЕЛИ) ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -477,11 +477,7 @@ with col_3d:
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
-                const worldPivot = new THREE.Group();
-                scene.add(worldPivot);
-
-                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.001, 4000);
-                camera.position.set(-25, 20, 35);
+                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.001, 5000);
 
                 const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true, powerPreference: "high-performance" }});
                 renderer.setSize(container.clientWidth, container.clientHeight);
@@ -504,7 +500,7 @@ with col_3d:
                 controls.panSpeed = 1.1;
                 controls.screenSpacePanning = true;
 
-                // Зум в курсор
+                // Зум ровно в точку под курсором
                 const zoomRaycaster = new THREE.Raycaster();
                 const zoomMouse = new THREE.Vector2();
                 let wheelRafPending = false;
@@ -521,7 +517,7 @@ with col_3d:
                         zoomMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
                         zoomRaycaster.setFromCamera(zoomMouse, camera);
-                        const hits = zoomRaycaster.intersectObjects(worldPivot.children, true);
+                        const hits = zoomRaycaster.intersectObjects(scene.children, true);
 
                         const dir = zoomRaycaster.ray.direction.clone();
                         const zoomFactor = e.deltaY < 0 ? 0.22 : -0.22;
@@ -539,14 +535,14 @@ with col_3d:
                     }});
                 }}, {{ passive: false }});
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
                 scene.add(ambientLight);
 
                 const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.4);
                 dirLight1.position.set(40, 60, 50);
                 scene.add(dirLight1);
 
-                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.9);
                 dirLight2.position.set(-40, -20, -50);
                 scene.add(dirLight2);
 
@@ -591,16 +587,16 @@ with col_3d:
                 const gltfLoader = new THREE.GLTFLoader();
                 gltfLoader.parse(bytes.buffer, '', function(gltf) {{
                     const model = gltf.scene;
-                    worldPivot.add(model);
+                    scene.add(model);
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. Сбор объектов сцены
+                    // 1. Поиск датчиков и мешей тоннелей
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
 
-                            // Box001 делаем тонким прозрачным каркасом
+                            // Каркасный Box001
                             if (name.toUpperCase().includes("BOX001")) {{
                                 child.material = new THREE.MeshBasicMaterial({{
                                     color: 0x1E3A5F,
@@ -637,12 +633,10 @@ with col_3d:
                                     selectedMeshRef = child;
                                 }}
                             }} else {{
-                                // Тело тоннелей (TA / TB)
-                                const isTunnel = (name.toUpperCase().includes("TA") || name.toUpperCase().includes("TB") || name.toLowerCase().includes("tunnel"));
+                                const isTunnel = (name.toUpperCase().includes("TA") || name.toUpperCase().includes("TB") || name.toLowerCase().includes("tunnel") || name.toLowerCase().includes("tünel"));
                                 if (isTunnel) {{
                                     tunnelMeshes.push(child);
                                 }} else {{
-                                    // Нейтральные детали (балласт, шпалы и т.д.)
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0x141E2D,
                                         roughness: 0.8,
@@ -667,10 +661,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. ПРЯМАЯ ИНТЕРПОЛЯЦИЯ НА ВЕРШИНЫ ВАШИХ ТОННЕЛЕЙ 'TA' И 'TB'
-                    const defaultTunnelColor = new THREE.Color(0x132238);
-                    const R_INFLUENCE = 8.5; // Радиус буфера интерполяции (в метрах)
-
+                    // 3. ПОЛНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ВСЕГО ТЕЛА ТОННЕЛЕЙ 'TA' И 'TB'
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -680,7 +671,6 @@ with col_3d:
                         const localV = new THREE.Vector3();
                         const worldV = new THREE.Vector3();
 
-                        // Фильтруем датчики по соответствующему тоннелю
                         const isTB = tMesh.name.toUpperCase().includes("TB");
                         const targetPrefix = isTB ? "TB" : "TA";
                         let activeSensors = sensorPositions.filter(s => s.prefix === targetPrefix);
@@ -693,27 +683,23 @@ with col_3d:
                             let totalWeight = 0;
                             let accumR = 0, accumG = 0, accumB = 0;
 
+                            // IDW интерполяция от всех активных датчиков с акцентом на локальные пикеты
                             for (let j = 0; j < activeSensors.length; j++) {{
                                 const s = activeSensors[j];
                                 const d = worldV.distanceTo(s.pos);
+                                const w = 1.0 / (Math.pow(d + 0.15, 2.0));
+                                const c = getColorForValue(s.val, payload.clim, payload.comp);
 
-                                if (d < R_INFLUENCE) {{
-                                    const w = Math.pow(1.0 - (d / R_INFLUENCE), 2.5);
-                                    const c = getColorForValue(s.val, payload.clim, payload.comp);
-                                    accumR += c.r * w;
-                                    accumG += c.g * w;
-                                    accumB += c.b * w;
-                                    totalWeight += w;
-                                }}
+                                accumR += c.r * w;
+                                accumG += c.g * w;
+                                accumB += c.b * w;
+                                totalWeight += w;
                             }}
 
                             if (totalWeight > 0) {{
-                                const interpC = new THREE.Color(accumR / totalWeight, accumG / totalWeight, accumB / totalWeight);
-                                const blend = Math.min(1.0, totalWeight);
-                                const finalC = defaultTunnelColor.clone().lerp(interpC, blend);
-                                colors.push(finalC.r, finalC.g, finalC.b);
+                                colors.push(accumR / totalWeight, accumG / totalWeight, accumB / totalWeight);
                             }} else {{
-                                colors.push(defaultTunnelColor.r, defaultTunnelColor.g, defaultTunnelColor.b);
+                                colors.push(0.08, 0.13, 0.22);
                             }}
                         }}
 
@@ -721,28 +707,29 @@ with col_3d:
                         
                         tMesh.material = new THREE.MeshStandardMaterial({{
                             vertexColors: true,
-                            transparent: true,
-                            opacity: 0.88,
-                            roughness: 0.4,
+                            roughness: 0.35,
                             metalness: 0.1,
-                            depthWrite: false,
                             side: THREE.DoubleSide
                         }});
                     }});
 
-                    // 4. Центрирование сцены
-                    worldPivot.updateMatrixWorld(true);
-                    const sceneBox = new THREE.Box3().setFromObject(worldPivot);
-                    const centerOffset = sceneBox.getCenter(new THREE.Vector3());
+                    // 4. СТАРТ КАМЕРЫ ИМЕННО С МЕСТА, ГДЕ НАХОДИТСЯ ОБЪЕКТ
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
 
-                    worldPivot.position.sub(centerOffset);
-                    worldPivot.updateMatrixWorld(true);
+                    controls.target.copy(center);
 
                     if (selectedMeshRef) {{
-                        flyCameraTo(selectedMeshRef, true);
+                        flyCameraTo(selectedMeshRef, false);
                     }} else {{
-                        controls.target.set(0, 0, 0);
-                        camera.position.set(-25, 18, 35);
+                        // Ставим наблюдателя прямо перед тоннелями на комфортной дистанции обзора
+                        camera.position.set(
+                            center.x - maxDim * 0.45,
+                            center.y + maxDim * 0.35,
+                            center.z + maxDim * 0.55
+                        );
                         controls.update();
                     }}
 
@@ -763,6 +750,7 @@ with col_3d:
                     if (!animate) {{
                         camera.position.copy(endCamPos);
                         controls.target.copy(targetPos);
+                        controls.update();
                         return;
                     }}
 
