@@ -328,7 +328,13 @@ if not vals:
 elif selected_comp == "temp":
     clim = [round(float(min(vals)), 1), round(float(max(vals)), 1)]
 else:
-    m = round(max(abs(min(vals)), abs(max(vals)), 1.0), 1)
+    # Динамический расчет шкалы с фокусом на 95-й процентиль для исключения затухания деформаций CS
+    abs_vals = [abs(v) for v in vals if not np.isnan(v)]
+    if abs_vals:
+        m = round(float(np.percentile(abs_vals, 92)), 1)
+        m = max(m, 5.0)
+    else:
+        m = 10.0
     clim = [-m, m]
 
 with col_nav:
@@ -509,7 +515,6 @@ with col_3d:
                 controls.minDistance = 0.1;
                 controls.maxDistance = 3500;
 
-                // Сохраняем состояние камеры при любых перемещениях пользователем
                 controls.addEventListener('change', () => {{
                     const camState = {{
                         pos: [camera.position.x, camera.position.y, camera.position.z],
@@ -578,12 +583,17 @@ with col_3d:
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
-                    if (comp === "temp") {{
-                        return sampleColorRamp(SPECTRAL_STOPS, t);
+                    // Для категории hoop (CS): нелинейное насыщение, чтобы цвета были контрастными
+                    if (comp === "hoop") {{
+                        const sign = t >= 0.5 ? 1.0 : -1.0;
+                        const dist = Math.abs(t - 0.5) * 2.0;
+                        const boostedDist = Math.pow(dist, 0.65); // Усиливаем слабые значения деформаций
+                        t = 0.5 + sign * (boostedDist / 2.0);
+                        return sampleColorRamp(HOOP_STOPS, t);
                     }} else if (comp === "axial") {{
                         return sampleColorRamp(AXIAL_STOPS, t);
                     }} else {{
-                        return sampleColorRamp(HOOP_STOPS, t);
+                        return sampleColorRamp(SPECTRAL_STOPS, t);
                     }}
                 }}
 
@@ -661,7 +671,7 @@ with col_3d:
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: sensorColor,
                                         emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
-                                        emissiveIntensity: isSelected ? 1.0 : 0.75,
+                                        emissiveIntensity: isSelected ? 1.0 : 0.85,
                                         roughness: 0.15,
                                         metalness: 0.25
                                     }});
@@ -712,7 +722,8 @@ with col_3d:
                         }}
                     }});
 
-                    const R_INFLUENCE = 28.0;
+                    // ДЛЯ CS (HOOP) РАДИУС РАСШИРЕН ДО 42 МЕТРОВ
+                    const R_INFLUENCE = (payload.comp === "hoop") ? 42.0 : 28.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -753,8 +764,10 @@ with col_3d:
                                     
                                     if (d < R_INFLUENCE) {{
                                         const ratio = d / R_INFLUENCE;
-                                        const wEnvelope = Math.pow(1.0 - ratio, 1.8);
-                                        const wCore = 1.0 / Math.pow(d * d + 0.04, 1.25);
+                                        // Плавная оболочка спада на расширенную дистанцию
+                                        const wEnvelope = Math.pow(1.0 - ratio, payload.comp === "hoop" ? 1.4 : 1.8);
+                                        // Мощное усиление в эпицентре кольца датчиков
+                                        const wCore = 1.0 / Math.pow(d * d + 0.02, payload.comp === "hoop" ? 1.35 : 1.25);
                                         const w = wEnvelope * wCore;
 
                                         const c = getColorForValue(s.val, payload.clim, payload.comp);
@@ -795,16 +808,13 @@ with col_3d:
                         tMesh.material.needsUpdate = true;
                     }});
 
-                    // 4. УПРАВЛЕНИЕ КАМЕРОЙ: СОХРАНЕНИЕ ПОЗИЦИИ ИЛИ ПЛАВНЫЙ ПЕРЕЛЕТ
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
                     if (selectedMeshRef && isNewSensorSelected) {{
-                        // Пользователь выбрал конкретный датчик: ПЛАВНЫЙ КИНЕМАТОГРАФИЧНЫЙ ПЕРЕЛЕТ
                         sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
                         flyCameraTo(selectedMeshRef, true);
                     }} else {{
-                        // Пользователь меняет прозрачность или вращает: ВОССТАНАВЛИВАЕМ ТОЧНОЕ ПОЛОЖЕНИЕ
                         const savedStateStr = sessionStorage.getItem('threejs_camera_state');
                         if (savedStateStr) {{
                             try {{
@@ -814,7 +824,6 @@ with col_3d:
                                 controls.update();
                             }} catch(e) {{}}
                         }} else {{
-                            // Самый первый запуск: автоматический фокус в центр объекта
                             const tunnelBox = new THREE.Box3();
                             if (tunnelMeshes.length > 0) {{
                                 tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
@@ -841,12 +850,10 @@ with col_3d:
                     console.error(err);
                 }});
 
-                // Функция плавного полета камеры к сенсору
                 function flyCameraTo(targetMesh, animate = true) {{
                     const targetPos = new THREE.Vector3();
                     targetMesh.getWorldPosition(targetPos);
 
-                    // Рассчитываем комфортный вектор обзора (сбоку и чуть сверху)
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
@@ -859,13 +866,11 @@ with col_3d:
                         return;
                     }}
 
-                    // Плавная анимация фокуса цели
                     new TWEEN.Tween(controls.target)
                         .to(targetPos, 1400)
                         .easing(TWEEN.Easing.Cubic.InOut)
                         .start();
 
-                    // Плавная анимация позиции камеры
                     new TWEEN.Tween(camera.position)
                         .to(endCamPos, 1400)
                         .easing(TWEEN.Easing.Cubic.InOut)
