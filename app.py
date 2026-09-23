@@ -9,12 +9,7 @@ import plotly.graph_objects as go
 from scipy.interpolate import RBFInterpolator
 from playwright.sync_api import sync_playwright
 
-# --- КОНФИГУРАЦИЯ СТРАНИЦЫ STREAMLIT ---
-st.set_page_config(
-    page_title="LOGGIS 3B Tünel İzleme Paneli",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -26,7 +21,6 @@ CATEGORIES = {
 
 angle_scale = 1.0
 
-# --- СЛУЖЕБНЫЕ ФУНКЦИИ ---
 def clean_num(s):
     if not s:
         return np.nan
@@ -37,19 +31,15 @@ def clean_num(s):
         return np.nan
 
 def ensure_playwright_installed():
-    """Автоматическая доустановка браузера Chromium на сервере Streamlit Cloud."""
     try:
         subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-    except Exception as e:
-        st.sidebar.error(f"Chromium kurulum hatası: {e}")
+    except Exception:
+        pass
 
-# --- ФУНКЦИЯ СБОРА ДАННЫХ ИЗ LOGGIS ---
 def fetch_category_data(cat_key, reload_seed=0):
     cat = CATEGORIES[cat_key]
     val_map = {}
     latest_date_str = ""
-    screenshot_b64 = ""
-    debug_msg = ""
 
     with sync_playwright() as p:
         browser_args = [
@@ -74,30 +64,28 @@ def fetch_category_data(cat_key, reload_seed=0):
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
+            page.wait_for_timeout(3000)
 
-            # 1. Открываем вкладку Types
+            # Переход во вкладку Types
             page.locator("text='Types'").first.click(force=True)
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(800)
 
-            # 2. Выбираем категорию сенсоров
+            # Выбор категории
             page.get_by_text(cat["name"]).first.click(force=True)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(1500)
 
-            # 3. ПЕРЕКЛЮЧАЕМ СЕЛЕКТОРЫ: Durée -> 2 mois, Affichage -> Tableau
+            # Переключение выпадающих списков на 2 mois и Tableau
             page.evaluate("""() => {
                 const selects = Array.from(document.querySelectorAll('select'));
                 for (const sel of selects) {
                     for (let i = 0; i < sel.options.length; i++) {
-                        const optText = sel.options[i].text.toLowerCase();
-                        // Выбираем 2 mois
-                        if (optText.includes('2 mois') || optText.includes('2 months')) {
+                        const opt = sel.options[i].text.toLowerCase();
+                        if (opt.includes('2 mois') || opt.includes('2 months')) {
                             sel.selectedIndex = i;
                             sel.dispatchEvent(new Event('change', { bubbles: true }));
                             sel.dispatchEvent(new Event('input', { bubbles: true }));
                         }
-                        // Выбираем Tableau
-                        if (optText.includes('tableau') || optText.includes('table')) {
+                        if (opt.includes('tableau') || opt.includes('table')) {
                             sel.selectedIndex = i;
                             sel.dispatchEvent(new Event('change', { bubbles: true }));
                             sel.dispatchEvent(new Event('input', { bubbles: true }));
@@ -105,36 +93,26 @@ def fetch_category_data(cat_key, reload_seed=0):
                     }
                 }
             }""")
-            
-            # Ждем 3 секунды, пока Blazor отрисует таблицу вместо графика
             page.wait_for_timeout(3500)
 
-            # Кнопка 'Afficher tout', если замеры ограничены лимитом ячеек
+            # Раскрытие всех записей при наличии кнопки
             try:
                 page.locator("button, a").filter(has_text=re.compile(r"Afficher tout", re.I)).first.click(force=True, timeout=2000)
                 page.wait_for_timeout(1000)
             except Exception:
                 pass
 
-            # Сохраняем скриншот для визуального подтверждения
-            try:
-                img_bytes = page.screenshot()
-                screenshot_b64 = base64.b64encode(img_bytes).decode("utf-8")
-            except Exception:
-                pass
-
-            # 4. Считываем данные из появившейся таблицы
+            # Извлечение данных из таблицы
             for _ in range(25):
-                extracted = page.evaluate("""(tag) => {
+                extracted = page.evaluate("""() => {
                     const table = document.querySelector('table');
                     if (!table) return null;
 
-                    // Заголовки (имена датчиков)
                     const trs = Array.from(table.querySelectorAll('tr'));
                     let headerCells = [];
                     for (const tr of trs) {
                         const cells = Array.from(tr.querySelectorAll('th, td')).map(c => c.innerText.trim());
-                        if (cells.some(c => c.includes(tag) || c.includes('TA-') || c.includes('TB-'))) {
+                        if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
                             headerCells = cells;
                             break;
                         }
@@ -143,7 +121,6 @@ def fetch_category_data(cat_key, reload_seed=0):
                         headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
                     }
 
-                    // Самая первая строка с данными (свежая дата и значения)
                     const tbody = table.querySelector('tbody') || table;
                     const rows = Array.from(tbody.querySelectorAll('tr'));
                     let dataCells = [];
@@ -156,9 +133,8 @@ def fetch_category_data(cat_key, reload_seed=0):
                     }
 
                     if (headerCells.length === 0 || dataCells.length === 0) return null;
-
                     return { headers: headerCells, values: dataCells };
-                }""", cat["tag"])
+                }""")
 
                 if extracted and extracted.get("values") and extracted.get("headers"):
                     headers = extracted["headers"]
@@ -166,7 +142,7 @@ def fetch_category_data(cat_key, reload_seed=0):
                     latest_date_str = values[0]
 
                     for h, v_str in zip(headers[1:], values[1:]):
-                        if cat["tag"] in h or "TA-" in h or "TB-" in h:
+                        if "TA-" in h or "TB-" in h or cat["tag"] in h:
                             m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                             s_name = m.group(1) if m else h.split()[0].strip()
                             v = clean_num(v_str)
@@ -178,24 +154,14 @@ def fetch_category_data(cat_key, reload_seed=0):
 
                 page.wait_for_timeout(800)
 
-            if not val_map:
-                debug_msg = "Селекторы переключены, но таблица не успела отрендериться."
-
-        except Exception as e_main:
-            debug_msg = f"Ошибка: {e_main}"
+        except Exception:
+            pass
         finally:
             browser.close()
 
-    return {
-        "values": val_map,
-        "date": latest_date_str,
-        "screenshot": screenshot_b64,
-        "debug": debug_msg
-    }
+    return {"values": val_map, "date": latest_date_str}
 
-# --- ГЕОМЕТРИЯ И ИНТЕРПОЛЯЦИЯ RBF ---
 def position(name):
-    # Координаты датчиков: [chainage, angle]
     m_ch = re.search(r"CS(\d+)|S(\d+)", name)
     ch = float(m_ch.group(1) or m_ch.group(2)) * 10.0 if m_ch else 0.0
     ang = 0.0
@@ -218,69 +184,62 @@ def build_operator(names, patches):
                 rows.append([c, a])
     grid = np.array(rows, dtype=np.float32)
     query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
+
+    # Защита от LinAlgError при малом количестве сенсоров (< 3)
+    if len(names) < 3:
+        W = np.full((query.shape[0], len(names)), 1.0 / max(len(names), 1), dtype=np.float32)
+        return pos, W
+
     wrapped = np.vstack([
         np.column_stack([pos[:, 0], pos[:, 1] - 360.0]),
         pos,
         np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
     ])
     wrapped[:, 1] *= angle_scale
-    
-    # Исправлена скобка query.shape[0]
+
     W = np.empty((query.shape[0], len(names)), dtype=np.float32)
     for j in range(len(names)):
         e = np.zeros(len(names))
         e[j] = 1.0
-        rbf = RBFInterpolator(wrapped, np.concatenate([e, e, e]), kernel="thin_plate_spline", smoothing=1.0)
+        rbf = RBFInterpolator(wrapped, np.concatenate([e, e, e]), kernel="linear", smoothing=1.0)
         W[:, j] = rbf(query)
     return pos, W
 
-# --- ИНТЕРФЕЙС STREAMLIT ---
+# --- ИНТЕРФЕЙС ---
 if "reload_counter" not in st.session_state:
     st.session_state.reload_counter = 0
 
-st.sidebar.title("Parametreler")
-selected_comp = st.sidebar.selectbox(
-    "Ölçüm Türü (Layer)",
-    options=list(CATEGORIES.keys()),
-    format_func=lambda k: CATEGORIES[k]["name"]
-)
+col_ctrl, col_btn = st.columns([4, 1])
+with col_ctrl:
+    selected_comp = st.selectbox(
+        "Layer",
+        options=list(CATEGORIES.keys()),
+        format_func=lambda k: CATEGORIES[k]["name"]
+    )
+with col_btn:
+    st.write("")
+    if st.button("Verileri Yenile", use_container_width=True):
+        st.session_state.reload_counter += 1
 
-if st.sidebar.button("🔄 Verileri Yenile", use_container_width=True):
-    st.session_state.reload_counter += 1
-
-st.title("🚇 LOGGIS 3B Tünel İzleme ve RBF İnterpolasyonu")
-
-# Получение данных
-with st.spinner("LoggIS portalından en güncel ölçüm değerleri alınıyor..."):
-    cur_layer = fetch_category_data(selected_comp, reload_seed=st.session_state.reload_counter)
-
+cur_layer = fetch_category_data(selected_comp, reload_seed=st.session_state.reload_counter)
 v_map = cur_layer.get("values", {})
 latest_date = cur_layer.get("date", "")
 
 col_3d, col_info = st.columns([3, 1])
 
 with col_info:
-    st.subheader("Ölçüm Özeti")
-    st.metric("Son Ölçüm Zamanı", latest_date if latest_date else "Bilinmiyor")
-    st.metric("Aktif Sensör Sayısı", len(v_map))
+    st.write(f"**Son Ölçüm Zamanı:** {latest_date if latest_date else 'Bilinmiyor'}")
+    st.write(f"**Aktif Sensör Sayısı:** {len(v_map)}")
     if v_map:
-        st.write("**Sensör Değerleri:**")
-        st.dataframe([{"Sensör": k, f"Değer ({CATEGORIES[selected_comp]['unit']})": v} for k, v in v_map.items()], height=400)
+        st.dataframe([{"Sensör": k, f"Değer ({CATEGORIES[selected_comp]['unit']})": v} for k, v in v_map.items()], height=500)
 
 with col_3d:
     if not v_map:
-        st.error("⚠️ LoggIS sisteminden güncel veri alınamadı.")
-        if cur_layer.get("debug"):
-            st.code(cur_layer["debug"])
-        if cur_layer.get("screenshot"):
-            st.write("📸 **Tarayıcının son ekran görüntüsü:**")
-            st.image(f"data:image/png;base64,{cur_layer['screenshot']}", use_container_width=True)
+        st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı. Lütfen 'Verileri Yenile' butonunu deneyiniz.")
     else:
-        # Построение 3D тоннеля с интерполяцией
         names = list(v_map.keys())
         measured_values = np.array([v_map[n] for n in names])
 
-        # Сетка тоннеля
         chainage_pts = np.linspace(0, 100, 30)
         angle_pts = np.linspace(0, 360, 30)
         patches = [{"chainage": chainage_pts, "angles": angle_pts}]
@@ -309,7 +268,7 @@ with col_3d:
                 zaxis_title="Z (m)",
                 aspectmode="data"
             ),
-            margin=dict(l=0, r=0, b=0, t=30),
-            height=650
+            margin=dict(l=0, r=0, b=0, t=10),
+            height=700
         )
         st.plotly_chart(fig, use_container_width=True)
