@@ -330,9 +330,8 @@ elif selected_comp == "temp":
 else:
     abs_vals = [abs(v) for v in vals if not np.isnan(v)]
     if abs_vals:
-        # 80-й процентиль для бескомпромиссного контраста
         m = round(float(np.percentile(abs_vals, 80)), 1)
-        m = max(m, 2.5)
+        m = max(m, 2.0)
     else:
         m = 10.0
     clim = [-m, m]
@@ -426,16 +425,16 @@ with col_3d:
                     display: flex;
                     flex-direction: column;
                     align-items: center;
-                    background: rgba(10, 14, 23, 0.9);
+                    background: rgba(10, 14, 23, 0.92);
                     padding: 12px 14px;
-                    border: 1px solid rgba(0, 200, 230, 0.5);
-                    box-shadow: 0 0 16px rgba(0, 200, 230, 0.2);
+                    border: 1px solid rgba(0, 200, 230, 0.55);
+                    box-shadow: 0 0 18px rgba(0, 200, 230, 0.25);
                     border-radius: 6px;
                     z-index: 90;
                     user-select: none;
                 }}
                 #legend-title {{
-                    color: #00C8E6;
+                    color: #00E5FF;
                     font-size: 13px;
                     font-weight: 700;
                     margin-bottom: 8px;
@@ -450,7 +449,7 @@ with col_3d:
                 #legend-bar {{
                     width: 18px;
                     border-radius: 3px;
-                    border: 1px solid rgba(255, 255, 255, 0.3);
+                    border: 1px solid rgba(255, 255, 255, 0.35);
                     margin-right: 8px;
                 }}
                 .legend-labels {{
@@ -495,16 +494,16 @@ with col_3d:
                 const legendBar = document.getElementById('legend-bar');
                 const legendTitle = document.getElementById('legend-title');
 
-                // МАКСИМАЛЬНО НАСЫЩЕННЫЕ НЕОНОВЫЕ ПАЛИТРЫ
+                // ПАЛИТРЫ БЕЗ БЕЛЫХ ВЫЦВЕТАНИЙ: ТОЛЬКО СОЧНЫЙ ИНЖЕНЕРНЫЙ СПЕКТР
                 if (payload.comp === "temp") {{
                     legendTitle.innerText = "[°C]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #55FF00, #00FF66, #00EEFF, #0044FF)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #55FF00, #00FF66, #00EEFF, #0022FF)";
                 }} else if (payload.comp === "axial") {{
                     legendTitle.innerText = "[µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #E600FF, #FF00AA, #FFAAFF, #FFFFFF, #AAFFAA, #00FF44, #00B32C)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF00E6, #D000FF, #8800FF, #0066FF, #00D5FF, #00FF99, #00E64D)";
                 }} else {{
                     legendTitle.innerText = "[µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0033, #FF4400, #FF9955, #FFFFFF, #55DDFF, #0088FF, #0033FF)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF3C00, #FF9900, #FFEA00, #00FF44, #00FFFF, #0022FF)";
                 }}
 
                 const scene = new THREE.Scene();
@@ -516,7 +515,7 @@ with col_3d:
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.55; // Увеличена яркость всей сцены
+                renderer.toneMappingExposure = 1.6;
                 container.appendChild(renderer.domElement);
 
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -533,7 +532,7 @@ with col_3d:
                     sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
                 }});
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 1.6);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.7);
                 scene.add(ambientLight);
 
                 const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.8);
@@ -549,36 +548,36 @@ with col_3d:
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
-                // СВЕРХНАСЫЩЕННЫЕ ОПОРНЫЕ ТОЧКИ ДЛЯ ИНТЕРПОЛЯЦИИ ЦВЕТА
+                // ШКАЛЫ БЕЗ БЕЛЫХ ТОЧЕК
                 const SPECTRAL_STOPS = [
-                    new THREE.Color("#0044FF"), // 0.00: холодный синий
-                    new THREE.Color("#00EEFF"), // 0.14
-                    new THREE.Color("#00FF66"), // 0.28
-                    new THREE.Color("#55FF00"), // 0.42
-                    new THREE.Color("#FFFF00"), // 0.56
-                    new THREE.Color("#FFAA00"), // 0.70
-                    new THREE.Color("#FF5500"), // 0.85
-                    new THREE.Color("#FF0000")  // 1.00: чистый красный
+                    new THREE.Color("#0022FF"), // 0.00: синий
+                    new THREE.Color("#00EEFF"), // 0.15: циан
+                    new THREE.Color("#00FF66"), // 0.30: зеленый
+                    new THREE.Color("#55FF00"), // 0.45: салатовый
+                    new THREE.Color("#FFFF00"), // 0.60: желтый
+                    new THREE.Color("#FFAA00"), // 0.75: оранжевый
+                    new THREE.Color("#FF5500"), // 0.90: оранжево-красный
+                    new THREE.Color("#FF0000")  // 1.00: алый
                 ];
 
                 const AXIAL_STOPS = [
-                    new THREE.Color("#00B32C"), // Максимальное сжатие
-                    new THREE.Color("#00FF44"),
-                    new THREE.Color("#AAFFAA"),
-                    new THREE.Color("#FFFFFF"), // Нейтраль
-                    new THREE.Color("#FFAAFF"),
-                    new THREE.Color("#FF00AA"),
-                    new THREE.Color("#E600FF")  // Максимальное растяжение
+                    new THREE.Color("#00E64D"), // сжатие: изумрудно-зеленый
+                    new THREE.Color("#00FF99"),
+                    new THREE.Color("#00D5FF"), // бирюзовый переход
+                    new THREE.Color("#0066FF"), // синий
+                    new THREE.Color("#8800FF"), // фиолетовый
+                    new THREE.Color("#D000FF"),
+                    new THREE.Color("#FF00E6")  // растяжение: ультра-маджента
                 ];
 
                 const HOOP_STOPS = [
-                    new THREE.Color("#0033FF"), // Ультрамарин
-                    new THREE.Color("#0088FF"),
-                    new THREE.Color("#55DDFF"),
-                    new THREE.Color("#FFFFFF"), // Нейтраль
-                    new THREE.Color("#FF9955"),
-                    new THREE.Color("#FF4400"),
-                    new THREE.Color("#FF0033")  // Огненно-алый
+                    new THREE.Color("#0022FF"), // сжатие: глубокий синий
+                    new THREE.Color("#00FFFF"), // циан
+                    new THREE.Color("#00FF44"), // сочный зеленый (середина)
+                    new THREE.Color("#FFEA00"), // желтый
+                    new THREE.Color("#FF9900"), // оранжевый
+                    new THREE.Color("#FF3C00"),
+                    new THREE.Color("#FF0022")  // растяжение: сочный алый
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -593,21 +592,18 @@ with col_3d:
                 }}
 
                 function getColorForValue(val, clim, comp) {{
-                    if (val === undefined || isNaN(val)) return new THREE.Color(0x555555);
+                    if (val === undefined || isNaN(val)) return new THREE.Color(0x334455);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
-                    // Силовое насыщение (усиленный контраст) для мгновенной читаемости
-                    if (comp === "hoop" || comp === "axial") {{
-                        const sign = t >= 0.5 ? 1.0 : -1.0;
-                        const dist = Math.abs(t - 0.5) * 2.0;
-                        const boostedDist = Math.pow(dist, 0.38); // Экстремальный контраст деформаций
-                        t = 0.5 + sign * (boostedDist / 2.0);
-                        return (comp === "hoop") ? sampleColorRamp(HOOP_STOPS, t) : sampleColorRamp(AXIAL_STOPS, t);
+                    // Плавный и контрастный градиент без белого сектора
+                    if (comp === "hoop") {{
+                        return sampleColorRamp(HOOP_STOPS, t);
+                    }} else if (comp === "axial") {{
+                        return sampleColorRamp(AXIAL_STOPS, t);
                     }} else {{
-                        const tTemp = Math.pow(t, 0.75);
-                        return sampleColorRamp(SPECTRAL_STOPS, tTemp);
+                        return sampleColorRamp(SPECTRAL_STOPS, t);
                     }}
                 }}
 
@@ -757,13 +753,12 @@ with col_3d:
                                     const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
                                     const sensorColor = isSelected ? new THREE.Color(0xFFEA00) : getColorForValue(rawVal, payload.clim, payload.comp);
 
-                                    // Максимально яркое неоновое свечение колец датчиков
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: sensorColor,
                                         emissive: sensorColor,
-                                        emissiveIntensity: isSelected ? 1.6 : 1.2,
+                                        emissiveIntensity: isSelected ? 1.7 : 1.3,
                                         roughness: 0.0,
-                                        metalness: 0.3
+                                        metalness: 0.2
                                     }});
 
                                     if (isSelected) {{
@@ -826,7 +821,8 @@ with col_3d:
                         }}
                     }});
 
-                    const R_INFLUENCE = (payload.comp === "hoop") ? 48.0 : 36.0;
+                    // ШИРОКИЙ РАДИУС ДЛЯ ПОЛНОГО ПОКРЫТИЯ ТОННЕЛЯ БЕЗ ПРОБЕЛОВ
+                    const R_INFLUENCE = (payload.comp === "hoop") ? 60.0 : 45.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -842,16 +838,17 @@ with col_3d:
                         const activeTun = isTB ? "TB" : "TA";
                         
                         let pool = interpolationSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
-                        if (pool.length < 2) pool = activeSensors;
+                        if (pool.length < 2) pool = interpolationSensors;
 
                         tMesh.updateMatrixWorld(true);
 
+                        // ЕСЛИ ДАННЫХ НЕТ: ТЕМНЫЙ СТИЛЬНЫЙ ГРАФИТОВЫЙ ФОН ОБДЕЛКИ (#151C28)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
-                                colors[idx] = 0.92;
-                                colors[idx + 1] = 0.94;
-                                colors[idx + 2] = 0.97;
+                                colors[idx] = 0.082;
+                                colors[idx + 1] = 0.110;
+                                colors[idx + 2] = 0.157;
                             }}
                         }} else {{
                             for (let i = 0; i < posAttr.count; i++) {{
@@ -867,9 +864,9 @@ with col_3d:
                                     
                                     if (d < R_INFLUENCE) {{
                                         const ratio = d / R_INFLUENCE;
-                                        const wEnvelope = Math.pow(1.0 - ratio, 1.15);
-                                        // Максимально плотный фокус цвета в эпицентре (0.002)
-                                        const wCore = 1.0 / Math.pow(d * d + 0.002, 1.55);
+                                        const wEnvelope = Math.pow(1.0 - ratio, 1.1);
+                                        // Мощное насыщение вблизи датчика
+                                        const wCore = 1.0 / Math.pow(d * d + 0.001, 1.4);
                                         const w = wEnvelope * wCore;
 
                                         const c = getColorForValue(s.val, payload.clim, payload.comp);
@@ -882,14 +879,14 @@ with col_3d:
 
                                 const idx = i * 3;
                                 if (totalWeight > 0.00001) {{
-                                    // Усиливаем сочность каналов на 15%
-                                    colors[idx] = Math.min(1.0, (accumR / totalWeight) * 1.12);
-                                    colors[idx + 1] = Math.min(1.0, (accumG / totalWeight) * 1.12);
-                                    colors[idx + 2] = Math.min(1.0, (accumB / totalWeight) * 1.12);
+                                    colors[idx] = Math.min(1.0, (accumR / totalWeight) * 1.15);
+                                    colors[idx + 1] = Math.min(1.0, (accumG / totalWeight) * 1.15);
+                                    colors[idx + 2] = Math.min(1.0, (accumB / totalWeight) * 1.15);
                                 }} else {{
-                                    colors[idx] = 0.92;
-                                    colors[idx + 1] = 0.94;
-                                    colors[idx + 2] = 0.97;
+                                    // Вне радиуса — нейтральный графитовый тон
+                                    colors[idx] = 0.082;
+                                    colors[idx + 1] = 0.110;
+                                    colors[idx + 2] = 0.157;
                                 }}
                             }}
                         }}
@@ -898,14 +895,13 @@ with col_3d:
                         geom.attributes.color.needsUpdate = true;
                         
                         const isTransparent = payload.tunnelOpacity < 0.98;
-                        // Яркий материал без темных теней для полной передачи цвета
                         tMesh.material = new THREE.MeshStandardMaterial({{
                             color: 0xffffff,
                             vertexColors: true,
                             transparent: isTransparent,
                             opacity: payload.tunnelOpacity,
                             roughness: 0.15,
-                            metalness: 0.0,
+                            metalness: 0.05,
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
