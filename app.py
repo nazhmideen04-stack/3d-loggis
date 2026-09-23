@@ -328,7 +328,6 @@ if not vals:
 elif selected_comp == "temp":
     clim = [round(float(min(vals)), 1), round(float(max(vals)), 1)]
 else:
-    # Динамический расчет шкалы с фокусом на 95-й процентиль для исключения затухания деформаций CS
     abs_vals = [abs(v) for v in vals if not np.isnan(v)]
     if abs_vals:
         m = round(float(np.percentile(abs_vals, 92)), 1)
@@ -341,6 +340,7 @@ with col_nav:
     st.markdown("---")
     st.subheader("GÖRÜNÜM AYARLARI")
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
+    show_meters = st.checkbox("Metre Cetveli Göster", value=True)
 
     st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
@@ -370,7 +370,8 @@ with col_3d:
             "unit": cat_cfg["unit"],
             "clim": clim,
             "comp": selected_comp,
-            "tunnelOpacity": float(tunnel_opacity)
+            "tunnelOpacity": float(tunnel_opacity),
+            "showMeters": show_meters
         }
         json_payload = json.dumps(payload_data)
 
@@ -583,11 +584,10 @@ with col_3d:
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
-                    // Для категории hoop (CS): нелинейное насыщение, чтобы цвета были контрастными
                     if (comp === "hoop") {{
                         const sign = t >= 0.5 ? 1.0 : -1.0;
                         const dist = Math.abs(t - 0.5) * 2.0;
-                        const boostedDist = Math.pow(dist, 0.65); // Усиливаем слабые значения деформаций
+                        const boostedDist = Math.pow(dist, 0.65);
                         t = 0.5 + sign * (boostedDist / 2.0);
                         return sampleColorRamp(HOOP_STOPS, t);
                     }} else if (comp === "axial") {{
@@ -600,6 +600,46 @@ with col_3d:
                 function extractSensorId(name) {{
                     const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
                     return m ? m[0] : name;
+                }}
+
+                // Генератор 3D-текстовых спрайтов в синем фирменном стиле DESTECH
+                function createBrandSprite(text, fontSize = 38, isTitle = false) {{
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 380;
+                    canvas.height = 140;
+                    const ctx = canvas.getContext('2d');
+
+                    if (isTitle) {{
+                        ctx.fillStyle = 'rgba(10, 14, 23, 0.92)';
+                        ctx.strokeStyle = '#00C8E6';
+                        ctx.lineWidth = 4;
+                        ctx.strokeRect(6, 6, 368, 128);
+                        ctx.fillRect(6, 6, 368, 128);
+
+                        ctx.font = '800 48px Syne, Chakra Petch, sans-serif';
+                        ctx.fillStyle = '#00C8E6';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, 190, 70);
+                    }} else {{
+                        ctx.fillStyle = 'rgba(10, 14, 23, 0.82)';
+                        ctx.strokeStyle = 'rgba(0, 200, 230, 0.6)';
+                        ctx.lineWidth = 2.5;
+                        ctx.strokeRect(6, 6, 368, 128);
+                        ctx.fillRect(6, 6, 368, 128);
+
+                        ctx.font = '700 ' + fontSize + 'px Chakra Petch, sans-serif';
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, 190, 70);
+                    }}
+
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const mat = new THREE.SpriteMaterial({{ map: texture, depthTest: false }});
+                    const sprite = new THREE.Sprite(mat);
+                    sprite.scale.set(isTitle ? 4.2 : 2.5, isTitle ? 1.6 : 0.95, 1);
+                    return sprite;
                 }}
 
                 const binaryStr = atob(modelB64);
@@ -722,7 +762,6 @@ with col_3d:
                         }}
                     }});
 
-                    // ДЛЯ CS (HOOP) РАДИУС РАСШИРЕН ДО 42 МЕТРОВ
                     const R_INFLUENCE = (payload.comp === "hoop") ? 42.0 : 28.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -764,9 +803,7 @@ with col_3d:
                                     
                                     if (d < R_INFLUENCE) {{
                                         const ratio = d / R_INFLUENCE;
-                                        // Плавная оболочка спада на расширенную дистанцию
                                         const wEnvelope = Math.pow(1.0 - ratio, payload.comp === "hoop" ? 1.4 : 1.8);
-                                        // Мощное усиление в эпицентре кольца датчиков
                                         const wCore = 1.0 / Math.pow(d * d + 0.02, payload.comp === "hoop" ? 1.35 : 1.25);
                                         const w = wEnvelope * wCore;
 
@@ -808,6 +845,86 @@ with col_3d:
                         tMesh.material.needsUpdate = true;
                     }});
 
+                    // 1. РАЗМЕЩЕНИЕ НЕОНОВЫХ ЛЕЙБЛОВ TÜNEL TA И TÜNEL TB НАД МОДЕЛЯМИ
+                    const boxTA = new THREE.Box3();
+                    const boxTB = new THREE.Box3();
+                    let hasTA = false, hasTB = false;
+
+                    tunnelMeshes.forEach(tm => {{
+                        const u = tm.name.toUpperCase();
+                        if (u.includes("TB")) {{
+                            boxTB.expandByObject(tm);
+                            hasTB = true;
+                        }} else if (u.includes("TA")) {{
+                            boxTA.expandByObject(tm);
+                            hasTA = true;
+                        }}
+                    }});
+
+                    const labelsGroup = new THREE.Group();
+
+                    if (hasTA) {{
+                        const cA = boxTA.getCenter(new THREE.Vector3());
+                        const spriteTA = createBrandSprite("TÜNEL TA", 44, true);
+                        spriteTA.position.set(cA.x, boxTA.max.y + 2.2, boxTA.min.z - 1.5);
+                        labelsGroup.add(spriteTA);
+                    }}
+
+                    if (hasTB) {{
+                        const cB = boxTB.getCenter(new THREE.Vector3());
+                        const spriteTB = createBrandSprite("TÜNEL TB", 44, true);
+                        spriteTB.position.set(cB.x, boxTB.max.y + 2.2, boxTB.min.z - 1.5);
+                        labelsGroup.add(spriteTB);
+                    }}
+
+                    scene.add(labelsGroup);
+
+                    // 2. РАЗМЕЩЕНИЕ ПИКЕТАЖНОЙ МАСШТАБНОЙ ЛИНЕЙКИ ВДОЛЬ ТОННЕЛЯ
+                    if (payload.showMeters) {{
+                        const overallBox = new THREE.Box3();
+                        tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
+
+                        if (!overallBox.isEmpty()) {{
+                            const rulerGroup = new THREE.Group();
+                            const zStart = overallBox.min.z;
+                            const zEnd = overallBox.max.z;
+                            const lengthM = Math.max(zEnd - zStart, 10.0);
+                            const step = 10.0;
+                            const stepsCount = Math.floor(lengthM / step);
+                            const yRuler = overallBox.min.y - 0.25;
+                            const xRuler = overallBox.max.x + 2.2;
+
+                            // Продольная линия
+                            const axisPoints = [
+                                new THREE.Vector3(xRuler, yRuler, zStart),
+                                new THREE.Vector3(xRuler, yRuler, zEnd)
+                            ];
+                            const axisGeom = new THREE.BufferGeometry().setFromPoints(axisPoints);
+                            const axisMat = new THREE.LineBasicMaterial({{ color: 0x00C8E6, linewidth: 2 }});
+                            rulerGroup.add(new THREE.Line(axisGeom, axisMat));
+
+                            // Деления и метки шагом 10 м
+                            for (let i = 0; i <= stepsCount; i++) {{
+                                const curZ = zStart + i * step;
+                                const distanceM = (i * step).toFixed(0);
+
+                                const tickPoints = [
+                                    new THREE.Vector3(xRuler - 0.5, yRuler, curZ),
+                                    new THREE.Vector3(xRuler + 0.5, yRuler, curZ)
+                                ];
+                                const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
+                                rulerGroup.add(new THREE.Line(tickGeom, axisMat));
+
+                                const labelSprite = createBrandSprite(distanceM + " m", 38, false);
+                                labelSprite.position.set(xRuler + 2.0, yRuler + 0.35, curZ);
+                                rulerGroup.add(labelSprite);
+                            }}
+
+                            scene.add(rulerGroup);
+                        }}
+                    }}
+
+                    // 3. УПРАВЛЕНИЕ КАМЕРОЙ
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
