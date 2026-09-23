@@ -16,6 +16,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
+# Фирменный стиль DESTECH
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -320,6 +321,16 @@ else:
 
 with col_nav:
     st.markdown("---")
+    st.subheader("TÜNEL GÖRÜNÜMÜ")
+    
+    # Кнопки включения/отключения каждого тоннеля
+    show_ta = st.checkbox("Tünel TA Göster", value=True)
+    show_tb = st.checkbox("Tünel TB Göster", value=True)
+    
+    # Ползунок прозрачности для тоннелей
+    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=75, step=5) / 100.0
+
+    st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
@@ -346,7 +357,10 @@ with col_3d:
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
-            "comp": selected_comp
+            "comp": selected_comp,
+            "showTA": show_ta,
+            "showTB": show_tb,
+            "tunnelOpacity": float(tunnel_opacity)
         }
         json_payload = json.dumps(payload_data)
 
@@ -440,7 +454,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE TÜM SENSÖRLERİN İNTERPOLASYONU YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE KESKİN İNTERPOLASYON YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="color-legend">
@@ -465,12 +479,13 @@ with col_3d:
                 const loaderText = document.getElementById('loader');
                 const legendBar = document.getElementById('legend-bar');
 
+                // Контрастные насыщенные градиенты
                 if (payload.comp === "temp") {{
-                    legendBar.style.background = "linear-gradient(to bottom, #d73027, #f46d43, #fdae61, #fee08b, #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #00FF88, #0099FF, #0011DD)";
                 }} else if (payload.comp === "axial") {{
-                    legendBar.style.background = "linear-gradient(to bottom, #6A0080, #E040FB, #F0F0F0, #00E676, #006428)";
+                    legendBar.style.background = "linear-gradient(to bottom, #9900CC, #FF00EE, #FFFFFF, #00FF44, #008811)";
                 }} else {{
-                    legendBar.style.background = "linear-gradient(to bottom, #C60000, #FF4422, #FFFFFF, #1E9AD6, #1858BA)";
+                    legendBar.style.background = "linear-gradient(to bottom, #EE0000, #FF3311, #FFFFFF, #00AAFF, #0033CC)";
                 }}
 
                 const scene = new THREE.Scene();
@@ -482,7 +497,7 @@ with col_3d:
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.25;
+                renderer.toneMappingExposure = 1.35;
                 container.appendChild(renderer.domElement);
 
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -499,7 +514,7 @@ with col_3d:
                 controls.panSpeed = 1.1;
                 controls.screenSpacePanning = true;
 
-                // Zoom-to-cursor
+                // Зум ровно в точку под курсором
                 const zoomRaycaster = new THREE.Raycaster();
                 const zoomMouse = new THREE.Vector2();
                 let wheelRafPending = false;
@@ -534,14 +549,14 @@ with col_3d:
                     }});
                 }}, {{ passive: false }});
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.25);
                 scene.add(ambientLight);
 
-                const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.4);
+                const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.5);
                 dirLight1.position.set(40, 60, 50);
                 scene.add(dirLight1);
 
-                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.9);
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
                 dirLight2.position.set(-40, -20, -50);
                 scene.add(dirLight2);
 
@@ -550,26 +565,32 @@ with col_3d:
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
+                // Высококонтрастная и насыщенная интерполяция
                 function getColorForValue(val, clim, comp) {{
-                    if (val === undefined || isNaN(val)) return new THREE.Color(0x555555);
+                    if (val === undefined || isNaN(val)) return new THREE.Color(0x333333);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
                     const c = new THREE.Color();
                     if (comp === "temp") {{
-                        c.setHSL((1.0 - t) * 0.7, 1.0, 0.5);
+                        c.setHSL((1.0 - t) * 0.68, 1.0, 0.5);
                     }} else if (comp === "axial") {{
                         if (t < 0.5) {{
-                            c.setRGB(0.0, 0.39 + t * 1.0, 0.15 + t * 0.6);
+                            const f = t * 2.0;
+                            c.setRGB(1.0 - f, 1.0, 1.0 - f * 0.7);
                         }} else {{
-                            c.setRGB(0.5 + (t - 0.5) * 0.9, 0.1, 0.5 + (t - 0.5) * 0.9);
+                            const f = (t - 0.5) * 2.0;
+                            c.setRGB(0.7 + f * 0.3, 1.0 - f * 0.9, 0.9 + f * 0.1);
                         }}
                     }} else {{
+                        // Hoop: Яркий синий -> Белый -> Яркий красный
                         if (t < 0.5) {{
-                            c.setRGB(0.1 + t * 1.8, 0.35 + t * 1.3, 0.8 + t * 0.4);
+                            const f = t * 2.0;
+                            c.setRGB(f, f * 0.85 + 0.1, 1.0);
                         }} else {{
-                            c.setRGB(1.0, (1.0 - t) * 1.4, (1.0 - t) * 0.3);
+                            const f = (t - 0.5) * 2.0;
+                            c.setRGB(1.0, 1.0 - f * 0.9, 1.0 - f);
                         }}
                     }}
                     return c;
@@ -622,13 +643,13 @@ with col_3d:
                                 child.material = new THREE.MeshStandardMaterial({{
                                     color: sensorColor,
                                     emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
-                                    emissiveIntensity: isSelected ? 0.95 : 0.45,
-                                    roughness: 0.2,
-                                    metalness: 0.3
+                                    emissiveIntensity: isSelected ? 1.0 : 0.65,
+                                    roughness: 0.15,
+                                    metalness: 0.2
                                 }});
 
                                 if (isSelected) {{
-                                    child.scale.set(1.65, 1.65, 1.65);
+                                    child.scale.set(1.75, 1.75, 1.75);
                                     selectedMeshRef = child;
                                 }}
                             }} else {{
@@ -646,7 +667,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 2. Сбор ВСЕХ сенсоров с валидными значениями
+                    // 2. Сбор позиций сенсоров
                     const allSensors = [];
                     sensorMeshes.forEach(sMesh => {{
                         if (sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
@@ -664,8 +685,21 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. ПОЛНАЯ ИНТЕРПОЛЯЦИЯ: ВСЕ СЕНСОРЫ УЧАСТВУЮТ В ОКРАСКЕ ТОННЕЛЕЙ
+                    // 3. ЯРКАЯ И ЧЕТКАЯ ИНТЕРПОЛЯЦИЯ С УПРАВЛЕНИЕМ ВИДИМОСТЬЮ И ПРОЗРАЧНОСТЬЮ
                     tunnelMeshes.forEach(tMesh => {{
+                        const isTB = tMesh.name.toUpperCase().includes("TB");
+                        
+                        // Проверка чекбоксов включения/отключения тоннелей
+                        if (isTB && !payload.showTB) {{
+                            tMesh.visible = false;
+                            return;
+                        }}
+                        if (!isTB && !payload.showTA) {{
+                            tMesh.visible = false;
+                            return;
+                        }}
+                        tMesh.visible = true;
+
                         const geom = tMesh.geometry;
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
 
@@ -674,12 +708,11 @@ with col_3d:
                         const localV = new THREE.Vector3();
                         const worldV = new THREE.Vector3();
 
-                        const isTB = tMesh.name.toUpperCase().includes("TB");
                         const activeTun = isTB ? "TB" : "TA";
-
-                        // Выбираем сенсоры для тоннеля (с фоллбэком на все сенсоры)
                         let pool = allSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
                         if (pool.length < 3) pool = allSensors;
+
+                        const R_SHARP = 5.5; // Сжатый радиус влияния для четких границ переходов
 
                         for (let i = 0; i < posAttr.count; i++) {{
                             localV.fromBufferAttribute(posAttr, i);
@@ -691,8 +724,9 @@ with col_3d:
                             for (let j = 0; j < pool.length; j++) {{
                                 const s = pool[j];
                                 const d = worldV.distanceTo(s.pos);
-                                // Мягкая интерполяционная формула без выпадения в темноту
-                                const w = 1.0 / Math.pow(d + 0.8, 1.6);
+                                
+                                // Повышенная резкость переходов между датчиками
+                                const w = 1.0 / Math.pow(d + 0.35, 2.4);
                                 const c = getColorForValue(s.val, payload.clim, payload.comp);
 
                                 accumR += c.r * w;
@@ -704,16 +738,21 @@ with col_3d:
                             if (totalWeight > 0) {{
                                 colors.push(accumR / totalWeight, accumG / totalWeight, accumB / totalWeight);
                             }} else {{
-                                colors.push(0.1, 0.16, 0.26);
+                                colors.push(0.08, 0.12, 0.2);
                             }}
                         }}
 
                         geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
                         
+                        // Настройка прозрачности обделки
+                        const isTransparent = payload.tunnelOpacity < 0.98;
                         tMesh.material = new THREE.MeshStandardMaterial({{
                             vertexColors: true,
-                            roughness: 0.35,
+                            transparent: isTransparent,
+                            opacity: payload.tunnelOpacity,
+                            roughness: 0.3,
                             metalness: 0.1,
+                            depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
                     }});
@@ -730,9 +769,9 @@ with col_3d:
                         flyCameraTo(selectedMeshRef, false);
                     }} else {{
                         camera.position.set(
-                            center.x - maxDim * 0.45,
-                            center.y + maxDim * 0.35,
-                            center.z + maxDim * 0.55
+                            center.x - maxDim * 0.42,
+                            center.y + maxDim * 0.32,
+                            center.z + maxDim * 0.52
                         );
                         controls.update();
                     }}
