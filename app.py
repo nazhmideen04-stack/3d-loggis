@@ -66,19 +66,21 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-/* Заголовок "Görüntülenecek Bileşen:" */
+
+    /* Заголовок "Görüntülenecek Bileşen:" (делаем его маленьким и аккуратным) */
     div[data-testid="stRadio"] > label p,
     div[data-testid="stRadio"] > label {
-        font-size: 13px !important;  /* <--- Уменьшите здесь (например: 12px, 13px или 14px) */
+        font-size: 12px !important;  /* <--- ВОТ ЗДЕСЬ МЕНЯТЬ РАЗМЕР ЗАГОЛОВКА */
         font-weight: 600 !important;
         color: #8397AD !important;
         text-transform: uppercase;
         letter-spacing: 1px;
-        margin-bottom: 8px !important;
+        margin-bottom: 6px !important;
     }
-    /* Крупный текст пунктов радиокнопки */
-    div[data-testid="stRadio"] label p {
-        font-size: 21px !important;
+
+    /* Сами пункты выбора (Çevresel gerinim, Boyuna gerinim, Sıcaklık) */
+    div[data-testid="stRadio"] div[role="radiogroup"] label p {
+        font-size: 21px !important;  /* <--- ВОТ ЗДЕСЬ МЕНЯТЬ РАЗМЕР САМИХ ВАРИАНТОВ */
         font-weight: 700 !important;
         color: #E6F0FA !important;
         line-height: 1.4 !important;
