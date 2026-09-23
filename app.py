@@ -438,7 +438,7 @@ with col_3d:
                     font-size: 13px;
                     font-weight: 700;
                     margin-bottom: 8px;
-                    text-transform: uppercase;
+                    text-transform: none !important; /* Отключаем uppercase, чтобы греческая µ не превращалась в M */
                     letter-spacing: 0.5px;
                 }}
                 .legend-bar-container {{
@@ -494,7 +494,7 @@ with col_3d:
                 const legendBar = document.getElementById('legend-bar');
                 const legendTitle = document.getElementById('legend-title');
 
-                // ПРЯМОЕ ОБНОВЛЕНИЕ ЕДИНИЦЫ ИЗМЕРЕНИЯ В ЛЕГЕНДЕ
+                // ПРЯМОЕ НАЗНАЧЕНИЕ ЕДИНИЦЫ ИЗМЕРЕНИЯ БЕЗ UPPERCASE
                 if (payload.comp === "temp") {{
                     legendTitle.innerText = "[°C]";
                     legendBar.style.background = "linear-gradient(to bottom, #d73027, #f46d43, #fdae61, #fee08b, #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837)";
@@ -691,6 +691,7 @@ with col_3d:
                             const name = child.name;
                             const uName = name.toUpperCase();
 
+                            // ОБЪЕКТ BOX001: ПОЛУПРОЗРАЧНОЕ ТОНИРОВАННОЕ СТЕКЛО
                             if (uName.includes("BOX001")) {{
                                 child.material = new THREE.MeshStandardMaterial({{
                                     color: 0x0E2238,
