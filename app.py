@@ -173,38 +173,63 @@ def fetch_category_data(cat_key, reload_seed=0):
         page = context.new_page()
 
         try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
-
-            # 1. Открываем вкладку Types
-            types_tab = page.locator("text='Types'").first
-            if types_tab.is_visible():
-                types_tab.click()
-                page.wait_for_timeout(800)
-
-            # 2. Выбираем категорию сенсоров (Temperature / Longitudinal / Othoradial)
-            # Триггерим клик через JS, чтобы Blazor переключил 'Selected : 1/3'
-            page.evaluate(f"""() => {{
-                const targetText = '{cat['name']}';
-                const items = Array.from(document.querySelectorAll('*'));
-                for (const el of items) {{
-                    if (el.children.length === 0 && el.textContent.trim().toLowerCase() === targetText.toLowerCase()) {{
-                        el.click();
-                        el.dispatchEvent(new MouseEvent('click', {{ bubbles: true, cancelable: true }}));
-                        break;
-                    }}
-                }}
-            }}""")
+            page.goto(URL, timeout=60000, wait_until="networkidle")
             page.wait_for_timeout(2500)
 
-            # 3. Мягкий опрос DOM: проверяем наличие таблицы каждые 800 мс (без TimeoutError)
+            # 1. Переходим на вкладку Types
+            # Ищем точную кнопку вкладки Types в верхней навигации
+            types_tab = page.locator("button, div, span, a").filter(has_text=re.compile(r"^Types$", re.I)).last
+            if types_tab.is_visible():
+                types_tab.click(force=True)
+                page.wait_for_timeout(800)
+
+            # 2. Реальный клик по нужной строке в списке
+            # В Blazor важно сделать hover, а затем click точно по координатам элемента
+            item_locator = page.get_by_text(cat["name"], exact=True).first
+            if not item_locator.is_visible():
+                item_locator = page.locator(f"*:text-matches('{cat['name']}', 'i')").first
+
+            item_locator.hover()
+            page.wait_for_timeout(300)
+            item_locator.click(force=True)
+            page.wait_for_timeout(1000)
+
+            # 3. Если выбор не зафиксировался, делаем двойной клик или клик по родителю
+            is_selected = page.evaluate("""() => {
+                const b = document.body.innerText;
+                return b.includes('Selected : 1') || b.includes('Selected: 1');
+            }""")
+
+            if not is_selected:
+                # Пробуем через имитацию прямого события Blazor
+                page.evaluate(f"""() => {{
+                    const els = Array.from(document.querySelectorAll('*'));
+                    const target = els.find(e => e.children.length === 0 && e.textContent.trim().toLowerCase() === '{cat['name']}'.toLowerCase());
+                    if (target) {{
+                        ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {{
+                            target.dispatchEvent(new MouseEvent(evt, {{ bubbles: true, cancelable: true, view: window }}));
+                        }});
+                    }}
+                }}""")
+                page.wait_for_timeout(1500)
+
+            # 4. Проверяем кнопку 'Afficher tout' (если таблица ограничена)
+            try:
+                afficher_btn = page.locator("button, a").filter(has_text=re.compile(r"Afficher tout", re.I)).first
+                if afficher_btn.is_visible():
+                    afficher_btn.click(force=True)
+                    page.wait_for_timeout(1000)
+            except Exception:
+                pass
+
+            # 5. Считываем данные из таблицы
             for _ in range(35):
                 extracted = page.evaluate("""(tag) => {
                     const table = document.querySelector('table');
                     if (!table) return null;
 
-                    // 1. Поиск строки с датчиками в thead
-                    const trs = Array.from(table.querySelectorAll('thead tr, tr'));
+                    // Находим строку с именами сенсоров
+                    const trs = Array.from(table.querySelectorAll('tr'));
                     let headerCells = [];
                     for (const tr of trs) {
                         const cells = Array.from(tr.querySelectorAll('th, td')).map(c => c.innerText.trim());
@@ -218,7 +243,7 @@ def fetch_category_data(cat_key, reload_seed=0):
                         headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
                     }
 
-                    // 2. Поиск первой строки данных в tbody (самый свежий замер)
+                    // Находим первую строку с датой и значениями в tbody
                     const tbody = table.querySelector('tbody') || table;
                     const bodyRows = Array.from(tbody.querySelectorAll('tr'));
                     let dataCells = [];
@@ -239,10 +264,8 @@ def fetch_category_data(cat_key, reload_seed=0):
                     headers = extracted["headers"]
                     values = extracted["values"]
 
-                    # Первая ячейка — дата и время замера (напр. 24/08/2026 19:00:00)
                     latest_date_str = values[0]
 
-                    # Сопоставляем заголовки датчиков со значениями
                     for h, v_str in zip(headers[1:], values[1:]):
                         if cat["tag"] in h or "TA-" in h or "TB-" in h:
                             m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
