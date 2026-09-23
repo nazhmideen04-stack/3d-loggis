@@ -330,7 +330,6 @@ elif selected_comp == "temp":
 else:
     abs_vals = [abs(v) for v in vals if not np.isnan(v)]
     if abs_vals:
-        # 85-й процентиль дает максимально сфокусированный и четкий контраст
         m = round(float(np.percentile(abs_vals, 85)), 1)
         m = max(m, 3.0)
     else:
@@ -589,15 +588,13 @@ with col_3d:
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
-                    // УСИЛЕННЫЙ КОНТРАСТ: вытягиваем насыщенность деформаций
                     if (comp === "hoop" || comp === "axial") {{
                         const sign = t >= 0.5 ? 1.0 : -1.0;
                         const dist = Math.abs(t - 0.5) * 2.0;
-                        const boostedDist = Math.pow(dist, 0.45); // Максимально выразительный контраст
+                        const boostedDist = Math.pow(dist, 0.45);
                         t = 0.5 + sign * (boostedDist / 2.0);
                         return (comp === "hoop") ? sampleColorRamp(HOOP_STOPS, t) : sampleColorRamp(AXIAL_STOPS, t);
                     }} else {{
-                        // Для температуры: легкий контраст пиков
                         const tTemp = Math.pow(t, 0.85);
                         return sampleColorRamp(SPECTRAL_STOPS, tTemp);
                     }}
@@ -678,13 +675,28 @@ with col_3d:
                             const name = child.name;
                             const uName = name.toUpperCase();
 
+                            // ОБЪЕКТ BOX001: ПОЛУПРОЗРАЧНОЕ ТОНИРОВАННОЕ СТЕКЛО
                             if (uName.includes("BOX001")) {{
-                                child.material = new THREE.MeshBasicMaterial({{
-                                    color: 0x1E3A5F,
-                                    wireframe: true,
+                                child.material = new THREE.MeshStandardMaterial({{
+                                    color: 0x0E2238,
+                                    emissive: 0x001122,
                                     transparent: true,
-                                    opacity: 0.15
+                                    opacity: 0.12,
+                                    roughness: 0.2,
+                                    metalness: 0.1,
+                                    depthWrite: false,
+                                    side: THREE.DoubleSide
                                 }});
+
+                                // Тонкий полупрозрачный каркас для сохранения четкости геометрии
+                                const edges = new THREE.EdgesGeometry(child.geometry);
+                                const lineMat = new THREE.LineBasicMaterial({{
+                                    color: 0x00C8E6,
+                                    transparent: true,
+                                    opacity: 0.18
+                                }});
+                                const wireframeLine = new THREE.LineSegments(edges, lineMat);
+                                child.add(wireframeLine);
                                 return;
                             }}
 
@@ -778,7 +790,6 @@ with col_3d:
                         }}
                     }});
 
-                    // ШИРОКИЙ ОХВАТ И МАКСИМАЛЬНАЯ ВЫРАЗИТЕЛЬНОСТЬ
                     const R_INFLUENCE = (payload.comp === "hoop") ? 45.0 : 32.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -821,7 +832,6 @@ with col_3d:
                                     if (d < R_INFLUENCE) {{
                                         const ratio = d / R_INFLUENCE;
                                         const wEnvelope = Math.pow(1.0 - ratio, 1.25);
-                                        // Сингулярный фокус ядра для максимально выразительного пика
                                         const wCore = 1.0 / Math.pow(d * d + 0.005, 1.45);
                                         const w = wEnvelope * wCore;
 
