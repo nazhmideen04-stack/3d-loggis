@@ -330,7 +330,7 @@ elif selected_comp == "temp":
 else:
     abs_vals = [abs(v) for v in vals if not np.isnan(v)]
     if abs_vals:
-        m = round(float(np.percentile(abs_vals, 80)), 1)
+        m = round(float(np.percentile(abs_vals, 85)), 1)
         m = max(m, 2.0)
     else:
         m = 10.0
@@ -494,16 +494,16 @@ with col_3d:
                 const legendBar = document.getElementById('legend-bar');
                 const legendTitle = document.getElementById('legend-title');
 
-                // ПАЛИТРЫ БЕЗ БЕЛЫХ ВЫЦВЕТАНИЙ: ТОЛЬКО СОЧНЫЙ ИНЖЕНЕРНЫЙ СПЕКТР
+                // ПОЛНОСПЕКТРАЛЬНЫЕ РАДУЖНЫЕ ГРАДИЕНТЫ ДЛЯ ВСЕХ КАТЕГОРИЙ
                 if (payload.comp === "temp") {{
                     legendTitle.innerText = "[°C]";
                     legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #55FF00, #00FF66, #00EEFF, #0022FF)";
                 }} else if (payload.comp === "axial") {{
                     legendTitle.innerText = "[µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF00E6, #D000FF, #8800FF, #0066FF, #00D5FF, #00FF99, #00E64D)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0033, #FF6600, #FFDD00, #00E64D, #00D5FF, #2255FF, #7700FF)";
                 }} else {{
                     legendTitle.innerText = "[µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF3C00, #FF9900, #FFEA00, #00FF44, #00FFFF, #0022FF)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF4D00, #FFA600, #FFE600, #22E600, #00E5FF, #0026FF)";
                 }}
 
                 const scene = new THREE.Scene();
@@ -548,36 +548,35 @@ with col_3d:
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
-                // ШКАЛЫ БЕЗ БЕЛЫХ ТОЧЕК
-                const SPECTRAL_STOPS = [
-                    new THREE.Color("#0022FF"), // 0.00: синий
-                    new THREE.Color("#00EEFF"), // 0.15: циан
-                    new THREE.Color("#00FF66"), // 0.30: зеленый
-                    new THREE.Color("#55FF00"), // 0.45: салатовый
-                    new THREE.Color("#FFFF00"), // 0.60: желтый
-                    new THREE.Color("#FFAA00"), // 0.75: оранжевый
-                    new THREE.Color("#FF5500"), // 0.90: оранжево-красный
-                    new THREE.Color("#FF0000")  // 1.00: алый
+                // ПОЛНОЦВЕТНЫЕ РАДУЖНЫЕ ПАЛИТРЫ БЕЗ СЛИВАЮЩИХСЯ ОТТЕНКОВ
+                const RAINBOW_STOPS = [
+                    new THREE.Color("#0022FF"), // 0.00: глубокий синий
+                    new THREE.Color("#00EEFF"), // 0.16: циан
+                    new THREE.Color("#00FF66"), // 0.33: насыщенный зеленый
+                    new THREE.Color("#FFFF00"), // 0.50: желтый
+                    new THREE.Color("#FFAA00"), // 0.67: оранжевый
+                    new THREE.Color("#FF5500"), // 0.83: пламенно-оранжевый
+                    new THREE.Color("#FF0000")  // 1.00: алый красный
                 ];
 
                 const AXIAL_STOPS = [
-                    new THREE.Color("#00E64D"), // сжатие: изумрудно-зеленый
-                    new THREE.Color("#00FF99"),
-                    new THREE.Color("#00D5FF"), // бирюзовый переход
-                    new THREE.Color("#0066FF"), // синий
-                    new THREE.Color("#8800FF"), // фиолетовый
-                    new THREE.Color("#D000FF"),
-                    new THREE.Color("#FF00E6")  // растяжение: ультра-маджента
+                    new THREE.Color("#7700FF"), // 0.00: глубокий индиго
+                    new THREE.Color("#2255FF"), // 0.16: синий
+                    new THREE.Color("#00D5FF"), // 0.33: бирюза
+                    new THREE.Color("#00E64D"), // 0.50: лайм / зеленый
+                    new THREE.Color("#FFDD00"), // 0.67: желтый
+                    new THREE.Color("#FF6600"), // 0.83: оранжевый
+                    new THREE.Color("#FF0033")  // 1.00: ярко-красный
                 ];
 
                 const HOOP_STOPS = [
-                    new THREE.Color("#0022FF"), // сжатие: глубокий синий
-                    new THREE.Color("#00FFFF"), // циан
-                    new THREE.Color("#00FF44"), // сочный зеленый (середина)
-                    new THREE.Color("#FFEA00"), // желтый
-                    new THREE.Color("#FF9900"), // оранжевый
-                    new THREE.Color("#FF3C00"),
-                    new THREE.Color("#FF0022")  // растяжение: сочный алый
+                    new THREE.Color("#0026FF"), // 0.00: ультрамарин
+                    new THREE.Color("#00E5FF"), // 0.16: циан
+                    new THREE.Color("#22E600"), // 0.33: зеленый
+                    new THREE.Color("#FFE600"), // 0.50: желтый
+                    new THREE.Color("#FFA600"), // 0.67: янтарный
+                    new THREE.Color("#FF4D00"), // 0.83: оранжевый
+                    new THREE.Color("#FF0022")  // 1.00: ярко-красный
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -597,13 +596,12 @@ with col_3d:
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
-                    // Плавный и контрастный градиент без белого сектора
                     if (comp === "hoop") {{
                         return sampleColorRamp(HOOP_STOPS, t);
                     }} else if (comp === "axial") {{
                         return sampleColorRamp(AXIAL_STOPS, t);
                     }} else {{
-                        return sampleColorRamp(SPECTRAL_STOPS, t);
+                        return sampleColorRamp(RAINBOW_STOPS, t);
                     }}
                 }}
 
@@ -821,8 +819,8 @@ with col_3d:
                         }}
                     }});
 
-                    // ШИРОКИЙ РАДИУС ДЛЯ ПОЛНОГО ПОКРЫТИЯ ТОННЕЛЯ БЕЗ ПРОБЕЛОВ
-                    const R_INFLUENCE = (payload.comp === "hoop") ? 60.0 : 45.0;
+                    // ШИРОКИЙ ДИАПАЗОН ИНТЕРПОЛЯЦИИ (МЯГКОЕ РАСПЛЫВАНИЕ ПО ВСЕМУ ТОННЕЛЮ)
+                    const R_INFLUENCE = 85.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -842,7 +840,6 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
-                        // ЕСЛИ ДАННЫХ НЕТ: ТЕМНЫЙ СТИЛЬНЫЙ ГРАФИТОВЫЙ ФОН ОБДЕЛКИ (#151C28)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
@@ -863,10 +860,10 @@ with col_3d:
                                     const d = worldV.distanceTo(s.pos);
                                     
                                     if (d < R_INFLUENCE) {{
+                                        // Мягкий спад с показателем 0.75 для равномерного и широкого расплывания
                                         const ratio = d / R_INFLUENCE;
-                                        const wEnvelope = Math.pow(1.0 - ratio, 1.1);
-                                        // Мощное насыщение вблизи датчика
-                                        const wCore = 1.0 / Math.pow(d * d + 0.001, 1.4);
+                                        const wEnvelope = Math.pow(1.0 - ratio, 0.75);
+                                        const wCore = 1.0 / (d * d + 0.04);
                                         const w = wEnvelope * wCore;
 
                                         const c = getColorForValue(s.val, payload.clim, payload.comp);
@@ -883,7 +880,6 @@ with col_3d:
                                     colors[idx + 1] = Math.min(1.0, (accumG / totalWeight) * 1.15);
                                     colors[idx + 2] = Math.min(1.0, (accumB / totalWeight) * 1.15);
                                 }} else {{
-                                    // Вне радиуса — нейтральный графитовый тон
                                     colors[idx] = 0.082;
                                     colors[idx + 1] = 0.110;
                                     colors[idx + 2] = 0.157;
