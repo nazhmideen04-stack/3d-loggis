@@ -68,7 +68,7 @@ st.markdown("""
 
     /* Крупный текст пунктов радиокнопки */
     div[data-testid="stRadio"] label p {
-        font-size: 21px !important;
+        font-size: 12px !important;
         font-weight: 700 !important;
         color: #E6F0FA !important;
         line-height: 1.4 !important;
