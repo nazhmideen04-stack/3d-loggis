@@ -534,6 +534,7 @@ with col_3d:
                     return c;
                 }}
 
+                // Строгая проверка соответствия датчика выбранной категории
                 function isSensorForActiveCategory(name, activeTag) {{
                     if (activeTag === "-CS") return name.includes("-CS");
                     if (activeTag === "-S") return name.includes("-S") && !name.includes("-CS");
@@ -585,14 +586,17 @@ with col_3d:
                                 child.userData.isSensor = true;
 
                                 const isMatch = isSensorForActiveCategory(name, payload.activeTag);
-                                const val = payload.sensorValues[name];
-                                child.userData.val = val;
-                                child.userData.isActiveCategory = isMatch;
+                                const rawVal = payload.sensorValues[name];
+                                const hasValidData = (rawVal !== undefined && !isNaN(rawVal) && typeof rawVal === "number");
+                                
+                                child.userData.val = hasValidData ? rawVal : undefined;
+                                child.userData.isUsable = (isMatch && hasValidData);
 
                                 const isSelected = (name === payload.selectedSensor);
 
-                                if (isMatch && val !== undefined && !isNaN(val)) {{
-                                    const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(val, payload.clim, payload.comp);
+                                if (child.userData.isUsable) {{
+                                    // АКТИВНЫЙ ДАТЧИК ТЕКУЩЕГО АНАЛИЗА: ЯРКИЙ ЦВЕТ
+                                    const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(rawVal, payload.clim, payload.comp);
 
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: sensorColor,
@@ -607,12 +611,16 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
+                                    // БЕЗ ЦВЕТА: Başka analiz kategorisi или Belirsiz (темный полупрозрачный силуэт)
                                     child.material = new THREE.MeshStandardMaterial({{
-                                        color: 0x222C38,
+                                        color: 0x161C26,
+                                        emissive: new THREE.Color(0x000000),
                                         transparent: true,
-                                        opacity: 0.25,
-                                        roughness: 0.9
+                                        opacity: 0.15,
+                                        roughness: 0.95,
+                                        metalness: 0.0
                                     }});
+                                    child.scale.set(0.85, 0.85, 0.85);
                                 }}
                             }} else {{
                                 const isTunnel = (
@@ -634,10 +642,10 @@ with col_3d:
                         }}
                     }});
 
-                    // 2. Сбор позиций активных датчиков
+                    // 2. Сбор позиций ТОЛЬКО ВАЛИДНЫХ ДАТЧИКОВ (без неопределенных и чужих)
                     const activeSensors = [];
                     sensorMeshes.forEach(sMesh => {{
-                        if (sMesh.userData.isActiveCategory && sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
+                        if (sMesh.userData.isUsable) {{
                             const wPos = new THREE.Vector3();
                             sMesh.getWorldPosition(wPos);
                             const uName = sMesh.userData.sensorName.toUpperCase();
@@ -666,7 +674,7 @@ with col_3d:
                         const isTB = uName.includes("TB");
                         const activeTun = isTB ? "TB" : "TA";
                         let pool = activeSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
-                        if (pool.length < 3) pool = activeSensors;
+                        if (pool.length < 2) pool = activeSensors;
 
                         tMesh.updateMatrixWorld(true);
 
@@ -709,7 +717,7 @@ with col_3d:
                             color: 0xffffff,
                             vertexColors: true,
                             transparent: true,
-                            opacity: 0.85,
+                            opacity: 0.88,
                             roughness: 0.35,
                             metalness: 0.05,
                             side: THREE.DoubleSide
@@ -729,13 +737,12 @@ with col_3d:
                     const size = tunnelBox.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
-                    // Фокус ровно в центр тоннелей
+                    // Фокус строго в центр тоннелей
                     controls.target.copy(center);
 
                     if (selectedMeshRef) {{
                         flyCameraTo(selectedMeshRef, false);
                     }} else {{
-                        // Ставим камеру сбоку-спереди прямо перед тоннелем
                         camera.position.set(
                             center.x - maxDim * 0.45,
                             center.y + maxDim * 0.35,
@@ -788,17 +795,17 @@ with col_3d:
                         const mesh = intersects[0].object;
                         const name = mesh.userData.sensorName;
                         const val = mesh.userData.val;
-                        const isMatch = mesh.userData.isActiveCategory;
-                        const valTxt = (val !== undefined && !isNaN(val)) ? (val > 0 ? "+" + val : val) + " " + payload.unit : "Bilinmiyor";
+                        const isUsable = mesh.userData.isUsable;
 
                         tooltip.style.display = 'block';
                         tooltip.style.left = (e.clientX + 14) + 'px';
                         tooltip.style.top = (e.clientY + 14) + 'px';
                         
-                        if (isMatch) {{
-                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00C8E6;">Aktif Analiz Değeri: ' + valTxt + '</span>';
+                        if (isUsable) {{
+                            const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00C8E6;">Değer: ' + valTxt + '</span>';
                         }} else {{
-                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#8899AA;">(Başka analiz kategorisi)</span>';
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#8899AA;">Veri: Belirsiz / Başka Kategori</span>';
                         }}
                         renderer.domElement.style.cursor = 'pointer';
                     }} else {{
