@@ -449,7 +449,7 @@ def build_mesh_data(patches, offset_x):
 # --- ИНТЕРФЕЙС STREAMLIT ---
 col_nav, col_3d = st.columns([1, 4])
 
-# Подгрузка всех данных сразу в кэш
+# Единая подгрузка всех данных в кэш
 with st.spinner("Tüm sensör verileri (CS, S, TP) LoggIS üzerinden tek seferde alınıyor..."):
     all_data = fetch_all_categories_data()
 
@@ -495,8 +495,6 @@ with col_nav:
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
 # --- 3B PLOTLY SAHNESİ ---
-with col_3d:
-    # --- 3B PLOTLY SAHNESİ ---
 with col_3d:
     if not v_map:
         st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı. Lütfen 'Verileri Yenile' butonunu deneyiniz.")
@@ -601,7 +599,6 @@ with col_3d:
                 name="Sensörler"
             ))
 
-        # Базовая сцена не сбрасывается при повторном запуске благодаря uirevision
         fig.update_layout(
             uirevision="tunnel_3d_persistent_state",
             dragmode="orbit",
@@ -629,10 +626,8 @@ with col_3d:
             "displaylogo": False
         }
 
-        # Отрисовка графика
         st.plotly_chart(fig, use_container_width=True, config=config)
 
-        # Вычисляем целевые координаты камеры для выбранного сенсора
         if selected_sensor != "Seçiniz...":
             s_pos = position(selected_sensor)
             if s_pos is not None and None not in s_pos:
@@ -655,7 +650,6 @@ with col_3d:
                 eye_y = round(norm_cy + dist * np.cos(ang_rad), 4)
                 eye_z = round(norm_cz + 0.06, 4)
 
-                # JS-инъекция: выполняет чистую 1.2-секундную интерполяцию камеры прямо в существующем canvas
                 st.components.v1.html(f"""
                 <script>
                     const applySmoothFly = () => {{
