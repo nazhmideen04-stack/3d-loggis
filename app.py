@@ -327,7 +327,6 @@ def position(name: str):
         return float(np.mean(chain)), GEOMETRY["s_line_angle_deg"].get(place)
     return (GEOMETRY["s_chainage_m"].get((section, point)), GEOMETRY["s_line_angle_deg"].get(place))
 
-# Расчет RBF интерполяционных сеток для обоих тоннелей
 def build_rbf_tunnel_meshes(v_map):
     result_meshes = []
     nA, nC = 36, 32
@@ -585,60 +584,68 @@ with col_3d:
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
-                // camera near выставлен в 0.001 для максимального приближения
-                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.001, 3000);
-                camera.position.set(-30, 24, 45);
+                // Корневая группа для автоматической центровки всей геометрии в (0,0,0)
+                const worldPivot = new THREE.Group();
+                scene.add(worldPivot);
 
-                const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
+                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 4000);
+                camera.position.set(-25, 20, 35);
+
+                const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true, powerPreference: "high-performance" }});
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
                 renderer.toneMappingExposure = 1.25;
                 container.appendChild(renderer.domElement);
 
-                // --- CAD/3DS MAX ОРБИТАЛЬНЫЙ КОНТРОЛЛЕР ---
+                // Настройка CAD-контроллера
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.08;
-                controls.minDistance = 0.001; // Сняты барьеры приближения
+                controls.minDistance = 0.01;
                 controls.maxDistance = 3000;
-                
                 controls.mouseButtons = {{
                     LEFT: THREE.MOUSE.ROTATE,
                     MIDDLE: THREE.MOUSE.DOLLY_PAN,
                     RIGHT: THREE.MOUSE.PAN
                 }};
                 controls.enablePan = true;
-                controls.panSpeed = 1.2;
+                controls.panSpeed = 1.1;
                 controls.screenSpacePanning = true;
 
-                // --- ЗУМ В ТОЧКУ ПОД КУРСОРОМ (ZOOM-TO-CURSOR) ---
+                // Плавный зум в курсор с предотвращением троттлинга
                 const zoomRaycaster = new THREE.Raycaster();
                 const zoomMouse = new THREE.Vector2();
+                let wheelRafPending = false;
 
                 renderer.domElement.addEventListener('wheel', function(e) {{
                     e.preventDefault();
+                    if (wheelRafPending) return;
+                    wheelRafPending = true;
 
-                    const rect = renderer.domElement.getBoundingClientRect();
-                    zoomMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-                    zoomMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                    requestAnimationFrame(() => {{
+                        wheelRafPending = false;
+                        const rect = renderer.domElement.getBoundingClientRect();
+                        zoomMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                        zoomMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-                    zoomRaycaster.setFromCamera(zoomMouse, camera);
-                    const hits = zoomRaycaster.intersectObjects(scene.children, true);
+                        zoomRaycaster.setFromCamera(zoomMouse, camera);
+                        const hits = zoomRaycaster.intersectObjects(worldPivot.children, true);
 
-                    const dir = zoomRaycaster.ray.direction.clone();
-                    const zoomFactor = e.deltaY < 0 ? 0.22 : -0.22;
+                        const dir = zoomRaycaster.ray.direction.clone();
+                        const zoomFactor = e.deltaY < 0 ? 0.22 : -0.22;
 
-                    if (hits.length > 0 && e.deltaY < 0) {{
-                        const hitPoint = hits[0].point;
-                        controls.target.lerp(hitPoint, 0.2);
-                    }}
+                        if (hits.length > 0 && e.deltaY < 0) {{
+                            const hitPoint = hits[0].point;
+                            controls.target.lerp(hitPoint, 0.25);
+                        }}
 
-                    const distToTarget = camera.position.distanceTo(controls.target);
-                    const moveStep = Math.max(distToTarget * zoomFactor, 0.35 * Math.sign(zoomFactor));
+                        const distToTarget = camera.position.distanceTo(controls.target);
+                        const moveStep = Math.max(distToTarget * zoomFactor, 0.3 * Math.sign(zoomFactor));
 
-                    camera.position.addScaledVector(dir, moveStep);
-                    controls.update();
+                        camera.position.addScaledVector(dir, moveStep);
+                        controls.update();
+                    }});
                 }}, {{ passive: false }});
 
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
@@ -651,10 +658,6 @@ with col_3d:
                 const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
                 dirLight2.position.set(-40, -20, -50);
                 scene.add(dirLight2);
-
-                const grid = new THREE.GridHelper(120, 60, 0x00C8E6, 0x141E30);
-                grid.position.y = -5;
-                scene.add(grid);
 
                 const sensorMeshes = [];
                 const raycaster = new THREE.Raycaster();
@@ -685,7 +688,7 @@ with col_3d:
                     return c;
                 }}
 
-                // Отрисовка RBF интерполированной оболочки тоннелей
+                // Отрисовка RBF оболочек
                 if (payload.rbfShells && payload.rbfShells.length > 0) {{
                     payload.rbfShells.forEach(shell => {{
                         const geom = new THREE.BufferGeometry();
@@ -708,28 +711,30 @@ with col_3d:
                         }});
 
                         const mesh = new THREE.Mesh(geom, rbfMaterial);
-                        scene.add(mesh);
+                        worldPivot.add(mesh);
                     }});
                 }}
 
-                // Загрузка модели из 3ds Max: датчики, обделка и вспомогательные конструкции
+                // Загрузка модели из 3ds Max
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
                     bytes[i] = binaryStr.charCodeAt(i);
                 }}
 
+                let selectedMeshRef = null;
+
                 const gltfLoader = new THREE.GLTFLoader();
                 gltfLoader.parse(bytes.buffer, '', function(gltf) {{
                     const model = gltf.scene;
-                    scene.add(model);
+                    worldPivot.add(model);
                     loaderText.style.display = 'none';
 
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
 
-                            // Облегчение Box001 до прозрачной каркасной сетки
+                            // Каркасный Box001
                             if (name.toUpperCase().includes("BOX001")) {{
                                 child.material = new THREE.MeshBasicMaterial({{
                                     color: 0x1E3A5F,
@@ -763,10 +768,9 @@ with col_3d:
 
                                 if (isSelected) {{
                                     child.scale.set(1.65, 1.65, 1.65);
-                                    flyCameraTo(child, true);
+                                    selectedMeshRef = child;
                                 }}
                             }} else {{
-                                // Стены тоннелей из 3ds Max становятся легкой полупрозрачной обделкой поверх интерполяции
                                 child.material = new THREE.MeshStandardMaterial({{
                                     color: 0x142032,
                                     transparent: true,
@@ -780,11 +784,30 @@ with col_3d:
                         }}
                     }});
 
-                    if (!payload.selectedSensor || payload.selectedSensor === "Seçiniz...") {{
-                        const box = new THREE.Box3().setFromObject(model);
-                        const center = box.getCenter(new THREE.Vector3());
-                        controls.target.copy(center);
+                    // --- АВТОМАТИЧЕСКАЯ ЦЕНТРОВКА СЦЕНЫ К (0,0,0) ---
+                    worldPivot.updateMatrixWorld(true);
+                    const sceneBox = new THREE.Box3().setFromObject(worldPivot);
+                    const centerOffset = sceneBox.getCenter(new THREE.Vector3());
+
+                    // Сдвигаем все объекты так, чтобы их центр совпал с (0,0,0)
+                    worldPivot.position.sub(centerOffset);
+                    worldPivot.updateMatrixWorld(true);
+
+                    // Устанавливаем сетку точно под подошву объектов
+                    const floorY = sceneBox.min.y - centerOffset.y - 0.5;
+                    const grid = new THREE.GridHelper(120, 60, 0x00C8E6, 0x141E30);
+                    grid.position.y = floorY;
+                    scene.add(grid);
+
+                    // Фокусировка
+                    if (selectedMeshRef) {{
+                        flyCameraTo(selectedMeshRef, true);
+                    }} else {{
+                        controls.target.set(0, 0, 0);
+                        camera.position.set(-25, 18, 35);
+                        controls.update();
                     }}
+
                 }}, undefined, function(err) {{
                     loaderText.innerHTML = "Model yüklenirken hata oluştu!";
                     console.error(err);
