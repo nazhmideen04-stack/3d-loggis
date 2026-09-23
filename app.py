@@ -533,15 +533,17 @@ with col_3d:
                     return c;
                 }}
 
-                // СТРОГАЯ ИЗОЛИРОВАННАЯ ПРОВЕРКА КАТЕГОРИИ
+                // СТРОГАЯ ИЗОЛИРОВАННАЯ ФИЛЬТРАЦИЯ КАТЕГОРИЙ
                 function isSensorStrictlyForActiveCategory(name, comp) {{
                     const u = name.toUpperCase();
                     if (comp === "hoop") {{
+                        // Строго Çevresel gerinim (CS)
                         return u.includes("-CS");
                     }} else if (comp === "axial") {{
-                        // Строго продольные S и исключаем CS
+                        // Строго Boyuna gerinim (S): проверяем -S, -S1, -S2, -S3 и ЖЕСТКО отсекаем -CS
                         return (u.includes("-S") || u.includes("-S1") || u.includes("-S2") || u.includes("-S3")) && !u.includes("-CS");
                     }} else if (comp === "temp") {{
+                        // Строго Sıcaklık (TP)
                         return u.includes("-TP");
                     }}
                     return false;
@@ -594,7 +596,6 @@ with col_3d:
                                 const rawVal = payload.sensorValues[name];
                                 const hasValidData = (rawVal !== undefined && !isNaN(rawVal) && typeof rawVal === "number");
                                 
-                                // Сенсор валиден ТОЛЬКО если относится к активной категории И имеет числовое значение
                                 child.userData.val = hasValidData ? rawVal : undefined;
                                 child.userData.isUsable = (isMatch && hasValidData);
 
@@ -617,9 +618,9 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
-                                    // ВСЕ ОСТАЛЬНЫЕ (BELIRSIZ ИЛИ ДРУГИЕ КАТЕГОРИИ): ПОЛНОСТЬЮ ЛИШЕНЫ ЦВЕТА
+                                    // ВСЕ ОСТАЛЬНЫЕ: МАТОВЫЕ ТЕМНО-СЕРЫЕ ТОЧКИ (0x222C38), БЕЗ СВЕЧЕНИЯ
                                     child.material = new THREE.MeshStandardMaterial({{
-                                        color: 0x222C38, // Темно-серый без оттенков
+                                        color: 0x222C38,
                                         emissive: new THREE.Color(0x000000),
                                         transparent: true,
                                         opacity: 0.18,
@@ -680,19 +681,18 @@ with col_3d:
                         const isTB = uName.includes("TB");
                         const activeTun = isTB ? "TB" : "TA";
                         
-                        // Пул датчиков строго по тоннелю
                         let pool = activeSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
                         if (pool.length < 2) pool = activeSensors;
 
                         tMesh.updateMatrixWorld(true);
 
-                        // Если данных для этого анализа нет — тоннель остается чистым светло-серым/белым
+                        // ПОВЕДЕНИЕ ТОННЕЛЯ ПРИ ОТСУТСТВИИ ДАННЫХ: ЧИСТЫЙ СВЕТЛО-СЕРЫЙ/БЕЛЫЙ СИЛУЭТ (0xE6ECF2)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
-                                colors[idx] = 0.9;
-                                colors[idx + 1] = 0.92;
-                                colors[idx + 2] = 0.95;
+                                colors[idx] = 0.902;     // 230/255 (#E6)
+                                colors[idx + 1] = 0.925; // 236/255 (#EC)
+                                colors[idx + 2] = 0.949; // 242/255 (#F2)
                             }}
                         }} else {{
                             for (let i = 0; i < posAttr.count; i++) {{
@@ -721,9 +721,9 @@ with col_3d:
                                     colors[idx + 1] = accumG / totalWeight;
                                     colors[idx + 2] = accumB / totalWeight;
                                 }} else {{
-                                    colors[idx] = 0.9;
-                                    colors[idx + 1] = 0.92;
-                                    colors[idx + 2] = 0.95;
+                                    colors[idx] = 0.902;
+                                    colors[idx + 1] = 0.925;
+                                    colors[idx + 2] = 0.949;
                                 }}
                             }}
                         }}
@@ -755,7 +755,6 @@ with col_3d:
                     const size = tunnelBox.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
-                    // Фокус строго в центр тоннелей
                     controls.target.copy(center);
 
                     if (selectedMeshRef) {{
