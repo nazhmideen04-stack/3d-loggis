@@ -127,12 +127,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-logo_b64 = ""
+LOGO_B64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
-        logo_b64 = base64.b64encode(f.read()).decode()
+        LOGO_B64 = base64.b64encode(f.read()).decode()
 
-logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
+LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 200px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
 
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
@@ -141,7 +141,7 @@ st.markdown(f"""
         <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR VE TÜNEL İNTERPOLASYON SİSTEMİ (3DS MAX)</div>
     </div>
     <div style="display: flex; align-items: center;">
-        {logo_tag}
+        {LOGO_TAG}
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -310,7 +310,6 @@ cat_cfg = CATEGORIES[selected_comp]
 cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
 raw_v_map = cur_layer["values"]
 
-# --- СТРОГАЯ ИЗОЛЯЦИЯ АКТИВНОЙ КАТЕГОРИИ НА СТОРОНЕ PYTHON ---
 active_category_values = {}
 for s_name, val in raw_v_map.items():
     if val is None or np.isnan(val):
@@ -484,9 +483,7 @@ with col_3d:
                 const loaderText = document.getElementById('loader');
                 const legendBar = document.getElementById('legend-bar');
 
-                // Определение 100% идентичных градиентов для шкалы и 3D-модели
                 if (payload.comp === "temp") {{
-                    // Точная палитра Spectral: Красный -> Оранжевый -> Желтый -> Салатовый -> Зеленый
                     legendBar.style.background = "linear-gradient(to bottom, #d73027, #f46d43, #fdae61, #fee08b, #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837)";
                 }} else if (payload.comp === "axial") {{
                     legendBar.style.background = "linear-gradient(to bottom, #7B1FA2, #BA68C8, #F5F5F5, #81C784, #2E7D32)";
@@ -528,16 +525,15 @@ with col_3d:
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
-                // Ключевые опорные цвета для точной линейной интерполяции
                 const SPECTRAL_STOPS = [
-                    new THREE.Color("#006837"), // 0.00: темный зеленый (минимум шкалы)
-                    new THREE.Color("#1a9850"), // 0.12
-                    new THREE.Color("#66bd63"), // 0.25
-                    new THREE.Color("#a6d96a"), // 0.37
-                    new THREE.Color("#ffffbf"), // 0.50: мягкий желтый (середина)
-                    new THREE.Color("#fdae61"), // 0.62
-                    new THREE.Color("#f46d43"), // 0.75
-                    new THREE.Color("#d73027")  // 1.00: красный (максимум)
+                    new THREE.Color("#006837"),
+                    new THREE.Color("#1a9850"),
+                    new THREE.Color("#66bd63"),
+                    new THREE.Color("#a6d96a"),
+                    new THREE.Color("#ffffbf"),
+                    new THREE.Color("#fdae61"),
+                    new THREE.Color("#f46d43"),
+                    new THREE.Color("#d73027")
                 ];
 
                 const AXIAL_STOPS = [
@@ -602,7 +598,6 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. СТРОГИЙ ОБХОД ОБЪЕКТОВ С ПОЛНЫМ СКРЫТИЕМ ЧУЖИХ КАТЕГОРИЙ
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -657,9 +652,9 @@ with col_3d:
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: sensorColor,
                                         emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
-                                        emissiveIntensity: isSelected ? 1.0 : 0.65,
-                                        roughness: 0.2,
-                                        metalness: 0.3
+                                        emissiveIntensity: isSelected ? 1.0 : 0.75,
+                                        roughness: 0.15,
+                                        metalness: 0.25
                                     }});
 
                                     if (isSelected) {{
@@ -691,7 +686,6 @@ with col_3d:
                         }}
                     }});
 
-                    // 2. СБОР ТОЛЬКО АКТИВНЫХ ДАТЧИКОВ ТЕКУЩЕЙ КАТЕГОРИИ
                     const activeSensors = [];
                     visibleSensors.forEach(sMesh => {{
                         if (sMesh.userData.isUsable) {{
@@ -709,8 +703,8 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. ИНТЕРПОЛЯЦИЯ С ЛОКАЛИЗОВАННЫМ РАДИУСОМ ВЛИЯНИЯ
-                    const R_INFLUENCE = 12.0;
+                    // --- РАСШИРЕННЫЙ ДИАПАЗОН И НАСЫЩЕННЫЙ ЭПИЦЕНТР ---
+                    const R_INFLUENCE = 28.0; // Расширенный радиус охвата по длине тоннеля
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -750,10 +744,15 @@ with col_3d:
                                     const d = worldV.distanceTo(s.pos);
                                     
                                     if (d < R_INFLUENCE) {{
-                                        const wDist = (1.0 - (d / R_INFLUENCE));
-                                        const w = (wDist * wDist) / (d * d + 0.1);
-                                        const c = getColorForValue(s.val, payload.clim, payload.comp);
+                                        // 1. Плавный спад до края расширенного радиуса
+                                        const ratio = d / R_INFLUENCE;
+                                        const wEnvelope = Math.pow(1.0 - ratio, 1.8);
+                                        
+                                        // 2. Мощный вес в эпицентре (d -> 0) для яркой фиксации значения
+                                        const wCore = 1.0 / Math.pow(d * d + 0.04, 1.25);
+                                        const w = wEnvelope * wCore;
 
+                                        const c = getColorForValue(s.val, payload.clim, payload.comp);
                                         accumR += c.r * w;
                                         accumG += c.g * w;
                                         accumB += c.b * w;
@@ -762,11 +761,12 @@ with col_3d:
                                 }}
 
                                 const idx = i * 3;
-                                if (totalWeight > 0.0001) {{
+                                if (totalWeight > 0.00001) {{
                                     colors[idx] = accumR / totalWeight;
                                     colors[idx + 1] = accumG / totalWeight;
                                     colors[idx + 2] = accumB / totalWeight;
                                 }} else {{
+                                    // Нейтральный фон обделки вне радиуса (#E6ECF2)
                                     colors[idx] = 0.902;
                                     colors[idx + 1] = 0.925;
                                     colors[idx + 2] = 0.949;
@@ -791,7 +791,6 @@ with col_3d:
                         tMesh.material.needsUpdate = true;
                     }});
 
-                    // 4. ЦЕНТР КАМЕРЫ СТРОГО НА ВАШЕМ ОБЪЕКТЕ
                     const tunnelBox = new THREE.Box3();
                     if (tunnelMeshes.length > 0) {{
                         tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
