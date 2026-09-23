@@ -66,9 +66,19 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+/* Заголовок "Görüntülenecek Bileşen:" */
+    div[data-testid="stRadio"] > label p,
+    div[data-testid="stRadio"] > label {
+        font-size: 13px !important;  /* <--- Уменьшите здесь (например: 12px, 13px или 14px) */
+        font-weight: 600 !important;
+        color: #8397AD !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px !important;
+    }
     /* Крупный текст пунктов радиокнопки */
     div[data-testid="stRadio"] label p {
-        font-size: 12px !important;
+        font-size: 21px !important;
         font-weight: 700 !important;
         color: #E6F0FA !important;
         line-height: 1.4 !important;
