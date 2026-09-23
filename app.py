@@ -162,43 +162,34 @@ def fetch_category_data(cat_key):
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(3000)
 
-        # 1. Переход на вкладку Types
-        page.locator("text='Types'").first.click(force=True)
+        # 1. Вкладка Types
+        page.get_by_text("Types").click()
         page.wait_for_timeout(800)
 
-        # 2. Выбор категории
-        page.get_by_text(cat["name"]).first.click(force=True)
-        page.wait_for_timeout(1500)
-
-        # 3. Переключение выпадающих списков на 2 mois и Tableau
-        page.evaluate("""() => {
-            const selects = Array.from(document.querySelectorAll('select'));
-            for (const sel of selects) {
-                for (let i = 0; i < sel.options.length; i++) {
-                    const opt = sel.options[i].text.toLowerCase();
-                    if (opt.includes('2 mois') || opt.includes('2 months')) {
-                        sel.selectedIndex = i;
-                        sel.dispatchEvent(new Event('change', { bubbles: true }));
-                        sel.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                    if (opt.includes('tableau') || opt.includes('table')) {
-                        sel.selectedIndex = i;
-                        sel.dispatchEvent(new Event('change', { bubbles: true }));
-                        sel.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                }
-            }
-        }""")
-        page.wait_for_timeout(3500)
-
-        # Раскрытие всех записей при наличии кнопки
+        # 2. Переключение селекторов (точные ID из codegen)
         try:
-            page.locator("button, a").filter(has_text=re.compile(r"Afficher tout", re.I)).first.click(force=True, timeout=2000)
-            page.wait_for_timeout(1000)
+            page.get_by_role("combobox").first.select_option("MONTH_02")
         except Exception:
             pass
+        page.wait_for_timeout(600)
 
-        # 4. Сбор первой строки с замерами из сформированной таблицы
+        try:
+            page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE")
+        except Exception:
+            pass
+        page.wait_for_timeout(800)
+
+        # 3. Выбор типа датчика через listbox
+        try:
+            page.get_by_role("listbox").select_option(cat["name"])
+        except Exception:
+            try:
+                page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
+            except Exception:
+                page.get_by_text(cat["name"]).first.click(force=True)
+        page.wait_for_timeout(3000)
+
+        # 4. Считывание таблицы с датчиками
         for _ in range(25):
             extracted = page.evaluate("""() => {
                 const table = document.querySelector('table');
@@ -324,7 +315,7 @@ def build_operator(names, patches):
     grid = np.array(rows, dtype=np.float32)
     query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
 
-    # Защита от LinAlgError при малом количестве сенсоров (< 3)
+    # Защита от LinAlgError при малом количестве активных сенсоров (< 3)
     if len(names) < 3:
         W = np.full((query.shape[0], len(names)), 1.0 / max(len(names), 1), dtype=np.float32)
         return pos, W
@@ -336,7 +327,6 @@ def build_operator(names, patches):
     ])
     wrapped[:, 1] *= angle_scale
     
-    # Исправлена скобка query.shape[0]
     W = np.empty((query.shape[0], len(names)), dtype=np.float32)
     for j in range(len(names)):
         e = np.zeros(len(names))
