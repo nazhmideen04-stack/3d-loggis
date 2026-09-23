@@ -891,7 +891,7 @@ with col_3d:
 
                     scene.add(portalsGroup);
 
-                    // 2. ПИКЕТАЖНАЯ ЛИНЕЙКА СТРОГО В ДЛИНУ ТОННЕЛЯ
+                    // 2. ПИКЕТАЖНАЯ ЛИНЕЙКА СТРОГО В ДЛИНУ ТОННЕЛЯ (ОТ 0 ДО МАКСИМУМА С РАЗВЕРНУТЫМ ПОРЯДКОМ МЕТРОВ)
                     if (payload.showMeters) {{
                         const overallBox = new THREE.Box3();
                         tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
@@ -900,7 +900,6 @@ with col_3d:
                             const size = overallBox.getSize(new THREE.Vector3());
                             const rulerGroup = new THREE.Group();
 
-                            // Определяем продольную ось (ось максимальной длины: обычно Z или X)
                             const isZAxis = size.z >= size.x;
                             const lengthM = isZAxis ? size.z : size.x;
                             const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x;
@@ -908,12 +907,11 @@ with col_3d:
 
                             const step = 10.0;
                             const stepsCount = Math.floor(lengthM / step);
+                            const totalDistanceM = stepsCount * step;
 
                             const yRuler = overallBox.min.y - 0.2;
-                            // Смещение в сторону от тоннеля
                             const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
 
-                            // Главная продольная ось линейки
                             const linePoints = [];
                             if (isZAxis) {{
                                 linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord));
@@ -927,10 +925,11 @@ with col_3d:
                             const axisMat = new THREE.LineBasicMaterial({{ color: 0x00C8E6, linewidth: 3 }});
                             rulerGroup.add(new THREE.Line(axisGeom, axisMat));
 
-                            // Поперечные засечки и метры шагом 10 м
                             for (let i = 0; i <= stepsCount; i++) {{
                                 const currentPos = startCoord + i * step;
-                                const distanceText = (i * step).toFixed(0) + " m";
+                                // ПЕРЕВЕРНУТЫЙ ПОРЯДОК ЧИСЕЛ: ОТСЧЕТ ИДЕТ В ОБРАТНУЮ СТОРОНУ
+                                const reversedDistance = (totalDistanceM - (i * step)).toFixed(0);
+                                const distanceText = reversedDistance + " m";
 
                                 const tickPoints = [];
                                 if (isZAxis) {{
