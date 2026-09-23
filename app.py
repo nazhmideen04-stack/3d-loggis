@@ -602,43 +602,55 @@ with col_3d:
                     return m ? m[0] : name;
                 }}
 
-                // Генератор 3D-текстовых спрайтов в синем фирменном стиле DESTECH
-                function createBrandSprite(text, fontSize = 38, isTitle = false) {{
+                // Крупные неоновые маркеры TA / TB
+                function createPortalMarker(text) {{
                     const canvas = document.createElement('canvas');
-                    canvas.width = 380;
-                    canvas.height = 140;
+                    canvas.width = 512;
+                    canvas.height = 256;
                     const ctx = canvas.getContext('2d');
 
-                    if (isTitle) {{
-                        ctx.fillStyle = 'rgba(10, 14, 23, 0.92)';
-                        ctx.strokeStyle = '#00C8E6';
-                        ctx.lineWidth = 4;
-                        ctx.strokeRect(6, 6, 368, 128);
-                        ctx.fillRect(6, 6, 368, 128);
+                    ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
+                    ctx.strokeStyle = '#00C8E6';
+                    ctx.lineWidth = 12;
+                    ctx.strokeRect(10, 10, 492, 236);
+                    ctx.fillRect(10, 10, 492, 236);
 
-                        ctx.font = '800 48px Syne, Chakra Petch, sans-serif';
-                        ctx.fillStyle = '#00C8E6';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(text, 190, 70);
-                    }} else {{
-                        ctx.fillStyle = 'rgba(10, 14, 23, 0.82)';
-                        ctx.strokeStyle = 'rgba(0, 200, 230, 0.6)';
-                        ctx.lineWidth = 2.5;
-                        ctx.strokeRect(6, 6, 368, 128);
-                        ctx.fillRect(6, 6, 368, 128);
-
-                        ctx.font = '700 ' + fontSize + 'px Chakra Petch, sans-serif';
-                        ctx.fillStyle = '#FFFFFF';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(text, 190, 70);
-                    }}
+                    ctx.font = '900 130px Syne, Chakra Petch, sans-serif';
+                    ctx.fillStyle = '#00C8E6';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(text, 256, 128);
 
                     const texture = new THREE.CanvasTexture(canvas);
                     const mat = new THREE.SpriteMaterial({{ map: texture, depthTest: false }});
                     const sprite = new THREE.Sprite(mat);
-                    sprite.scale.set(isTitle ? 4.2 : 2.5, isTitle ? 1.6 : 0.95, 1);
+                    sprite.scale.set(6.0, 3.0, 1);
+                    return sprite;
+                }}
+
+                // Четкие метки метров для пикетажа
+                function createRulerLabel(text) {{
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 256;
+                    canvas.height = 128;
+                    const ctx = canvas.getContext('2d');
+
+                    ctx.fillStyle = 'rgba(10, 14, 23, 0.85)';
+                    ctx.strokeStyle = 'rgba(0, 200, 230, 0.7)';
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(6, 6, 244, 116);
+                    ctx.fillRect(6, 6, 244, 116);
+
+                    ctx.font = '700 48px Chakra Petch, sans-serif';
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(text, 128, 64);
+
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const mat = new THREE.SpriteMaterial({{ map: texture, depthTest: false }});
+                    const sprite = new THREE.Sprite(mat);
+                    sprite.scale.set(2.4, 1.2, 1);
                     return sprite;
                 }}
 
@@ -845,7 +857,7 @@ with col_3d:
                         tMesh.material.needsUpdate = true;
                     }});
 
-                    // 1. РАЗМЕЩЕНИЕ НЕОНОВЫХ ЛЕЙБЛОВ TÜNEL TA И TÜNEL TB НАД МОДЕЛЯМИ
+                    // 1. КРУПНЫЕ ПЛАШКИ TA И TB СТРОГО НАД ПОРТАЛАМИ
                     const boxTA = new THREE.Box3();
                     const boxTB = new THREE.Box3();
                     let hasTA = false, hasTB = false;
@@ -861,63 +873,84 @@ with col_3d:
                         }}
                     }});
 
-                    const labelsGroup = new THREE.Group();
+                    const portalsGroup = new THREE.Group();
 
                     if (hasTA) {{
                         const cA = boxTA.getCenter(new THREE.Vector3());
-                        const spriteTA = createBrandSprite("TÜNEL TA", 44, true);
-                        spriteTA.position.set(cA.x, boxTA.max.y + 2.2, boxTA.min.z - 1.5);
-                        labelsGroup.add(spriteTA);
+                        const spriteTA = createPortalMarker("TA");
+                        spriteTA.position.set(cA.x, boxTA.max.y + 3.2, boxTA.min.z - 2.0);
+                        portalsGroup.add(spriteTA);
                     }}
 
                     if (hasTB) {{
                         const cB = boxTB.getCenter(new THREE.Vector3());
-                        const spriteTB = createBrandSprite("TÜNEL TB", 44, true);
-                        spriteTB.position.set(cB.x, boxTB.max.y + 2.2, boxTB.min.z - 1.5);
-                        labelsGroup.add(spriteTB);
+                        const spriteTB = createPortalMarker("TB");
+                        spriteTB.position.set(cB.x, boxTB.max.y + 3.2, boxTB.min.z - 2.0);
+                        portalsGroup.add(spriteTB);
                     }}
 
-                    scene.add(labelsGroup);
+                    scene.add(portalsGroup);
 
-                    // 2. РАЗМЕЩЕНИЕ ПИКЕТАЖНОЙ МАСШТАБНОЙ ЛИНЕЙКИ ВДОЛЬ ТОННЕЛЯ
+                    // 2. ПИКЕТАЖНАЯ ЛИНЕЙКА СТРОГО В ДЛИНУ ТОННЕЛЯ
                     if (payload.showMeters) {{
                         const overallBox = new THREE.Box3();
                         tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
 
                         if (!overallBox.isEmpty()) {{
+                            const size = overallBox.getSize(new THREE.Vector3());
                             const rulerGroup = new THREE.Group();
-                            const zStart = overallBox.min.z;
-                            const zEnd = overallBox.max.z;
-                            const lengthM = Math.max(zEnd - zStart, 10.0);
+
+                            // Определяем продольную ось (ось максимальной длины: обычно Z или X)
+                            const isZAxis = size.z >= size.x;
+                            const lengthM = isZAxis ? size.z : size.x;
+                            const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x;
+                            const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
+
                             const step = 10.0;
                             const stepsCount = Math.floor(lengthM / step);
-                            const yRuler = overallBox.min.y - 0.25;
-                            const xRuler = overallBox.max.x + 2.2;
 
-                            // Продольная линия
-                            const axisPoints = [
-                                new THREE.Vector3(xRuler, yRuler, zStart),
-                                new THREE.Vector3(xRuler, yRuler, zEnd)
-                            ];
-                            const axisGeom = new THREE.BufferGeometry().setFromPoints(axisPoints);
-                            const axisMat = new THREE.LineBasicMaterial({{ color: 0x00C8E6, linewidth: 2 }});
+                            const yRuler = overallBox.min.y - 0.2;
+                            // Смещение в сторону от тоннеля
+                            const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
+
+                            // Главная продольная ось линейки
+                            const linePoints = [];
+                            if (isZAxis) {{
+                                linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord));
+                                linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord));
+                            }} else {{
+                                linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos));
+                                linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos));
+                            }}
+
+                            const axisGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+                            const axisMat = new THREE.LineBasicMaterial({{ color: 0x00C8E6, linewidth: 3 }});
                             rulerGroup.add(new THREE.Line(axisGeom, axisMat));
 
-                            // Деления и метки шагом 10 м
+                            // Поперечные засечки и метры шагом 10 м
                             for (let i = 0; i <= stepsCount; i++) {{
-                                const curZ = zStart + i * step;
-                                const distanceM = (i * step).toFixed(0);
+                                const currentPos = startCoord + i * step;
+                                const distanceText = (i * step).toFixed(0) + " m";
 
-                                const tickPoints = [
-                                    new THREE.Vector3(xRuler - 0.5, yRuler, curZ),
-                                    new THREE.Vector3(xRuler + 0.5, yRuler, curZ)
-                                ];
+                                const tickPoints = [];
+                                if (isZAxis) {{
+                                    tickPoints.push(new THREE.Vector3(lateralPos - 0.8, yRuler, currentPos));
+                                    tickPoints.push(new THREE.Vector3(lateralPos + 0.8, yRuler, currentPos));
+                                }} else {{
+                                    tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos - 0.8));
+                                    tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos + 0.8));
+                                }}
+
                                 const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
                                 rulerGroup.add(new THREE.Line(tickGeom, axisMat));
 
-                                const labelSprite = createBrandSprite(distanceM + " m", 38, false);
-                                labelSprite.position.set(xRuler + 2.0, yRuler + 0.35, curZ);
-                                rulerGroup.add(labelSprite);
+                                const label = createRulerLabel(distanceText);
+                                if (isZAxis) {{
+                                    label.position.set(lateralPos + 2.4, yRuler + 0.4, currentPos);
+                                }} else {{
+                                    label.position.set(currentPos, yRuler + 0.4, lateralPos + 2.4);
+                                }}
+                                rulerGroup.add(label);
                             }}
 
                             scene.add(rulerGroup);
