@@ -342,7 +342,7 @@ with col_nav:
     st.subheader("GÖRÜNÜM AYARLARI")
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
-    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster (Parlak Kırmızı)", value=False)
+    show_no_data_red = st.checkbox("Verisi Olmayan Sensörleri Göster (Parlak Kırmızı)", value=False)
 
     st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
