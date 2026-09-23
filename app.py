@@ -68,10 +68,11 @@ st.markdown("""
 
     /* 2. ПРИНУДИТЕЛЬНАЯ СМЕНА КРАСНОГО ЦВЕТА НА СИНИЙ ЧЕРЕЗ HUE-ROTATE */
     /* Сдвигает красный спектр точно в циан/синий (#00C8E6) на уровне пикселей рендера */
-    div[data-testid="stRadio"] div[role="radiogroup"] label div[aria-checked="true"],
-    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div {
-        filter: hue-rotate(185deg) saturate(1.8) !important;
+   /* Принудительно меняет красный цвет кружка на синий */
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
+        filter: hue-rotate(185deg) saturate(2) !important;
     }
+   
 
     /* Увеличение размера самого кружка */
     div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
@@ -393,7 +394,7 @@ col_nav, col_3d = st.columns([1, 4])
 with col_nav:
     st.subheader("KONTROL PANELİ")
     selected_comp = st.radio(
-        "Görüntülenecek Bileşen:",
+        "Bileşenler:",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
     )
@@ -420,13 +421,13 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write("📅 **En Son Veri Zamanı:**")
+    st.write("**En Son Veri Zamanı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
-    st.write("📡 **Aktif Sensör Sayısı:**")
+    st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 20px;'>{len(v_map)}</span>", unsafe_allow_html=True)
     
-    st.write("📊 **Skala Limitleri:**")
+    st.write("**Skala Limitleri:**")
     st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
