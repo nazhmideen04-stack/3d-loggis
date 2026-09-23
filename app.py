@@ -410,15 +410,12 @@ with col_3d:
     if not model_b64:
         st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
-        interp_points = get_interpolation_points(v_map)
-
         payload_data = {
             "sensorValues": v_map,
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
-            "comp": selected_comp,
-            "interpPoints": interp_points
+            "comp": selected_comp
         }
         json_payload = json.dumps(payload_data)
 
@@ -463,7 +460,6 @@ with col_3d:
                     font-weight: 700;
                     letter-spacing: 1px;
                 }}
-                /* Легенда шкалы */
                 #color-legend {{
                     position: absolute;
                     top: 24px;
@@ -549,7 +545,6 @@ with col_3d:
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
-                // Оптимизированный диапазон камеры для максимального близкого зума без отсечения
                 const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 2500);
                 camera.position.set(-30, 24, 45);
 
@@ -560,11 +555,10 @@ with col_3d:
                 renderer.toneMappingExposure = 1.25;
                 container.appendChild(renderer.domElement);
 
-                // Управление с возможностью приближаться вплотную и панорамировать
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.06;
-                controls.minDistance = 0.02; // Снято ограничение приближения
+                controls.minDistance = 0.02;
                 controls.maxDistance = 500;
                 controls.zoomSpeed = 1.35;
                 controls.enablePan = true;
@@ -587,6 +581,7 @@ with col_3d:
                 scene.add(grid);
 
                 const sensorMeshes = [];
+                const tunnelMeshes = [];
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
@@ -615,50 +610,6 @@ with col_3d:
                     return c;
                 }}
 
-                // Буферная интерполяция с радиусом влияния и мягким затуханием (Buffer Falloff)
-                function interpolateBufferAtVertex(localPos, pointsList, clim, comp) {{
-                    const defaultColor = new THREE.Color(0x131E2D); // Базовый полупрозрачный тон тоннеля
-                    if (!pointsList || pointsList.length === 0) return defaultColor;
-
-                    const BUFFER_RADIUS = 6.5; // Радиус буфера влияния каждого датчика (в метрах)
-                    let totalWeight = 0;
-                    let accumColor = new THREE.Color(0x000000);
-
-                    for (let i = 0; i < pointsList.length; i++) {{
-                        const pt = pointsList[i];
-                        const dx = localPos.x - pt.rx;
-                        const dy = localPos.y - pt.ry;
-                        const dz = localPos.z - pt.rz;
-                        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-
-                        if (dist < BUFFER_RADIUS) {{
-                            // Мягкое квадратичное затухание внутри буфера
-                            const factor = 1.0 - (dist / BUFFER_RADIUS);
-                            const w = factor * factor;
-
-                            const sCol = getColorForValue(pt.val, clim, comp);
-                            accumColor.r += sCol.r * w;
-                            accumColor.g += sCol.g * w;
-                            accumColor.b += sCol.b * w;
-                            totalWeight += w;
-                        }}
-                    }}
-
-                    if (totalWeight <= 0) {{
-                        return defaultColor;
-                    }}
-
-                    const resultColor = new THREE.Color(
-                        accumColor.r / totalWeight,
-                        accumColor.g / totalWeight,
-                        accumColor.b / totalWeight
-                    );
-
-                    // Смешивание с базовым цветом тоннеля по границе буфера
-                    const blendFactor = Math.min(1.0, totalWeight);
-                    return defaultColor.clone().lerp(resultColor, blendFactor);
-                }}
-
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -669,13 +620,15 @@ with col_3d:
                 gltfLoader.parse(bytes.buffer, '', function(gltf) {{
                     const model = gltf.scene;
                     scene.add(model);
+                    model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
+                    // 1. Первый проход: собираем сенсоры, настраиваем Box001 и определяем тоннели
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
 
-                            // 1. Box001: делаем ультра-легким прозрачным каркасным контуром
+                            // Облегчение Box001 до прозрачного каркаса
                             if (name.toUpperCase().includes("BOX001") || name.toUpperCase() === "BOX001") {{
                                 child.material = new THREE.MeshBasicMaterial({{
                                     color: 0x1E3A5F,
@@ -686,7 +639,6 @@ with col_3d:
                                 return;
                             }}
 
-                            // 2. Сенсоры
                             const isSensor = (name.includes("-CS") || name.includes("-S") || name.includes("-TP") || payload.sensorValues.hasOwnProperty(name));
 
                             if (isSensor) {{
@@ -713,41 +665,10 @@ with col_3d:
                                     flyCameraTo(child, true);
                                 }}
                             }} else {{
-                                // 3. Тело тоннелей (TA и TB): Буферная интерполяция цвета
-                                const isTunnelTA = name.toUpperCase().includes("TA");
-                                const isTunnelTB = name.toUpperCase().includes("TB");
-
-                                if (isTunnelTA || isTunnelTB) {{
-                                    const tunKey = isTunnelTA ? "TA" : "TB";
-                                    const ptsList = payload.interpPoints[tunKey] || [];
-                                    const geom = child.geometry;
-
-                                    if (geom && geom.attributes && geom.attributes.position) {{
-                                        const posAttr = geom.attributes.position;
-                                        const colors = [];
-                                        const vPos = new THREE.Vector3();
-
-                                        for (let i = 0; i < posAttr.count; i++) {{
-                                            vPos.fromBufferAttribute(posAttr, i);
-                                            const c = interpolateBufferAtVertex(vPos, ptsList, payload.clim, payload.comp);
-                                            colors.push(c.r, c.g, c.b);
-                                        }}
-
-                                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                                        
-                                        // Полупрозрачный материал тоннеля с интерполяцией
-                                        child.material = new THREE.MeshStandardMaterial({{
-                                            vertexColors: true,
-                                            transparent: true,
-                                            opacity: 0.68,
-                                            roughness: 0.4,
-                                            metalness: 0.1,
-                                            depthWrite: false,
-                                            side: THREE.DoubleSide
-                                        }});
-                                    }}
+                                const isTunnel = (name.toUpperCase().includes("TA") || name.toUpperCase().includes("TB") || name.toLowerCase().includes("tunnel") || name.toLowerCase().includes("tünel"));
+                                if (isTunnel) {{
+                                    tunnelMeshes.push(child);
                                 }} else {{
-                                    // Прочие элементы
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0x141E2D,
                                         transparent: true,
@@ -760,6 +681,82 @@ with col_3d:
                         }}
                     }});
 
+                    // 2. Второй проход: расчет интерполяции прямо по 3D-мировым координатам сенсоров
+                    const sensorPositions = [];
+                    sensorMeshes.forEach(sMesh => {{
+                        if (sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
+                            const wPos = new THREE.Vector3();
+                            sMesh.getWorldPosition(wPos);
+                            sensorPositions.push({{
+                                pos: wPos,
+                                val: sMesh.userData.val,
+                                name: sMesh.userData.sensorName,
+                                tunPrefix: sMesh.userData.sensorName.substring(0, 2).toUpperCase()
+                            }});
+                        }}
+                    }});
+
+                    tunnelMeshes.forEach(tMesh => {{
+                        const geom = tMesh.geometry;
+                        if (!geom || !geom.attributes || !geom.attributes.position) return;
+
+                        const posAttr = geom.attributes.position;
+                        const colors = [];
+                        const localV = new THREE.Vector3();
+                        const worldV = new THREE.Vector3();
+                        const defaultTunnelColor = new THREE.Color(0x132238);
+
+                        // Определяем принадлежность тоннеля к TA или TB
+                        const tunKey = tMesh.name.toUpperCase().includes("TB") ? "TB" : "TA";
+                        const activeSensors = sensorPositions.filter(s => s.tunPrefix === tunKey || sensorPositions.length < 5);
+                        const sensorsToUse = activeSensors.length > 0 ? activeSensors : sensorPositions;
+
+                        const BUFFER_RADIUS = 12.0; // Радиус распространения влияния датчика вдоль свода
+
+                        for (let i = 0; i < posAttr.count; i++) {{
+                            localV.fromBufferAttribute(posAttr, i);
+                            worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
+
+                            let totalWeight = 0;
+                            let accumR = 0, accumG = 0, accumB = 0;
+
+                            for (let j = 0; j < sensorsToUse.length; j++) {{
+                                const s = sensorsToUse[j];
+                                const d = worldV.distanceTo(s.pos);
+
+                                if (d < BUFFER_RADIUS) {{
+                                    const w = Math.pow(1.0 - (d / BUFFER_RADIUS), 2);
+                                    const c = getColorForValue(s.val, payload.clim, payload.comp);
+                                    accumR += c.r * w;
+                                    accumG += c.g * w;
+                                    accumB += c.b * w;
+                                    totalWeight += w;
+                                }}
+                            }}
+
+                            if (totalWeight > 0) {{
+                                const interpColor = new THREE.Color(accumR / totalWeight, accumG / totalWeight, accumB / totalWeight);
+                                const blend = Math.min(1.0, totalWeight);
+                                const finalColor = defaultTunnelColor.clone().lerp(interpColor, blend);
+                                colors.push(finalColor.r, finalColor.g, finalColor.b);
+                            }} else {{
+                                colors.push(defaultTunnelColor.r, defaultTunnelColor.g, defaultTunnelColor.b);
+                            }}
+                        }}
+
+                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                        
+                        tMesh.material = new THREE.MeshStandardMaterial({{
+                            vertexColors: true,
+                            transparent: true,
+                            opacity: 0.75,
+                            roughness: 0.45,
+                            metalness: 0.1,
+                            depthWrite: false,
+                            side: THREE.DoubleSide
+                        }});
+                    }});
+
                     if (!payload.selectedSensor || payload.selectedSensor === "Seçiniz...") {{
                         const box = new THREE.Box3().setFromObject(model);
                         const center = box.getCenter(new THREE.Vector3());
@@ -770,7 +767,6 @@ with col_3d:
                     console.error(err);
                 }});
 
-                // Кинематографичный близкий подлет к датчику
                 function flyCameraTo(targetMesh, animate = true) {{
                     const targetPos = new THREE.Vector3();
                     targetMesh.getWorldPosition(targetPos);
@@ -778,7 +774,6 @@ with col_3d:
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    // Приближение на расстояние 2.0 метра
                     const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(2.0)).add(new THREE.Vector3(0, 0.7, 0));
 
                     if (!animate) {{
@@ -840,5 +835,7 @@ with col_3d:
         </body>
         </html>
         """
+
+        st.components.v1.html(threejs_html, height=740, scrolling=False)
 
         st.components.v1.html(threejs_html, height=740, scrolling=False)
