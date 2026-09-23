@@ -66,11 +66,10 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-
     /* 1. Заголовок "Görüntülenecek Bileşen:" */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
-        font-size: 16px !important;
+        font-size: 14px !important;
         color: #8397AD !important;
         font-weight: 600 !important;
     }
@@ -83,7 +82,7 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* 3. Кружок выбора: делаем чуточку крупнее и красим в тот самый синий */
+    /* 3. Кружок выбора: делаем крупнее и красим в тот самый синий */
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
         filter: hue-rotate(185deg) saturate(2) !important;
         transform: scale(1.2) !important;
@@ -94,18 +93,6 @@ st.markdown("""
         cursor: pointer !important;
         display: flex !important;
         align-items: center !important;
-    }
-
-    /* Принудительный синий цвет активного кружка через фильтр */
-    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
-        filter: hue-rotate(185deg) saturate(2) !important;
-    }
-
-    /* Увеличение размера самого кружка выбора */
-    div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
-        transform: scale(1.25) !important;
-        transform-origin: center center !important;
-        margin-right: 14px !important;
     }
 
     div[data-baseweb="select"] {
@@ -128,7 +115,7 @@ st.markdown("""
         box-shadow: none !important;
     }
 
- /* Кнопка "Verileri Yenile" без неона, градиента и свечения */
+    /* Кнопка "Verileri Yenile" без неона, градиента и свечения */
     div.stButton > button {
         background-color: #0E2238 !important;
         color: #00C8E6 !important;
@@ -500,8 +487,32 @@ with col_3d:
         st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı. Lütfen 'Verileri Yenile' butonunu deneyiniz.")
     else:
         fig = go.Figure()
-        sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
+        sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors, sensor_sizes = [], [], [], [], [], []
         label_x, label_y, label_z, label_text = [], [], [], []
+
+        # Рассчитываем координаты камеры для фокусировки на датчике
+        camera_center = dict(x=0, y=0, z=0)
+        camera_eye = dict(x=-1.5, y=1.6, z=1.0)
+
+        if selected_sensor != "Seçiniz...":
+            s_pos = position(selected_sensor)
+            if s_pos is not None and None not in s_pos:
+                tun_prefix = selected_sensor.split("-")[0]
+                ti = 0 if tun_prefix == "TA" else 1
+                off_x = (ti - 0.5) * SP
+                ang = np.radians(s_pos[1])
+
+                target_x = off_x + (R + 0.15) * np.sin(ang)
+                target_y = (R + 0.15) * np.cos(ang)
+                target_z = s_pos[0] - 45.0
+
+                # Приводим к пропорциям сцены
+                norm_x = float(target_x / (SP * 1.5))
+                norm_y = float(target_y / (R * 4.0))
+                norm_z = float(target_z / 45.0)
+
+                camera_center = dict(x=norm_x, y=norm_y, z=norm_z)
+                camera_eye = dict(x=norm_x - 0.55, y=norm_y + 0.55, z=norm_z + 0.25)
 
         for ti, tun in enumerate(("TA", "TB")):
             off_x = (ti - 0.5) * SP
@@ -557,7 +568,14 @@ with col_3d:
                 sensor_z.append(sz)
                 val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
-                sensor_colors.append("#00C8E6" if n == selected_sensor else "#FFFFFF")
+
+                # Выделение выбранного датчика
+                if n == selected_sensor:
+                    sensor_colors.append("#FFD700")  # Контрастный золотисто-янтарный
+                    sensor_sizes.append(15)          # Крупный маркер
+                else:
+                    sensor_colors.append("#FFFFFF")
+                    sensor_sizes.append(6)
 
         fig.add_trace(go.Scatter3d(
             x=label_x,
@@ -581,7 +599,13 @@ with col_3d:
                 y=sensor_y,
                 z=sensor_z,
                 mode="markers",
-                marker=dict(size=6, color=sensor_colors, symbol="circle", opacity=1.0, line=dict(color="#000000", width=1.5)),
+                marker=dict(
+                    size=sensor_sizes,
+                    color=sensor_colors,
+                    symbol="circle",
+                    opacity=1.0,
+                    line=dict(color="#000000", width=1.5)
+                ),
                 text=sensor_text,
                 hoverinfo="text",
                 name="Sensörler"
@@ -596,7 +620,10 @@ with col_3d:
                 yaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="", showticklabels=False),
                 zaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="Boyuna (Z)", color="#00C8E6"),
                 aspectratio=dict(x=1.3, y=0.5, z=2.2),
-                camera=dict(eye=dict(x=-1.5, y=1.6, z=1.0), center=dict(x=0, y=0, z=0))
+                camera=dict(
+                    center=camera_center,
+                    eye=camera_eye
+                )
             ),
             margin=dict(l=0, r=0, b=0, t=10),
             height=720,
