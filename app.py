@@ -63,15 +63,7 @@ def fetch_category_data(cat_key, reload_seed=0):
             browser = p.chromium.launch(headless=True, args=browser_args)
         except Exception:
             ensure_playwright_installed()
-            try:
-                browser = p.chromium.launch(headless=True, args=browser_args)
-            except Exception as e_launch:
-                return {
-                    "values": {},
-                    "date": "",
-                    "screenshot": "",
-                    "debug": f"Chromium başlatılamadı: {e_launch}"
-                }
+            browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
@@ -85,40 +77,59 @@ def fetch_category_data(cat_key, reload_seed=0):
             page.wait_for_timeout(3500)
 
             # 1. Открываем вкладку Types
-            types_tab = page.locator("text='Types'").first
-            if types_tab.is_visible():
-                types_tab.click(force=True)
-                page.wait_for_timeout(800)
+            page.locator("text='Types'").first.click(force=True)
+            page.wait_for_timeout(1000)
 
-            # 2. Выбираем тип (Temperature / Longitudinal / Othoradial)
+            # 2. Выбираем категорию сенсоров
+            page.get_by_text(cat["name"]).first.click(force=True)
+            page.wait_for_timeout(2000)
+
+            # 3. ПЕРЕКЛЮЧАЕМ СЕЛЕКТОРЫ: Durée -> 2 mois, Affichage -> Tableau
+            page.evaluate("""() => {
+                const selects = Array.from(document.querySelectorAll('select'));
+                for (const sel of selects) {
+                    for (let i = 0; i < sel.options.length; i++) {
+                        const optText = sel.options[i].text.toLowerCase();
+                        // Выбираем 2 mois
+                        if (optText.includes('2 mois') || optText.includes('2 months')) {
+                            sel.selectedIndex = i;
+                            sel.dispatchEvent(new Event('change', { bubbles: true }));
+                            sel.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        // Выбираем Tableau
+                        if (optText.includes('tableau') || optText.includes('table')) {
+                            sel.selectedIndex = i;
+                            sel.dispatchEvent(new Event('change', { bubbles: true }));
+                            sel.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    }
+                }
+            }""")
+            
+            # Ждем 3 секунды, пока Blazor отрисует таблицу вместо графика
+            page.wait_for_timeout(3500)
+
+            # Кнопка 'Afficher tout', если замеры ограничены лимитом ячеек
             try:
-                type_item = page.locator(f"text='{cat['name']}'").first
-                type_item.click(force=True)
+                page.locator("button, a").filter(has_text=re.compile(r"Afficher tout", re.I)).first.click(force=True, timeout=2000)
+                page.wait_for_timeout(1000)
             except Exception:
-                page.evaluate(f"""() => {{
-                    const els = Array.from(document.querySelectorAll('*'));
-                    const target = els.find(e => e.textContent && e.textContent.trim().toLowerCase() === '{cat['name']}'.toLowerCase() && e.children.length === 0);
-                    if (target) {{
-                        ['mousedown', 'mouseup', 'click'].forEach(evt => {{
-                            target.dispatchEvent(new MouseEvent(evt, {{ bubbles: true, cancelable: true }}));
-                        }});
-                    }}
-                }}""")
-            page.wait_for_timeout(2500)
+                pass
 
-            # 3. Делаем снимок экрана для контроля
+            # Сохраняем скриншот для визуального подтверждения
             try:
                 img_bytes = page.screenshot()
                 screenshot_b64 = base64.b64encode(img_bytes).decode("utf-8")
             except Exception:
                 pass
 
-            # 4. Мягкое извлечение заголовков и первой строки таблицы
+            # 4. Считываем данные из появившейся таблицы
             for _ in range(25):
                 extracted = page.evaluate("""(tag) => {
                     const table = document.querySelector('table');
                     if (!table) return null;
 
+                    // Заголовки (имена датчиков)
                     const trs = Array.from(table.querySelectorAll('tr'));
                     let headerCells = [];
                     for (const tr of trs) {
@@ -132,6 +143,7 @@ def fetch_category_data(cat_key, reload_seed=0):
                         headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
                     }
 
+                    // Самая первая строка с данными (свежая дата и значения)
                     const tbody = table.querySelector('tbody') || table;
                     const rows = Array.from(tbody.querySelectorAll('tr'));
                     let dataCells = [];
@@ -167,10 +179,10 @@ def fetch_category_data(cat_key, reload_seed=0):
                 page.wait_for_timeout(800)
 
             if not val_map:
-                debug_msg = "Tablo bulundu ancak değerler eşleştirilemedi veya tablo henüz yüklenmedi."
+                debug_msg = "Селекторы переключены, но таблица не успела отрендериться."
 
         except Exception as e_main:
-            debug_msg = f"Tarayıcı işlem hatası: {e_main}"
+            debug_msg = f"Ошибка: {e_main}"
         finally:
             browser.close()
 
