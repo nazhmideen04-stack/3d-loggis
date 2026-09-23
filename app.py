@@ -6,7 +6,6 @@ import base64
 import subprocess
 from datetime import datetime
 import numpy as np
-from scipy.interpolate import RBFInterpolator
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
@@ -282,109 +281,6 @@ def fetch_all_categories_data():
 
     return all_results
 
-GEOMETRY = {
-    "tunnel_radius_m": 3.0,
-    "tunnel_spacing_m": 15.0,
-    "cs_angle_deg": {
-        ("R", "M1"): 0.0, ("R", "M2"): 45.0, ("R", "M3"): 90.0,
-        ("R", "M4"): 135.0, ("R", "M5"): 180.0,
-        ("L", "M1"): 225.0, ("L", "M2"): 270.0, ("L", "M3"): 315.0,
-    },
-    "cs_chainage_m": {"CS1": 0.0, "CS2": 30.0, "CS3": 60.0, "CS4": 90.0},
-    "s_line_angle_deg": {"L1": 270.0, "L2": 90.0},
-    "s_chainage_m": {
-        ("S1", "M1"): 0.0, ("S1", "M2"): 5.0, ("S1", "M3"): 10.0,
-        ("S1", "M4"): 15.0, ("S1", "M5"): 20.0,
-        ("S2", "M1"): 35.0, ("S2", "M2"): 40.0, ("S2", "M3"): 45.0,
-        ("S2", "M4"): 50.0, ("S2", "M5"): 55.0,
-        ("S3", "M1"): 70.0, ("S3", "M2"): 75.0, ("S3", "M3"): 80.0,
-        ("S3", "M4"): 85.0, ("S3", "M5"): 90.0,
-    },
-}
-
-R = GEOMETRY["tunnel_radius_m"]
-SP = GEOMETRY["tunnel_spacing_m"]
-angle_scale = 2 * np.pi * R / 360.0
-
-def parse_channel(name: str):
-    parts = name.strip().split("-")
-    if len(parts) != 4 or parts[0] not in ("TA", "TB"):
-        return None
-    return parts[0], ("CS" if parts[1].startswith("CS") else "S"), parts[1], parts[2], parts[3]
-
-def position(name: str):
-    parsed = parse_channel(name)
-    if not parsed:
-        return None
-    _, kind, section, place, point = parsed
-    if kind == "CS":
-        if point == "TP":
-            angles = [v for (side, _), v in GEOMETRY["cs_angle_deg"].items() if side == place]
-            return GEOMETRY["cs_chainage_m"][section], float(np.mean(angles))
-        return (GEOMETRY["cs_chainage_m"][section], GEOMETRY["cs_angle_deg"].get((place, point)))
-    if point == "TP":
-        chain = [v for (sec, _), v in GEOMETRY["s_chainage_m"].items() if sec == section]
-        return float(np.mean(chain)), GEOMETRY["s_line_angle_deg"].get(place)
-    return (GEOMETRY["s_chainage_m"].get((section, point)), GEOMETRY["s_line_angle_deg"].get(place))
-
-def build_rbf_tunnel_meshes(v_map):
-    result_meshes = []
-    nA, nC = 36, 32
-    angles = np.linspace(0, 360.0, nA, endpoint=False)
-    chain = np.linspace(0.0, 90.0, nC)
-
-    grid_rows = []
-    for a in angles:
-        for c in chain:
-            grid_rows.append([c, a])
-    grid = np.array(grid_rows, dtype=np.float32)
-    query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
-
-    for ti, tun in enumerate(("TA", "TB")):
-        off_x = (ti - 0.5) * SP
-        names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
-        if len(names) < 3:
-            continue
-
-        pos = np.array([position(n) for n in names])
-        wrapped = np.vstack([
-            np.column_stack([pos[:, 0], pos[:, 1] - 360.0]),
-            pos,
-            np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
-        ])
-        wrapped[:, 1] *= angle_scale
-
-        cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
-        rbf = RBFInterpolator(wrapped, np.concatenate([cur_vals, cur_vals, cur_vals]), kernel="linear", smoothing=1.0)
-        scalars = rbf(query).tolist()
-
-        vertices = []
-        for a in angles:
-            rad = np.radians(a)
-            for c in chain:
-                vertices.extend([
-                    round(float(off_x + (R - 0.02) * np.sin(rad)), 3),
-                    round(float((R - 0.02) * np.cos(rad)), 3),
-                    round(float(c - 45.0), 3)
-                ])
-
-        indices = []
-        for a in range(nA):
-            next_a = (a + 1) % nA
-            for c in range(nC - 1):
-                p0 = a * nC + c
-                p1 = a * nC + c + 1
-                p2 = next_a * nC + c
-                p3 = next_a * nC + c + 1
-                indices.extend([p0, p2, p1, p1, p2, p3])
-
-        result_meshes.append({
-            "vertices": vertices,
-            "indices": indices,
-            "scalars": scalars
-        })
-    return result_meshes
-
 @st.cache_data
 def get_model_b64(path):
     if not os.path.exists(path):
@@ -439,22 +335,19 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B THREE.JS ОБЛАСТЬ ---
+# --- 3B THREE.JS ОБЛАСТЬ (ТОЛЬКО ВАША МОДЕЛЬ) ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
     if not model_b64:
         st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
-        rbf_shells = build_rbf_tunnel_meshes(v_map)
-
         payload_data = {
             "sensorValues": v_map,
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
-            "comp": selected_comp,
-            "rbfShells": rbf_shells
+            "comp": selected_comp
         }
         json_payload = json.dumps(payload_data)
 
@@ -548,7 +441,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE İNTERPOLASYON YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="color-legend">
@@ -584,11 +477,10 @@ with col_3d:
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
-                // Корневая группа для автоматической центровки всей геометрии в (0,0,0)
                 const worldPivot = new THREE.Group();
                 scene.add(worldPivot);
 
-                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 4000);
+                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.001, 4000);
                 camera.position.set(-25, 20, 35);
 
                 const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true, powerPreference: "high-performance" }});
@@ -598,11 +490,10 @@ with col_3d:
                 renderer.toneMappingExposure = 1.25;
                 container.appendChild(renderer.domElement);
 
-                // Настройка CAD-контроллера
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.08;
-                controls.minDistance = 0.01;
+                controls.minDistance = 0.001;
                 controls.maxDistance = 3000;
                 controls.mouseButtons = {{
                     LEFT: THREE.MOUSE.ROTATE,
@@ -613,7 +504,7 @@ with col_3d:
                 controls.panSpeed = 1.1;
                 controls.screenSpacePanning = true;
 
-                // Плавный зум в курсор с предотвращением троттлинга
+                // Зум в курсор
                 const zoomRaycaster = new THREE.Raycaster();
                 const zoomMouse = new THREE.Vector2();
                 let wheelRafPending = false;
@@ -660,6 +551,7 @@ with col_3d:
                 scene.add(dirLight2);
 
                 const sensorMeshes = [];
+                const tunnelMeshes = [];
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
@@ -688,34 +580,6 @@ with col_3d:
                     return c;
                 }}
 
-                // Отрисовка RBF оболочек
-                if (payload.rbfShells && payload.rbfShells.length > 0) {{
-                    payload.rbfShells.forEach(shell => {{
-                        const geom = new THREE.BufferGeometry();
-                        geom.setAttribute('position', new THREE.Float32BufferAttribute(shell.vertices, 3));
-                        geom.setIndex(shell.indices);
-
-                        const colors = [];
-                        shell.scalars.forEach(val => {{
-                            const col = getColorForValue(val, payload.clim, payload.comp);
-                            colors.push(col.r, col.g, col.b);
-                        }});
-                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                        geom.computeVertexNormals();
-
-                        const rbfMaterial = new THREE.MeshStandardMaterial({{
-                            vertexColors: true,
-                            roughness: 0.45,
-                            metalness: 0.1,
-                            side: THREE.DoubleSide
-                        }});
-
-                        const mesh = new THREE.Mesh(geom, rbfMaterial);
-                        worldPivot.add(mesh);
-                    }});
-                }}
-
-                // Загрузка модели из 3ds Max
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -728,19 +592,21 @@ with col_3d:
                 gltfLoader.parse(bytes.buffer, '', function(gltf) {{
                     const model = gltf.scene;
                     worldPivot.add(model);
+                    model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
+                    // 1. Сбор объектов сцены
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
 
-                            // Каркасный Box001
+                            // Box001 делаем тонким прозрачным каркасом
                             if (name.toUpperCase().includes("BOX001")) {{
                                 child.material = new THREE.MeshBasicMaterial({{
                                     color: 0x1E3A5F,
                                     wireframe: true,
                                     transparent: true,
-                                    opacity: 0.15
+                                    opacity: 0.12
                                 }});
                                 return;
                             }}
@@ -771,35 +637,107 @@ with col_3d:
                                     selectedMeshRef = child;
                                 }}
                             }} else {{
-                                child.material = new THREE.MeshStandardMaterial({{
-                                    color: 0x142032,
-                                    transparent: true,
-                                    opacity: 0.22,
-                                    roughness: 0.3,
-                                    metalness: 0.1,
-                                    depthWrite: false,
-                                    side: THREE.DoubleSide
-                                }});
+                                // Тело тоннелей (TA / TB)
+                                const isTunnel = (name.toUpperCase().includes("TA") || name.toUpperCase().includes("TB") || name.toLowerCase().includes("tunnel"));
+                                if (isTunnel) {{
+                                    tunnelMeshes.push(child);
+                                }} else {{
+                                    // Нейтральные детали (балласт, шпалы и т.д.)
+                                    child.material = new THREE.MeshStandardMaterial({{
+                                        color: 0x141E2D,
+                                        roughness: 0.8,
+                                        metalness: 0.1
+                                    }});
+                                }}
                             }}
                         }}
                     }});
 
-                    // --- АВТОМАТИЧЕСКАЯ ЦЕНТРОВКА СЦЕНЫ К (0,0,0) ---
+                    // 2. Сбор позиций сенсоров в мировых координатах
+                    const sensorPositions = [];
+                    sensorMeshes.forEach(sMesh => {{
+                        if (sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
+                            const wPos = new THREE.Vector3();
+                            sMesh.getWorldPosition(wPos);
+                            sensorPositions.push({{
+                                pos: wPos,
+                                val: sMesh.userData.val,
+                                prefix: sMesh.userData.sensorName.substring(0, 2).toUpperCase()
+                            }});
+                        }}
+                    }});
+
+                    // 3. ПРЯМАЯ ИНТЕРПОЛЯЦИЯ НА ВЕРШИНЫ ВАШИХ ТОННЕЛЕЙ 'TA' И 'TB'
+                    const defaultTunnelColor = new THREE.Color(0x132238);
+                    const R_INFLUENCE = 8.5; // Радиус буфера интерполяции (в метрах)
+
+                    tunnelMeshes.forEach(tMesh => {{
+                        const geom = tMesh.geometry;
+                        if (!geom || !geom.attributes || !geom.attributes.position) return;
+
+                        const posAttr = geom.attributes.position;
+                        const colors = [];
+                        const localV = new THREE.Vector3();
+                        const worldV = new THREE.Vector3();
+
+                        // Фильтруем датчики по соответствующему тоннелю
+                        const isTB = tMesh.name.toUpperCase().includes("TB");
+                        const targetPrefix = isTB ? "TB" : "TA";
+                        let activeSensors = sensorPositions.filter(s => s.prefix === targetPrefix);
+                        if (activeSensors.length === 0) activeSensors = sensorPositions;
+
+                        for (let i = 0; i < posAttr.count; i++) {{
+                            localV.fromBufferAttribute(posAttr, i);
+                            worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
+
+                            let totalWeight = 0;
+                            let accumR = 0, accumG = 0, accumB = 0;
+
+                            for (let j = 0; j < activeSensors.length; j++) {{
+                                const s = activeSensors[j];
+                                const d = worldV.distanceTo(s.pos);
+
+                                if (d < R_INFLUENCE) {{
+                                    const w = Math.pow(1.0 - (d / R_INFLUENCE), 2.5);
+                                    const c = getColorForValue(s.val, payload.clim, payload.comp);
+                                    accumR += c.r * w;
+                                    accumG += c.g * w;
+                                    accumB += c.b * w;
+                                    totalWeight += w;
+                                }}
+                            }}
+
+                            if (totalWeight > 0) {{
+                                const interpC = new THREE.Color(accumR / totalWeight, accumG / totalWeight, accumB / totalWeight);
+                                const blend = Math.min(1.0, totalWeight);
+                                const finalC = defaultTunnelColor.clone().lerp(interpC, blend);
+                                colors.push(finalC.r, finalC.g, finalC.b);
+                            }} else {{
+                                colors.push(defaultTunnelColor.r, defaultTunnelColor.g, defaultTunnelColor.b);
+                            }}
+                        }}
+
+                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                        
+                        tMesh.material = new THREE.MeshStandardMaterial({{
+                            vertexColors: true,
+                            transparent: true,
+                            opacity: 0.88,
+                            roughness: 0.4,
+                            metalness: 0.1,
+                            depthWrite: false,
+                            side: THREE.DoubleSide
+                        }});
+                    }});
+
+                    // 4. Центрирование сцены
                     worldPivot.updateMatrixWorld(true);
                     const sceneBox = new THREE.Box3().setFromObject(worldPivot);
                     const centerOffset = sceneBox.getCenter(new THREE.Vector3());
 
-                    // Сдвигаем все объекты так, чтобы их центр совпал с (0,0,0)
                     worldPivot.position.sub(centerOffset);
                     worldPivot.updateMatrixWorld(true);
 
-                    // Устанавливаем сетку точно под подошву объектов
-                    const floorY = sceneBox.min.y - centerOffset.y - 0.5;
-                    const grid = new THREE.GridHelper(120, 60, 0x00C8E6, 0x141E30);
-                    grid.position.y = floorY;
-                    scene.add(grid);
-
-                    // Фокусировка
                     if (selectedMeshRef) {{
                         flyCameraTo(selectedMeshRef, true);
                     }} else {{
