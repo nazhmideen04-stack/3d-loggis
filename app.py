@@ -327,7 +327,7 @@ def position(name: str):
         return float(np.mean(chain)), GEOMETRY["s_line_angle_deg"].get(place)
     return (GEOMETRY["s_chainage_m"].get((section, point)), GEOMETRY["s_line_angle_deg"].get(place))
 
-# Расчет RBF интерполяционных сеток для обоих тоннелей (как в исходном коде)
+# Расчет RBF интерполяционных сеток для обоих тоннелей
 def build_rbf_tunnel_meshes(v_map):
     result_meshes = []
     nA, nC = 36, 32
@@ -447,7 +447,6 @@ with col_3d:
     if not model_b64:
         st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
-        # 1. Считаем чистую RBF интерполяцию прямо в Python (проверенная точность)
         rbf_shells = build_rbf_tunnel_meshes(v_map)
 
         payload_data = {
@@ -586,7 +585,8 @@ with col_3d:
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
-                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 2500);
+                // camera near выставлен в 0.001 для максимального приближения
+                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.001, 3000);
                 camera.position.set(-30, 24, 45);
 
                 const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
@@ -596,15 +596,50 @@ with col_3d:
                 renderer.toneMappingExposure = 1.25;
                 container.appendChild(renderer.domElement);
 
+                // --- CAD/3DS MAX ОРБИТАЛЬНЫЙ КОНТРОЛЛЕР ---
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.06;
-                controls.minDistance = 0.02;
-                controls.maxDistance = 500;
-                controls.zoomSpeed = 1.35;
+                controls.dampingFactor = 0.08;
+                controls.minDistance = 0.001; // Сняты барьеры приближения
+                controls.maxDistance = 3000;
+                
+                controls.mouseButtons = {{
+                    LEFT: THREE.MOUSE.ROTATE,
+                    MIDDLE: THREE.MOUSE.DOLLY_PAN,
+                    RIGHT: THREE.MOUSE.PAN
+                }};
                 controls.enablePan = true;
-                controls.panSpeed = 1.0;
+                controls.panSpeed = 1.2;
                 controls.screenSpacePanning = true;
+
+                // --- ЗУМ В ТОЧКУ ПОД КУРСОРОМ (ZOOM-TO-CURSOR) ---
+                const zoomRaycaster = new THREE.Raycaster();
+                const zoomMouse = new THREE.Vector2();
+
+                renderer.domElement.addEventListener('wheel', function(e) {{
+                    e.preventDefault();
+
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    zoomMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                    zoomMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                    zoomRaycaster.setFromCamera(zoomMouse, camera);
+                    const hits = zoomRaycaster.intersectObjects(scene.children, true);
+
+                    const dir = zoomRaycaster.ray.direction.clone();
+                    const zoomFactor = e.deltaY < 0 ? 0.22 : -0.22;
+
+                    if (hits.length > 0 && e.deltaY < 0) {{
+                        const hitPoint = hits[0].point;
+                        controls.target.lerp(hitPoint, 0.2);
+                    }}
+
+                    const distToTarget = camera.position.distanceTo(controls.target);
+                    const moveStep = Math.max(distToTarget * zoomFactor, 0.35 * Math.sign(zoomFactor));
+
+                    camera.position.addScaledVector(dir, moveStep);
+                    controls.update();
+                }}, {{ passive: false }});
 
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
                 scene.add(ambientLight);
@@ -650,7 +685,7 @@ with col_3d:
                     return c;
                 }}
 
-                // 2. Отрисовка проверенной RBF тепловой карты прямо на поверхности тоннелей
+                // Отрисовка RBF интерполированной оболочки тоннелей
                 if (payload.rbfShells && payload.rbfShells.length > 0) {{
                     payload.rbfShells.forEach(shell => {{
                         const geom = new THREE.BufferGeometry();
@@ -677,7 +712,7 @@ with col_3d:
                     }});
                 }}
 
-                // 3. Загрузка 3D-модели из 3ds Max: датчики + тонкий каркас и детали
+                // Загрузка модели из 3ds Max: датчики, обделка и вспомогательные конструкции
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -694,7 +729,7 @@ with col_3d:
                         if (child.isMesh) {{
                             const name = child.name;
 
-                            // Облегчение Box001 до прозрачной сетки
+                            // Облегчение Box001 до прозрачной каркасной сетки
                             if (name.toUpperCase().includes("BOX001")) {{
                                 child.material = new THREE.MeshBasicMaterial({{
                                     color: 0x1E3A5F,
@@ -731,7 +766,7 @@ with col_3d:
                                     flyCameraTo(child, true);
                                 }}
                             }} else {{
-                                // Стены тоннеля из 3ds Max делаем прозрачной обделкой поверх RBF интерполяции
+                                // Стены тоннелей из 3ds Max становятся легкой полупрозрачной обделкой поверх интерполяции
                                 child.material = new THREE.MeshStandardMaterial({{
                                     color: 0x142032,
                                     transparent: true,
