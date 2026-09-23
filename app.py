@@ -6,7 +6,6 @@ import base64
 import subprocess
 from datetime import datetime
 import numpy as np
-from scipy.interpolate import RBFInterpolator
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
@@ -282,109 +281,6 @@ def fetch_all_categories_data():
 
     return all_results
 
-GEOMETRY = {
-    "tunnel_radius_m": 3.0,
-    "tunnel_spacing_m": 15.0,
-    "cs_angle_deg": {
-        ("R", "M1"): 0.0, ("R", "M2"): 45.0, ("R", "M3"): 90.0,
-        ("R", "M4"): 135.0, ("R", "M5"): 180.0,
-        ("L", "M1"): 225.0, ("L", "M2"): 270.0, ("L", "M3"): 315.0,
-    },
-    "cs_chainage_m": {"CS1": 0.0, "CS2": 30.0, "CS3": 60.0, "CS4": 90.0},
-    "s_line_angle_deg": {"L1": 270.0, "L2": 90.0},
-    "s_chainage_m": {
-        ("S1", "M1"): 0.0, ("S1", "M2"): 5.0, ("S1", "M3"): 10.0,
-        ("S1", "M4"): 15.0, ("S1", "M5"): 20.0,
-        ("S2", "M1"): 35.0, ("S2", "M2"): 40.0, ("S2", "M3"): 45.0,
-        ("S2", "M4"): 50.0, ("S2", "M5"): 55.0,
-        ("S3", "M1"): 70.0, ("S3", "M2"): 75.0, ("S3", "M3"): 80.0,
-        ("S3", "M4"): 85.0, ("S3", "M5"): 90.0,
-    },
-}
-
-R = GEOMETRY["tunnel_radius_m"]
-SP = GEOMETRY["tunnel_spacing_m"]
-angle_scale = 2 * np.pi * R / 360.0
-
-def parse_channel(name: str):
-    parts = name.strip().split("-")
-    if len(parts) != 4 or parts[0] not in ("TA", "TB"):
-        return None
-    return parts[0], ("CS" if parts[1].startswith("CS") else "S"), parts[1], parts[2], parts[3]
-
-def position(name: str):
-    parsed = parse_channel(name)
-    if not parsed:
-        return None
-    _, kind, section, place, point = parsed
-    if kind == "CS":
-        if point == "TP":
-            angles = [v for (side, _), v in GEOMETRY["cs_angle_deg"].items() if side == place]
-            return GEOMETRY["cs_chainage_m"][section], float(np.mean(angles))
-        return (GEOMETRY["cs_chainage_m"][section], GEOMETRY["cs_angle_deg"].get((place, point)))
-    if point == "TP":
-        chain = [v for (sec, _), v in GEOMETRY["s_chainage_m"].items() if sec == section]
-        return float(np.mean(chain)), GEOMETRY["s_line_angle_deg"].get(place)
-    return (GEOMETRY["s_chainage_m"].get((section, point)), GEOMETRY["s_line_angle_deg"].get(place))
-
-def build_rbf_tunnel_meshes(v_map):
-    result_meshes = []
-    nA, nC = 36, 32
-    angles = np.linspace(0, 360.0, nA, endpoint=False)
-    chain = np.linspace(0.0, 90.0, nC)
-
-    grid_rows = []
-    for a in angles:
-        for c in chain:
-            grid_rows.append([c, a])
-    grid = np.array(grid_rows, dtype=np.float32)
-    query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
-
-    for ti, tun in enumerate(("TA", "TB")):
-        off_x = (ti - 0.5) * SP
-        names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
-        if len(names) < 3:
-            continue
-
-        pos = np.array([position(n) for n in names])
-        wrapped = np.vstack([
-            np.column_stack([pos[:, 0], pos[:, 1] - 360.0]),
-            pos,
-            np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
-        ])
-        wrapped[:, 1] *= angle_scale
-
-        cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
-        rbf = RBFInterpolator(wrapped, np.concatenate([cur_vals, cur_vals, cur_vals]), kernel="linear", smoothing=1.0)
-        scalars = rbf(query).tolist()
-
-        vertices = []
-        for a in angles:
-            rad = np.radians(a)
-            for c in chain:
-                vertices.extend([
-                    round(float(off_x + (R - 0.02) * np.sin(rad)), 3),
-                    round(float((R - 0.02) * np.cos(rad)), 3),
-                    round(float(c - 45.0), 3)
-                ])
-
-        indices = []
-        for a in range(nA):
-            next_a = (a + 1) % nA
-            for c in range(nC - 1):
-                p0 = a * nC + c
-                p1 = a * nC + c + 1
-                p2 = next_a * nC + c
-                p3 = next_a * nC + c + 1
-                indices.extend([p0, p2, p1, p1, p2, p3])
-
-        result_meshes.append({
-            "vertices": vertices,
-            "indices": indices,
-            "scalars": scalars
-        })
-    return result_meshes
-
 @st.cache_data
 def get_model_b64(path):
     if not os.path.exists(path):
@@ -425,6 +321,12 @@ else:
 
 with col_nav:
     st.markdown("---")
+    st.subheader("TÜNEL KONTROLLERİ")
+    show_ta = st.checkbox("Tünel TA Göster", value=True)
+    show_tb = st.checkbox("Tünel TB Göster", value=True)
+    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=20, max_value=100, value=90, step=5) / 100.0
+
+    st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
@@ -446,15 +348,16 @@ with col_3d:
     if not model_b64:
         st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
-        rbf_shells = build_rbf_tunnel_meshes(v_map)
-
         payload_data = {
             "sensorValues": v_map,
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
             "comp": selected_comp,
-            "rbfShells": rbf_shells
+            "activeTag": cat_cfg["tag"],
+            "showTA": show_ta,
+            "showTB": show_tb,
+            "tunnelOpacity": float(tunnel_opacity)
         }
         json_payload = json.dumps(payload_data)
 
@@ -548,7 +451,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE İNTERPOLASYON YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="color-legend">
@@ -574,11 +477,11 @@ with col_3d:
                 const legendBar = document.getElementById('legend-bar');
 
                 if (payload.comp === "temp") {{
-                    legendBar.style.background = "linear-gradient(to bottom, #d73027, #f46d43, #fdae61, #fee08b, #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #00FF88, #0099FF, #0011DD)";
                 }} else if (payload.comp === "axial") {{
-                    legendBar.style.background = "linear-gradient(to bottom, #6A0080, #E040FB, #F0F0F0, #00E676, #006428)";
+                    legendBar.style.background = "linear-gradient(to bottom, #9900CC, #FF00EE, #FFFFFF, #00FF44, #008811)";
                 }} else {{
-                    legendBar.style.background = "linear-gradient(to bottom, #C60000, #FF4422, #FFFFFF, #1E9AD6, #1858BA)";
+                    legendBar.style.background = "linear-gradient(to bottom, #EE0000, #FF3311, #FFFFFF, #00AAFF, #0033CC)";
                 }}
 
                 const scene = new THREE.Scene();
@@ -588,92 +491,75 @@ with col_3d:
                 scene.add(rootGroup);
 
                 const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.05, 5000);
-                camera.position.set(-25, 20, 35);
 
                 const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true, powerPreference: "high-performance" }});
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.25;
+                renderer.toneMappingExposure = 1.35;
                 container.appendChild(renderer.domElement);
 
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.06;
-                controls.minDistance = 0.2;
+                controls.minDistance = 0.5;
                 controls.maxDistance = 2500;
                 controls.zoomSpeed = 1.15;
                 controls.panSpeed = 1.0;
                 controls.screenSpacePanning = true;
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
                 scene.add(ambientLight);
 
-                const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.4);
-                dirLight1.position.set(40, 60, 50);
+                const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.5);
+                dirLight1.position.set(50, 70, 60);
                 scene.add(dirLight1);
 
-                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
-                dirLight2.position.set(-40, -20, -50);
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
+                dirLight2.position.set(-50, -30, -60);
                 scene.add(dirLight2);
 
                 const sensorMeshes = [];
+                const tunnelMeshes = [];
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
                 function getColorForValue(val, clim, comp) {{
-                    if (val === undefined || isNaN(val)) return new THREE.Color(0x555555);
+                    if (val === undefined || isNaN(val)) return new THREE.Color(0x333333);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
                     const c = new THREE.Color();
                     if (comp === "temp") {{
-                        c.setHSL((1.0 - t) * 0.7, 1.0, 0.5);
+                        c.setHSL((1.0 - t) * 0.68, 1.0, 0.5);
                     }} else if (comp === "axial") {{
                         if (t < 0.5) {{
-                            c.setRGB(0.0, 0.39 + t * 1.0, 0.15 + t * 0.6);
+                            const f = t * 2.0;
+                            c.setRGB(1.0 - f, 1.0, 1.0 - f * 0.7);
                         }} else {{
-                            c.setRGB(0.5 + (t - 0.5) * 0.9, 0.1, 0.5 + (t - 0.5) * 0.9);
+                            const f = (t - 0.5) * 2.0;
+                            c.setRGB(0.7 + f * 0.3, 1.0 - f * 0.9, 0.9 + f * 0.1);
                         }}
                     }} else {{
                         if (t < 0.5) {{
-                            c.setRGB(0.1 + t * 1.8, 0.35 + t * 1.3, 0.8 + t * 0.4);
+                            const f = t * 2.0;
+                            c.setRGB(f, f * 0.85 + 0.1, 1.0);
                         }} else {{
-                            c.setRGB(1.0, (1.0 - t) * 1.4, (1.0 - t) * 0.3);
+                            const f = (t - 0.5) * 2.0;
+                            c.setRGB(1.0, 1.0 - f * 0.9, 1.0 - f);
                         }}
                     }}
                     return c;
                 }}
 
-                // Отрисовка проверенной RBF-оболочки
-                if (payload.rbfShells && payload.rbfShells.length > 0) {{
-                    payload.rbfShells.forEach(shell => {{
-                        const geom = new THREE.BufferGeometry();
-                        geom.setAttribute('position', new THREE.Float32BufferAttribute(shell.vertices, 3));
-                        geom.setIndex(shell.indices);
-
-                        const colors = [];
-                        shell.scalars.forEach(val => {{
-                            const col = getColorForValue(val, payload.clim, payload.comp);
-                            colors.push(col.r, col.g, col.b);
-                        }});
-                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                        geom.computeVertexNormals();
-
-                        const rbfMaterial = new THREE.MeshStandardMaterial({{
-                            vertexColors: true,
-                            roughness: 0.45,
-                            metalness: 0.1,
-                            side: THREE.DoubleSide
-                        }});
-
-                        const mesh = new THREE.Mesh(geom, rbfMaterial);
-                        rootGroup.add(mesh);
-                    }});
+                function isSensorForActiveCategory(name, activeTag) {{
+                    if (activeTag === "-CS") return name.includes("-CS");
+                    if (activeTag === "-S") return name.includes("-S") && !name.includes("-CS");
+                    if (activeTag === "-TP") return name.includes("-TP");
+                    return false;
                 }}
 
-                // Загрузка модели из 3ds Max
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -686,81 +572,230 @@ with col_3d:
                 gltfLoader.parse(bytes.buffer, '', function(gltf) {{
                     const model = gltf.scene;
                     rootGroup.add(model);
+                    model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
+                    // 1. ПОИСК ОБЪЕКТОВ
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
+                            const uName = name.toUpperCase();
 
-                            if (name.toUpperCase().includes("BOX001")) {{
+                            // Каркасный Box001
+                            if (uName.includes("BOX001")) {{
                                 child.material = new THREE.MeshBasicMaterial({{
                                     color: 0x1E3A5F,
                                     wireframe: true,
                                     transparent: true,
-                                    opacity: 0.12
+                                    opacity: 0.15
                                 }});
                                 return;
                             }}
 
-                            const isSensor = (name.includes("-CS") || name.includes("-S") || name.includes("-TP") || payload.sensorValues.hasOwnProperty(name));
+                            const isSensor = (
+                                uName.includes("-CS") || 
+                                uName.includes("-S") || 
+                                uName.includes("-TP") || 
+                                payload.sensorValues.hasOwnProperty(name)
+                            );
 
                             if (isSensor) {{
                                 sensorMeshes.push(child);
                                 child.userData.sensorName = name;
                                 child.userData.isSensor = true;
 
+                                const isCategoryMatch = isSensorForActiveCategory(name, payload.activeTag);
                                 const val = payload.sensorValues[name];
                                 child.userData.val = val;
+                                child.userData.isActiveCategory = isCategoryMatch;
 
                                 const isSelected = (name === payload.selectedSensor);
-                                const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(val, payload.clim, payload.comp);
 
-                                child.material = new THREE.MeshStandardMaterial({{
-                                    color: sensorColor,
-                                    emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
-                                    emissiveIntensity: isSelected ? 0.95 : 0.45,
-                                    roughness: 0.2,
-                                    metalness: 0.3
-                                }});
+                                if (isCategoryMatch && val !== undefined && !isNaN(val)) {{
+                                    const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(val, payload.clim, payload.comp);
 
-                                if (isSelected) {{
-                                    child.scale.set(1.65, 1.65, 1.65);
-                                    selectedMeshRef = child;
+                                    child.material = new THREE.MeshStandardMaterial({{
+                                        color: sensorColor,
+                                        emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
+                                        emissiveIntensity: isSelected ? 1.0 : 0.75,
+                                        roughness: 0.15,
+                                        metalness: 0.2
+                                    }});
+
+                                    if (isSelected) {{
+                                        child.scale.set(1.75, 1.75, 1.75);
+                                        selectedMeshRef = child;
+                                    }}
+                                }} else {{
+                                    child.material = new THREE.MeshStandardMaterial({{
+                                        color: 0x222C38,
+                                        transparent: true,
+                                        opacity: 0.25,
+                                        roughness: 0.9,
+                                        metalness: 0.0
+                                    }});
+                                    child.scale.set(0.9, 0.9, 0.9);
                                 }}
                             }} else {{
-                                // Чистый полупрозрачный материал тоннелей без изменения геометрии
-                                child.material = new THREE.MeshStandardMaterial({{
-                                    color: 0x142032,
-                                    transparent: true,
-                                    opacity: 0.22,
-                                    roughness: 0.3,
-                                    metalness: 0.1,
-                                    depthWrite: false,
-                                    side: THREE.DoubleSide
-                                }});
+                                // Тела тоннелей
+                                const isTunnelMesh = (
+                                    uName.includes("TA") || 
+                                    uName.includes("TB") || 
+                                    uName.includes("TUNNEL") || 
+                                    uName.includes("TÜNEL") || 
+                                    uName.includes("CYLINDER")
+                                );
+
+                                if (isTunnelMesh) {{
+                                    tunnelMeshes.push(child);
+                                }} else {{
+                                    child.material = new THREE.MeshStandardMaterial({{
+                                        color: 0x141E2D,
+                                        roughness: 0.8,
+                                        metalness: 0.1
+                                    }});
+                                }}
                             }}
                         }}
                     }});
 
-                    // Центрирование всей сцены
-                    rootGroup.updateMatrixWorld(true);
-                    const sceneBox = new THREE.Box3().setFromObject(rootGroup);
-                    const centerOffset = sceneBox.getCenter(new THREE.Vector3());
+                    // 2. СБОР МИРОВЫХ КООРДИНАТ ДАТЧИКОВ
+                    const activeSensors = [];
+                    sensorMeshes.forEach(sMesh => {{
+                        if (sMesh.userData.isActiveCategory && sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
+                            const wPos = new THREE.Vector3();
+                            sMesh.getWorldPosition(wPos);
+                            const uName = sMesh.userData.sensorName.toUpperCase();
+                            const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
 
+                            activeSensors.push({{
+                                pos: wPos,
+                                val: sMesh.userData.val,
+                                tun: tun,
+                                name: sMesh.userData.sensorName
+                            }});
+                        }}
+                    }});
+
+                    // 3. ПРЯМАЯ ИНТЕРПОЛЯЦИЯ НА ВЕРШИНЫ ВАШЕЙ МОДЕЛИ 3DS MAX
+                    tunnelMeshes.forEach(tMesh => {{
+                        const uName = tMesh.name.toUpperCase();
+                        const isTB = uName.includes("TB");
+                        
+                        if (isTB && !payload.showTB) {{
+                            tMesh.visible = false;
+                            return;
+                        }}
+                        if (!isTB && !payload.showTA) {{
+                            tMesh.visible = false;
+                            return;
+                        }}
+                        tMesh.visible = true;
+
+                        const geom = tMesh.geometry;
+                        if (!geom || !geom.attributes || !geom.attributes.position) return;
+
+                        const posAttr = geom.attributes.position;
+                        const colors = new Float32Array(posAttr.count * 3);
+                        const localV = new THREE.Vector3();
+                        const worldV = new THREE.Vector3();
+
+                        const activeTun = isTB ? "TB" : "TA";
+                        let pool = activeSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
+                        if (pool.length < 3) pool = activeSensors;
+
+                        tMesh.updateMatrixWorld(true);
+
+                        for (let i = 0; i < posAttr.count; i++) {{
+                            localV.fromBufferAttribute(posAttr, i);
+                            // Координата вершины в мировом пространстве сцены
+                            worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
+
+                            let totalWeight = 0;
+                            let accumR = 0, accumG = 0, accumB = 0;
+
+                            for (let j = 0; j < pool.length; j++) {{
+                                const s = pool[j];
+                                const d = worldV.distanceTo(s.pos);
+                                
+                                // Мягкий спад веса, чтобы весь тоннель был окрашен
+                                const w = 1.0 / Math.pow(d + 0.6, 2.0);
+                                const c = getColorForValue(s.val, payload.clim, payload.comp);
+
+                                accumR += c.r * w;
+                                accumG += c.g * w;
+                                accumB += c.b * w;
+                                totalWeight += w;
+                            }}
+
+                            const idx = i * 3;
+                            if (totalWeight > 0) {{
+                                colors[idx] = accumR / totalWeight;
+                                colors[idx + 1] = accumG / totalWeight;
+                                colors[idx + 2] = accumB / totalWeight;
+                            }} else {{
+                                colors[idx] = 0.12;
+                                colors[idx + 1] = 0.18;
+                                colors[idx + 2] = 0.28;
+                            }}
+                        }}
+
+                        geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                        geom.attributes.color.needsUpdate = true;
+                        
+                        const isTransparent = payload.tunnelOpacity < 0.98;
+                        tMesh.material = new THREE.MeshStandardMaterial({{
+                            color: 0xffffff, // Белый базовый цвет для чистого отображения градиента
+                            vertexColors: true,
+                            transparent: isTransparent,
+                            opacity: payload.tunnelOpacity,
+                            roughness: 0.35,
+                            metalness: 0.05,
+                            depthWrite: !isTransparent,
+                            side: THREE.DoubleSide
+                        }});
+                        tMesh.material.needsUpdate = true;
+                    }});
+
+                    // 4. НАСТОЯЩЕЕ ЦЕНТРИРОВАНИЕ МОДЕЛИ ТОННЕЛЕЙ В (0,0,0)
+                    // Вычисляем бокс только по реальным тоннелям (игнорируя улетевшие вспомогательные боксы)
+                    const tunnelBox = new THREE.Box3();
+                    if (tunnelMeshes.length > 0) {{
+                        tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
+                    }} else {{
+                        tunnelBox.setFromObject(model);
+                    }}
+
+                    const centerOffset = tunnelBox.getCenter(new THREE.Vector3());
+
+                    // Перемещаем всю корневую группу так, чтобы тоннели сели ровно в (0,0,0)
                     rootGroup.position.sub(centerOffset);
                     rootGroup.updateMatrixWorld(true);
 
-                    // Установка сетки
-                    const floorY = sceneBox.min.y - centerOffset.y - 0.5;
-                    const grid = new THREE.GridHelper(120, 60, 0x00C8E6, 0x141E30);
-                    grid.position.y = floorY;
+                    // Пересчитываем габариты после центрирования
+                    const finalBox = new THREE.Box3().setFromObject(rootGroup);
+                    const size = finalBox.getSize(new THREE.Vector3());
+
+                    // Устанавливаем сетку точно под днище тоннелей
+                    const grid = new THREE.GridHelper(Math.max(size.x, size.z) * 1.5, 50, 0x00C8E6, 0x141E30);
+                    grid.position.y = finalBox.min.y - 0.2;
                     scene.add(grid);
+
+                    // 5. ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ СТРОГО ПО ЦЕНТРУ
+                    controls.target.set(0, 0, 0);
 
                     if (selectedMeshRef) {{
                         flyCameraTo(selectedMeshRef, false);
                     }} else {{
-                        controls.target.set(0, 0, 0);
-                        camera.position.set(-25, 18, 35);
+                        const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                        const fovRad = (camera.fov * Math.PI) / 180.0;
+                        let idealDist = (maxDim / 2.0) / Math.tan(fovRad / 2.0) * 1.1;
+
+                        camera.position.set(
+                            size.x * 0.7 + 12.0,
+                            size.y * 0.6 + 8.0,
+                            idealDist * 0.75
+                        );
                         controls.update();
                     }}
 
@@ -776,21 +811,22 @@ with col_3d:
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(2.0)).add(new THREE.Vector3(0, 0.7, 0));
+                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(2.2)).add(new THREE.Vector3(0, 0.8, 0));
 
                     if (!animate) {{
                         camera.position.copy(endCamPos);
                         controls.target.copy(targetPos);
+                        controls.update();
                         return;
                     }}
 
                     new TWEEN.Tween(controls.target)
-                        .to(targetPos, 1100)
+                        .to(targetPos, 1000)
                         .easing(TWEEN.Easing.Cubic.InOut)
                         .start();
 
                     new TWEEN.Tween(camera.position)
-                        .to(endCamPos, 1100)
+                        .to(endCamPos, 1000)
                         .easing(TWEEN.Easing.Cubic.InOut)
                         .start();
                 }}
@@ -807,12 +843,18 @@ with col_3d:
                         const mesh = intersects[0].object;
                         const name = mesh.userData.sensorName;
                         const val = mesh.userData.val;
+                        const isMatch = mesh.userData.isActiveCategory;
                         const valTxt = (val !== undefined && !isNaN(val)) ? (val > 0 ? "+" + val : val) + " " + payload.unit : "Bilinmiyor";
 
                         tooltip.style.display = 'block';
                         tooltip.style.left = (e.clientX + 14) + 'px';
                         tooltip.style.top = (e.clientY + 14) + 'px';
-                        tooltip.innerHTML = '<b>' + name + '</b><br>Değer: ' + valTxt;
+                        
+                        if (isMatch) {{
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00C8E6;">Aktif Analiz Değeri: ' + valTxt + '</span>';
+                        }} else {{
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#8899AA;">(Başka analiz kategorisi)</span>';
+                        }}
                         renderer.domElement.style.cursor = 'pointer';
                     }} else {{
                         tooltip.style.display = 'none';
