@@ -17,18 +17,19 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
 # Фирменный стиль DESTECH с темным фоном и неоново-синими акцентами
+# Фирменный стиль DESTECH с мягким неоном и крупными кнопками выбора
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
 
-    /* Глубокий темный фон всего приложения */
+    /* Глубокий комфортный темный фон */
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #0A0E17 !important;
     }
 
     html, body, [class*="css"], p, span, label, .stMarkdown {
         font-family: 'Chakra Petch', sans-serif !important;
-        color: #E2ECF7;
+        color: #D2DEEC;
     }
 
     h1, h2, h3 {
@@ -42,71 +43,84 @@ st.markdown("""
     /* Убираем фон у инлайн-кода */
     code {
         background-color: transparent !important;
-        color: #00F0FF !important;
+        color: #00C8E6 !important;
         border: none !important;
         padding: 0 !important;
         font-weight: 700 !important;
     }
 
-    /* Неоново-синие значения данных и метрик */
+    /* Мягкие неоновые значения без резкого свечения */
     [data-testid="stMetricValue"], .neon-data {
-        color: #00F0FF !important;
+        color: #00C8E6 !important;
         font-weight: 700 !important;
-        text-shadow: 0 0 10px rgba(0, 240, 255, 0.55), 0 0 20px rgba(0, 240, 255, 0.25) !important;
+        text-shadow: 0 0 6px rgba(0, 200, 230, 0.35) !important;
     }
     
     [data-testid="stMetricLabel"] {
-        color: #8CA3BA !important;
+        color: #8397AD !important;
         font-size: 13px !important;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
 
-    /* Крупные стилизованные переключатели (Radio) */
+    /* Заголовок группы радиокнопок */
     div[data-testid="stRadio"] > label {
         font-size: 15px !important;
         font-weight: 700 !important;
-        color: #8CA3BA !important;
+        color: #8397AD !important;
         text-transform: uppercase;
         letter-spacing: 1px;
-        margin-bottom: 8px !important;
+        margin-bottom: 12px !important;
     }
 
+    /* Крупные интерактивные плашки выбора для CS / S / TP */
     div[data-testid="stRadio"] div[role="radiogroup"] > label {
-        background: rgba(14, 25, 45, 0.6) !important;
-        border: 1px solid rgba(0, 240, 255, 0.15) !important;
-        padding: 10px 14px !important;
-        border-radius: 8px !important;
-        margin-bottom: 8px !important;
-        transition: all 0.25s ease-in-out !important;
+        background: #0E182A !important;
+        border: 1px solid rgba(0, 200, 230, 0.22) !important;
+        padding: 14px 18px !important;
+        border-radius: 9px !important;
+        margin-bottom: 10px !important;
+        transition: all 0.2s ease-in-out !important;
         cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {
-        border-color: rgba(0, 240, 255, 0.6) !important;
-        background: rgba(0, 240, 255, 0.08) !important;
-        box-shadow: 0 0 12px rgba(0, 240, 255, 0.25) !important;
+        border-color: rgba(0, 200, 230, 0.55) !important;
+        background: #122038 !important;
+        box-shadow: 0 0 8px rgba(0, 200, 230, 0.2) !important;
     }
 
-    /* Размер шрифта самих названий режимов */
+    /* Текст внутри кнопок выбора: заметно крупнее и четче */
     div[data-testid="stRadio"] div[role="radiogroup"] > label p {
-        font-size: 17px !important;
+        font-size: 19px !important;
         font-weight: 700 !important;
-        color: #E2ECF7 !important;
+        color: #E6F0FA !important;
         letter-spacing: 0.5px !important;
+        margin-left: 6px !important;
     }
 
-    /* Неоново-синий кружок выбора */
-    div[data-testid="stRadio"] input[type="radio"]:checked + div {
-        background-color: #00F0FF !important;
-        border-color: #00F0FF !important;
-        box-shadow: 0 0 10px #00F0FF !important;
+    /* Сам круглый переключатель (радиокнопка) */
+    div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] + div {
+        border: 2px solid rgba(0, 200, 230, 0.45) !important;
+        background: transparent !important;
+        width: 20px !important;
+        height: 20px !important;
+        transition: all 0.2s ease !important;
     }
 
-    /* Селектор выпадающего списка */
+    /* Активный выбранный кружок — приглушенный неоновый циан */
+    div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"]:checked + div {
+        background-color: #00C8E6 !important;
+        border-color: #00C8E6 !important;
+        box-shadow: 0 0 6px rgba(0, 200, 230, 0.5) !important;
+    }
+
+    /* Выпадающий список выбора датчиков */
     div[data-baseweb="select"] {
-        background-color: #0D1626 !important;
-        border: 1px solid rgba(0, 240, 255, 0.3) !important;
+        background-color: #0E182A !important;
+        border: 1px solid rgba(0, 200, 230, 0.3) !important;
         border-radius: 6px !important;
     }
 
@@ -116,29 +130,30 @@ st.markdown("""
         font-size: 16px;
         font-weight: 800;
         letter-spacing: 2px;
-        background: linear-gradient(90deg, #00F0FF 0%, #1858BA 100%);
+        background: linear-gradient(90deg, #00C8E6 0%, #1555B0 100%);
         color: #000000;
         padding: 6px 18px;
         border-radius: 6px;
         display: inline-block;
-        box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+        box-shadow: 0 0 10px rgba(0, 200, 230, 0.25);
     }
 
-    /* Кнопка "Verileri Yenile" в неоновом стиле */
+    /* Кнопка "Verileri Yenile" */
     div.stButton > button {
-        background: linear-gradient(90deg, #00D2FF 0%, #0066FF 100%) !important;
+        background: linear-gradient(90deg, #00B4D8 0%, #0056B3 100%) !important;
         color: #FFFFFF !important;
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 15px !important;
         font-weight: 700 !important;
         border: none !important;
         border-radius: 6px !important;
-        padding: 8px 20px !important;
-        box-shadow: 0 0 15px rgba(0, 210, 255, 0.35) !important;
-        transition: all 0.3s ease !important;
+        padding: 9px 20px !important;
+        box-shadow: 0 2px 10px rgba(0, 180, 216, 0.25) !important;
+        transition: all 0.25s ease !important;
     }
     div.stButton > button:hover {
-        box-shadow: 0 0 25px rgba(0, 240, 255, 0.8) !important;
+        background: linear-gradient(90deg, #00C8E6 0%, #0066CC 100%) !important;
+        box-shadow: 0 0 14px rgba(0, 200, 230, 0.45) !important;
         transform: translateY(-1px);
     }
 </style>
@@ -154,10 +169,10 @@ logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; h
 
 # Заголовок и логотип
 st.markdown(f"""
-<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 240, 255, 0.18);">
+<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important; text-shadow: 0 0 15px rgba(255,255,255,0.2);">LOGGIS 3B</h1>
-        <div style="color: #00F0FF; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px; text-shadow: 0 0 8px rgba(0,240,255,0.4);">SENSÖR CANLI TAKİP SİSTEMİ</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px; text-shadow: 0 0 6px rgba(0, 200, 230, 0.25);">SENSÖR CANLI TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center; margin: 0; padding: 0;">
         {logo_tag}
