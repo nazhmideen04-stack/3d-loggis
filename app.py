@@ -170,7 +170,7 @@ logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; h
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B - THY</h1>
         <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center; margin: 0; padding: 0;">
