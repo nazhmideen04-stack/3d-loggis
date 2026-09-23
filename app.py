@@ -304,6 +304,7 @@ GEOMETRY = {
 
 R = GEOMETRY["tunnel_radius_m"]
 SP = GEOMETRY["tunnel_spacing_m"]
+angle_scale = 2 * np.pi * R / 360.0
 
 def parse_channel(name: str):
     parts = name.strip().split("-")
@@ -326,28 +327,64 @@ def position(name: str):
         return float(np.mean(chain)), GEOMETRY["s_line_angle_deg"].get(place)
     return (GEOMETRY["s_chainage_m"].get((section, point)), GEOMETRY["s_line_angle_deg"].get(place))
 
-def get_interpolation_points(v_map):
-    interp_data = {"TA": [], "TB": []}
-    for n, val in v_map.items():
-        if np.isnan(val):
-            continue
-        pos = position(n)
-        if pos is not None and None not in pos:
-            tun = "TA" if n.startswith("TA-") else "TB"
-            angRad = float(pos[1]) * np.pi / 180.0
-            ti = 0 if tun == "TA" else 1
-            off_x = (ti - 0.5) * SP
+# Расчет RBF интерполяционных сеток для обоих тоннелей (как в исходном коде)
+def build_rbf_tunnel_meshes(v_map):
+    result_meshes = []
+    nA, nC = 36, 32
+    angles = np.linspace(0, 360.0, nA, endpoint=False)
+    chain = np.linspace(0.0, 90.0, nC)
 
-            interp_data[tun].append({
-                "name": n,
-                "chainage": float(pos[0]),
-                "angle": float(pos[1]),
-                "val": float(val),
-                "rx": float(R * np.sin(angRad)),
-                "ry": float(R * np.cos(angRad)),
-                "rz": float(pos[0] - 45.0)
-            })
-    return interp_data
+    grid_rows = []
+    for a in angles:
+        for c in chain:
+            grid_rows.append([c, a])
+    grid = np.array(grid_rows, dtype=np.float32)
+    query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
+
+    for ti, tun in enumerate(("TA", "TB")):
+        off_x = (ti - 0.5) * SP
+        names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
+        if len(names) < 3:
+            continue
+
+        pos = np.array([position(n) for n in names])
+        wrapped = np.vstack([
+            np.column_stack([pos[:, 0], pos[:, 1] - 360.0]),
+            pos,
+            np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
+        ])
+        wrapped[:, 1] *= angle_scale
+
+        cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
+        rbf = RBFInterpolator(wrapped, np.concatenate([cur_vals, cur_vals, cur_vals]), kernel="linear", smoothing=1.0)
+        scalars = rbf(query).tolist()
+
+        vertices = []
+        for a in angles:
+            rad = np.radians(a)
+            for c in chain:
+                vertices.extend([
+                    round(float(off_x + (R - 0.02) * np.sin(rad)), 3),
+                    round(float((R - 0.02) * np.cos(rad)), 3),
+                    round(float(c - 45.0), 3)
+                ])
+
+        indices = []
+        for a in range(nA):
+            next_a = (a + 1) % nA
+            for c in range(nC - 1):
+                p0 = a * nC + c
+                p1 = a * nC + c + 1
+                p2 = next_a * nC + c
+                p3 = next_a * nC + c + 1
+                indices.extend([p0, p2, p1, p1, p2, p3])
+
+        result_meshes.append({
+            "vertices": vertices,
+            "indices": indices,
+            "scalars": scalars
+        })
+    return result_meshes
 
 @st.cache_data
 def get_model_b64(path):
@@ -410,12 +447,16 @@ with col_3d:
     if not model_b64:
         st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
+        # 1. Считаем чистую RBF интерполяцию прямо в Python (проверенная точность)
+        rbf_shells = build_rbf_tunnel_meshes(v_map)
+
         payload_data = {
             "sensorValues": v_map,
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
-            "comp": selected_comp
+            "comp": selected_comp,
+            "rbfShells": rbf_shells
         }
         json_payload = json.dumps(payload_data)
 
@@ -509,7 +550,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE PİKSEL İNTERPOLASYONU YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE İNTERPOLASYON YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="color-legend">
@@ -581,7 +622,6 @@ with col_3d:
                 scene.add(grid);
 
                 const sensorMeshes = [];
-                const otherMeshes = [];
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
@@ -610,6 +650,34 @@ with col_3d:
                     return c;
                 }}
 
+                // 2. Отрисовка проверенной RBF тепловой карты прямо на поверхности тоннелей
+                if (payload.rbfShells && payload.rbfShells.length > 0) {{
+                    payload.rbfShells.forEach(shell => {{
+                        const geom = new THREE.BufferGeometry();
+                        geom.setAttribute('position', new THREE.Float32BufferAttribute(shell.vertices, 3));
+                        geom.setIndex(shell.indices);
+
+                        const colors = [];
+                        shell.scalars.forEach(val => {{
+                            const col = getColorForValue(val, payload.clim, payload.comp);
+                            colors.push(col.r, col.g, col.b);
+                        }});
+                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                        geom.computeVertexNormals();
+
+                        const rbfMaterial = new THREE.MeshStandardMaterial({{
+                            vertexColors: true,
+                            roughness: 0.45,
+                            metalness: 0.1,
+                            side: THREE.DoubleSide
+                        }});
+
+                        const mesh = new THREE.Mesh(geom, rbfMaterial);
+                        scene.add(mesh);
+                    }});
+                }}
+
+                // 3. Загрузка 3D-модели из 3ds Max: датчики + тонкий каркас и детали
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -620,14 +688,13 @@ with col_3d:
                 gltfLoader.parse(bytes.buffer, '', function(gltf) {{
                     const model = gltf.scene;
                     scene.add(model);
-                    model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. Поиск датчиков и фильтрация объектов
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
 
+                            // Облегчение Box001 до прозрачной сетки
                             if (name.toUpperCase().includes("BOX001")) {{
                                 child.material = new THREE.MeshBasicMaterial({{
                                     color: 0x1E3A5F,
@@ -664,93 +731,18 @@ with col_3d:
                                     flyCameraTo(child, true);
                                 }}
                             }} else {{
-                                otherMeshes.push(child);
+                                // Стены тоннеля из 3ds Max делаем прозрачной обделкой поверх RBF интерполяции
+                                child.material = new THREE.MeshStandardMaterial({{
+                                    color: 0x142032,
+                                    transparent: true,
+                                    opacity: 0.22,
+                                    roughness: 0.3,
+                                    metalness: 0.1,
+                                    depthWrite: false,
+                                    side: THREE.DoubleSide
+                                }});
                             }}
                         }}
-                    }});
-
-                    // 2. Сбор позиций и цветов сенсоров для шейдера
-                    const sPositions = [];
-                    const sColors = [];
-
-                    sensorMeshes.forEach(sMesh => {{
-                        if (sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
-                            const wPos = new THREE.Vector3();
-                            sMesh.getWorldPosition(wPos);
-                            sPositions.push(wPos);
-                            const col = getColorForValue(sMesh.userData.val, payload.clim, payload.comp);
-                            sColors.push(col);
-                        }}
-                    }});
-
-                    // 3. Создание шейдерного материала с попиксельным расчетом
-                    const maxSensors = Math.min(sPositions.length, 64);
-                    const posArray = [];
-                    const colArray = [];
-
-                    for (let k = 0; k < maxSensors; k++) {{
-                        posArray.push(sPositions[k]);
-                        colArray.push(sColors[k]);
-                    }}
-
-                    const tunnelShaderMaterial = new THREE.ShaderMaterial({{
-                        uniforms: {{
-                            uSensorsPos: {{ value: posArray }},
-                            uSensorsCol: {{ value: colArray }},
-                            uSensorCount: {{ value: maxSensors }},
-                            uRadius: {{ value: 12.0 }},
-                            uBaseColor: {{ value: new THREE.Color(0x101C2E) }},
-                            uOpacity: {{ value: 0.75 }}
-                        }},
-                        vertexShader: `
-                            varying vec3 vWorldPosition;
-                            void main() {{
-                                vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                                vWorldPosition = worldPos.xyz;
-                                gl_Position = projectionMatrix * viewMatrix * worldPos;
-                            }}
-                        `,
-                        fragmentShader: `
-                            uniform vec3 uSensorsPos[64];
-                            uniform vec3 uSensorsCol[64];
-                            uniform int uSensorCount;
-                            uniform float uRadius;
-                            uniform vec3 uBaseColor;
-                            uniform float uOpacity;
-                            varying vec3 vWorldPosition;
-
-                            void main() {{
-                                float totalWeight = 0.0;
-                                vec3 accumColor = vec3(0.0);
-
-                                for(int i = 0; i < 64; i++) {{
-                                    if(i >= uSensorCount) break;
-                                    float d = distance(vWorldPosition, uSensorsPos[i]);
-                                    if(d < uRadius) {{
-                                        float w = pow(1.0 - (d / uRadius), 2.0);
-                                        accumColor += uSensorsCol[i] * w;
-                                        totalWeight += w;
-                                    }}
-                                }}
-
-                                vec3 finalColor = uBaseColor;
-                                if(totalWeight > 0.0) {{
-                                    vec3 interp = accumColor / totalWeight;
-                                    float blend = clamp(totalWeight, 0.0, 1.0);
-                                    finalColor = mix(uBaseColor, interp, blend);
-                                }}
-
-                                gl_FragColor = vec4(finalColor, uOpacity);
-                            }}
-                        `,
-                        transparent: true,
-                        side: THREE.DoubleSide,
-                        depthWrite: false
-                    }});
-
-                    // Применяем шейдер ко всем телам тоннелей
-                    otherMeshes.forEach(mesh => {{
-                        mesh.material = tunnelShaderMaterial;
                     }});
 
                     if (!payload.selectedSensor || payload.selectedSensor === "Seçiniz...") {{
