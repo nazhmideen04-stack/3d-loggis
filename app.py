@@ -70,7 +70,7 @@ st.markdown("""
     /* Заголовок "Görüntülenecek Bileşen:" (делаем его маленьким и аккуратным) */
     div[data-testid="stRadio"] > label p,
     div[data-testid="stRadio"] > label {
-        font-size: 12px !important;  /* <--- ВОТ ЗДЕСЬ МЕНЯТЬ РАЗМЕР ЗАГОЛОВКА */
+        font-size: 15px !important;  /* <--- ВОТ ЗДЕСЬ МЕНЯТЬ РАЗМЕР ЗАГОЛОВКА */
         font-weight: 600 !important;
         color: #8397AD !important;
         text-transform: uppercase;
