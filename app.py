@@ -145,13 +145,13 @@ def parse_robust_timestamp(d_str):
     except Exception:
         return 0.0
 
-@st.cache_data(ttl=60)
+# ВНИМАНИЕ: Декоратор @st.cache_data убран намеренно, чтобы не застревал пустой кэш!
 def fetch_category_data(cat_key, reload_seed=0):
     cat = CATEGORIES[cat_key]
     val_map = {}
     latest_date_str = ""
     screenshot_b64 = ""
-    dom_debug = ""
+    debug_msg = ""
 
     with sync_playwright() as p:
         browser_args = [
@@ -163,9 +163,13 @@ def fetch_category_data(cat_key, reload_seed=0):
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
-        except Exception:
-            os.system("playwright install chromium")
-            browser = p.chromium.launch(headless=True, args=browser_args)
+        except Exception as e_launch:
+            return {
+                "values": {},
+                "date": "",
+                "screenshot": "",
+                "debug": f"Критическая ошибка запуска браузера Chromium: {e_launch}. Проверьте packages.txt!"
+            }
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
@@ -175,57 +179,49 @@ def fetch_category_data(cat_key, reload_seed=0):
         page = context.new_page()
 
         try:
+            # 1. Загрузка страницы
             page.goto(URL, timeout=60000, wait_until="networkidle")
             page.wait_for_timeout(3000)
 
-            # 1. Types sekmesine tıkla
+            # 2. Клик по вкладке Types
             try:
-                page.locator("text='Types'").first.click(force=True)
-                page.wait_for_timeout(1000)
-            except Exception:
-                pass
+                page.locator("text='Types'").first.click(timeout=8000)
+                page.wait_for_timeout(800)
+            except Exception as e_tab:
+                debug_msg += f"[Вкладка Types: {e_tab}] "
 
-            # 2. İlgili kategoriye tıkla (Temperature vb.)
+            # 3. Клик по нужной категории (Temperature, Longitudinal strains, etc.)
             try:
-                page.get_by_text(cat["name"]).first.click(force=True)
-                page.wait_for_timeout(2000)
+                # Пытаемся кликнуть по тексту элемента в списке
+                cat_el = page.locator(f"text='{cat['name']}'").first
+                cat_el.click(timeout=8000)
+                page.wait_for_timeout(1500)
             except Exception:
-                pass
-
-            # 3. Blazor tetiklemesi için JS ile tıklama
-            page.evaluate(f"""() => {{
-                const all = Array.from(document.querySelectorAll('*'));
-                for (const el of all) {{
-                    if (el.textContent && el.textContent.trim().toLowerCase() === '{cat['name']}'.toLowerCase() && el.children.length === 0) {{
-                        el.click();
-                        break;
+                # Запасной клик через JavaScript
+                page.evaluate(f"""() => {{
+                    const els = Array.from(document.querySelectorAll('*'));
+                    const target = els.find(e => e.textContent && e.textContent.trim().toLowerCase() === '{cat['name']}'.toLowerCase() && e.children.length === 0);
+                    if (target) {{
+                        ['mousedown', 'mouseup', 'click'].forEach(evt => {{
+                            target.dispatchEvent(new MouseEvent(evt, {{ bubbles: true, cancelable: true }}));
+                        }});
                     }}
-                }}
-            }}""")
-            page.wait_for_timeout(3000)
+                }}""")
+                page.wait_for_timeout(2000)
 
-            # EKRAN GÖRÜNTÜSÜ AL
-            img_bytes = page.screenshot(full_page=False)
-            screenshot_b64 = base64.b64encode(img_bytes).decode("utf-8")
+            # ДЕЛАЕМ СКРИНШОТ
+            try:
+                img_bytes = page.screenshot()
+                screenshot_b64 = base64.b64encode(img_bytes).decode("utf-8")
+            except Exception as e_scr:
+                debug_msg += f"[Скриншот не сделан: {e_scr}] "
 
-            # DOM ÖZETİ
-            dom_debug = page.evaluate("""() => {
-                const tables = document.querySelectorAll('table');
-                const iframes = document.querySelectorAll('iframe');
-                const selectedText = document.body.innerText.match(/Selected\\s*:\\s*\\d+\\/\\d+/i);
-                return {
-                    table_count: tables.length,
-                    iframe_count: iframes.length,
-                    selected_info: selectedText ? selectedText[0] : 'Not Found',
-                    first_300_chars: document.body.innerText.slice(0, 300).replace(/\\n/g, ' ')
-                };
-            }""")
-
-            # 4. Tablodan veri çekme denemesi
+            # 4. Проверяем наличие таблицы и считываем данные
             extracted = page.evaluate("""(tag) => {
                 const table = document.querySelector('table');
                 if (!table) return null;
 
+                // Заголовки (датчики)
                 const trs = Array.from(table.querySelectorAll('tr'));
                 let headerCells = [];
                 for (const tr of trs) {
@@ -239,10 +235,11 @@ def fetch_category_data(cat_key, reload_seed=0):
                     headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
                 }
 
+                // Первая строка данных (самый свежий замер)
                 const tbody = table.querySelector('tbody') || table;
-                const rows = Array.from(tbody.querySelectorAll('tr'));
+                const bodyRows = Array.from(tbody.querySelectorAll('tr'));
                 let dataCells = [];
-                for (const r of rows) {
+                for (const r of bodyRows) {
                     const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
                     if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':'))) {
                         dataCells = cells;
@@ -257,6 +254,7 @@ def fetch_category_data(cat_key, reload_seed=0):
                 headers = extracted["headers"]
                 values = extracted["values"]
                 latest_date_str = values[0]
+
                 for h, v_str in zip(headers[1:], values[1:]):
                     if cat["tag"] in h or "TA-" in h or "TB-" in h:
                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
@@ -264,9 +262,11 @@ def fetch_category_data(cat_key, reload_seed=0):
                         v = clean_num(v_str)
                         if not np.isnan(v):
                             val_map[s_name] = v
+            else:
+                debug_msg += "[Таблица с данными пока не обнаружена в DOM] "
 
-        except Exception as e:
-            pass
+        except Exception as e_main:
+            debug_msg += f"[Общая ошибка Playwright: {e_main}] "
         finally:
             browser.close()
 
@@ -274,7 +274,7 @@ def fetch_category_data(cat_key, reload_seed=0):
         "values": val_map,
         "date": latest_date_str,
         "screenshot": screenshot_b64,
-        "debug": dom_debug
+        "debug": debug_msg
     }
 # Geometri Tanımları
 GEOMETRY = {
@@ -429,13 +429,18 @@ with col_nav:
 # --- 3B PLOTLY SAHNESİ ---
 with col_3d:
     if not v_map:
-        st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı.")
+        st.error("⚠️ LoggIS sisteminden veri alınamadı.")
+        
+        # Показываем детальный текст ошибки
         if cur_layer.get("debug"):
-            st.write("🔍 **Sayfa Teşhis Bilgisi:**", cur_layer["debug"])
+            st.code(cur_layer["debug"])
+            
+        # Показываем живой скриншот страницы
         if cur_layer.get("screenshot"):
-            st.write("📸 **Botun Açtığı Sayfanın O Anki Hali:**")
-            st.image(f"data:image/png;base64,{cur_layer['screenshot']}", use_column_width=True)
+            st.write("📸 **Снимок страницы LoggIS в момент работы скрипта:**")
+            st.image(f"data:image/png;base64,{cur_layer['screenshot']}", use_container_width=True)
     else:
+        # Ваш 3D Plotly код...
         # 3B Plotly çizim kodları...
         fig = go.Figure()
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
