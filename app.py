@@ -22,7 +22,7 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
 
-    /* Глубокий комфортный темный фон */
+    /* Темный фон всего приложения */
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #0A0E17 !important;
     }
@@ -40,102 +40,68 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Убираем фон у инлайн-кода */
-    code {
-        background-color: transparent !important;
-        color: #00C8E6 !important;
-        border: none !important;
-        padding: 0 !important;
+    /* 1. Увеличенный текст пунктов радиокнопки */
+    div[data-testid="stRadio"] div[role="radiogroup"] label p,
+    div[data-testid="stRadio"] label span {
+        font-size: 21px !important;
         font-weight: 700 !important;
+        color: #E6F0FA !important;
+        letter-spacing: 0.5px !important;
+        line-height: 1.4 !important;
     }
 
-    /* Мягкие неоновые значения без резкого свечения */
-    [data-testid="stMetricValue"], .neon-data {
-        color: #00C8E6 !important;
-        font-weight: 700 !important;
-        text-shadow: 0 0 6px rgba(0, 200, 230, 0.35) !important;
-    }
-    
-    [data-testid="stMetricLabel"] {
-        color: #8397AD !important;
-        font-size: 13px !important;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    /* Заголовок группы радиокнопок */
-    div[data-testid="stRadio"] > label {
-        font-size: 15px !important;
-        font-weight: 700 !important;
-        color: #8397AD !important;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 12px !important;
-    }
-
-    /* Крупные интерактивные плашки выбора для CS / S / TP */
-    div[data-testid="stRadio"] div[role="radiogroup"] > label {
-        background: #0E182A !important;
-        border: 1px solid rgba(0, 200, 230, 0.22) !important;
-        padding: 14px 18px !important;
-        border-radius: 9px !important;
-        margin-bottom: 10px !important;
-        transition: all 0.2s ease-in-out !important;
+    /* Отступы между строками */
+    div[data-testid="stRadio"] div[role="radiogroup"] label {
+        margin-bottom: 14px !important;
         cursor: pointer !important;
         display: flex !important;
         align-items: center !important;
     }
 
-    div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {
-        border-color: rgba(0, 200, 230, 0.55) !important;
-        background: #122038 !important;
-        box-shadow: 0 0 8px rgba(0, 200, 230, 0.2) !important;
-    }
-
-    /* Текст внутри кнопок выбора: заметно крупнее и четче */
-    div[data-testid="stRadio"] div[role="radiogroup"] > label p {
-        font-size: 19px !important;
-        font-weight: 700 !important;
-        color: #E6F0FA !important;
-        letter-spacing: 0.5px !important;
-        margin-left: 6px !important;
-    }
-
-    /* Сам круглый переключатель (радиокнопка) */
-    div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] + div {
-        border: 2px solid rgba(0, 200, 230, 0.45) !important;
-        background: transparent !important;
-        width: 20px !important;
-        height: 20px !important;
+    /* 2. Увеличенный внешний кружок радиокнопки */
+    div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px !important;
+        min-height: 24px !important;
+        border: 2px solid rgba(0, 200, 230, 0.4) !important;
+        background-color: transparent !important;
+        margin-right: 12px !important;
         transition: all 0.2s ease !important;
     }
 
-    /* Активный выбранный кружок — приглушенный неоновый циан */
-    div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"]:checked + div {
+    /* Внешний кружок при наведении */
+    div[data-testid="stRadio"] div[role="radiogroup"] label:hover > div:first-child {
+        border-color: #00C8E6 !important;
+        box-shadow: 0 0 6px rgba(0, 200, 230, 0.3) !important;
+    }
+
+    /* 3. Внутренняя активная точка (вместо красной — мягкий неоновый синий) */
+    div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child div {
+        width: 12px !important;
+        height: 12px !important;
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
-        box-shadow: 0 0 6px rgba(0, 200, 230, 0.5) !important;
+        box-shadow: 0 0 8px rgba(0, 200, 230, 0.45) !important;
     }
 
-    /* Выпадающий список выбора датчиков */
-    div[data-baseweb="select"] {
-        background-color: #0E182A !important;
-        border: 1px solid rgba(0, 200, 230, 0.3) !important;
-        border-radius: 6px !important;
+    /* Внешняя граница активного кружка */
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) > div:first-child {
+        border-color: #00C8E6 !important;
     }
 
-    /* Бейдж логотипа */
-    .destech-badge {
-        font-family: 'Syne', sans-serif;
-        font-size: 16px;
-        font-weight: 800;
-        letter-spacing: 2px;
-        background: linear-gradient(90deg, #00C8E6 0%, #1555B0 100%);
-        color: #000000;
-        padding: 6px 18px;
-        border-radius: 6px;
-        display: inline-block;
-        box-shadow: 0 0 10px rgba(0, 200, 230, 0.25);
+    /* Мягкие неоновые показатели без режущего глаза свечения */
+    [data-testid="stMetricValue"], .neon-data {
+        color: #00C8E6 !important;
+        font-weight: 700 !important;
+        text-shadow: 0 0 6px rgba(0, 200, 230, 0.35) !important;
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: #8397AD !important;
+        font-size: 13px !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
     }
 
     /* Кнопка "Verileri Yenile" */
@@ -153,12 +119,11 @@ st.markdown("""
     }
     div.stButton > button:hover {
         background: linear-gradient(90deg, #00C8E6 0%, #0066CC 100%) !important;
-        box-shadow: 0 0 14px rgba(0, 200, 230, 0.45) !important;
+        box-shadow: 0 0 12px rgba(0, 200, 230, 0.4) !important;
         transform: translateY(-1px);
     }
 </style>
 """, unsafe_allow_html=True)
-
 # Считываем логотип в Base64
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
