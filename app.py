@@ -22,7 +22,7 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
 
-    /* Темный фон всего приложения */
+    /* Глубокий темный фон без лишних эффектов */
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #0A0E17 !important;
     }
@@ -38,65 +38,27 @@ st.markdown("""
         letter-spacing: 1.5px !important;
         text-transform: uppercase;
         color: #FFFFFF !important;
+        text-shadow: none !important;
     }
 
-    /* 1. Увеличенный текст пунктов радиокнопки */
-    div[data-testid="stRadio"] div[role="radiogroup"] label p,
-    div[data-testid="stRadio"] label span {
-        font-size: 21px !important;
-        font-weight: 700 !important;
-        color: #E6F0FA !important;
-        letter-spacing: 0.5px !important;
-        line-height: 1.4 !important;
-    }
-
-    /* Отступы между строками */
-    div[data-testid="stRadio"] div[role="radiogroup"] label {
-        margin-bottom: 14px !important;
-        cursor: pointer !important;
-        display: flex !important;
-        align-items: center !important;
-    }
-
-    /* 2. Увеличенный внешний кружок радиокнопки */
-    div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
-        width: 24px !important;
-        height: 24px !important;
-        min-width: 24px !important;
-        min-height: 24px !important;
-        border: 2px solid rgba(0, 200, 230, 0.4) !important;
+    /* Убираем фон и тени у кода */
+    code {
         background-color: transparent !important;
-        margin-right: 12px !important;
-        transition: all 0.2s ease !important;
+        color: #00C8E6 !important;
+        border: none !important;
+        padding: 0 !important;
+        font-weight: 700 !important;
+        text-shadow: none !important;
     }
 
-    /* Внешний кружок при наведении */
-    div[data-testid="stRadio"] div[role="radiogroup"] label:hover > div:first-child {
-        border-color: #00C8E6 !important;
-        box-shadow: 0 0 6px rgba(0, 200, 230, 0.3) !important;
-    }
-
-    /* 3. Внутренняя активная точка (вместо красной — мягкий неоновый синий) */
-    div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child div {
-        width: 12px !important;
-        height: 12px !important;
-        background-color: #00C8E6 !important;
-        border-color: #00C8E6 !important;
-        box-shadow: 0 0 8px rgba(0, 200, 230, 0.45) !important;
-    }
-
-    /* Внешняя граница активного кружка */
-    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) > div:first-child {
-        border-color: #00C8E6 !important;
-    }
-
-    /* Мягкие неоновые показатели без режущего глаза свечения */
+    /* Значения метрик и чисел: чистый синий цвет без неона и свечения */
     [data-testid="stMetricValue"], .neon-data {
         color: #00C8E6 !important;
         font-weight: 700 !important;
-        text-shadow: 0 0 6px rgba(0, 200, 230, 0.35) !important;
+        text-shadow: none !important;
+        box-shadow: none !important;
     }
-
+    
     [data-testid="stMetricLabel"] {
         color: #8397AD !important;
         font-size: 13px !important;
@@ -104,23 +66,101 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Кнопка "Verileri Yenile" */
+    /* 1. Крупный текст вариантов выбора компонента */
+    div[data-testid="stRadio"] div[role="radiogroup"] label p,
+    div[data-testid="stRadio"] label span {
+        font-size: 22px !important;
+        font-weight: 700 !important;
+        color: #E6F0FA !important;
+        letter-spacing: 0.5px !important;
+        line-height: 1.4 !important;
+        text-shadow: none !important;
+    }
+
+    /* Отступы между пунктами */
+    div[data-testid="stRadio"] div[role="radiogroup"] label {
+        margin-bottom: 14px !important;
+        cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        border: none !important;
+    }
+
+    /* 2. Круг выбора: внешний ободок */
+    div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px !important;
+        min-height: 24px !important;
+        border: 2px solid #00C8E6 !important;
+        background-color: transparent !important;
+        margin-right: 14px !important;
+        box-shadow: none !important;
+        transition: none !important;
+    }
+
+    /* Внешний ободок при наведении */
+    div[data-testid="stRadio"] div[role="radiogroup"] label:hover > div:first-child {
+        border-color: #33D6ED !important;
+        box-shadow: none !important;
+    }
+
+    /* 3. Внутренняя заливка круга при выборе — чистый синий цвет */
+    div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child div {
+        width: 14px !important;
+        height: 14px !important;
+        background-color: #00C8E6 !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Внешний круг активного элемента */
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) > div:first-child {
+        border-color: #00C8E6 !important;
+        box-shadow: none !important;
+    }
+
+    /* Выпадающий список выбора датчиков */
+    div[data-baseweb="select"] {
+        background-color: #0E182A !important;
+        border: 1px solid rgba(0, 200, 230, 0.4) !important;
+        border-radius: 6px !important;
+        box-shadow: none !important;
+    }
+
+    /* Бейдж логотипа без теней */
+    .destech-badge {
+        font-family: 'Syne', sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        background: #00C8E6;
+        color: #000000;
+        padding: 6px 18px;
+        border-radius: 6px;
+        display: inline-block;
+        box-shadow: none !important;
+    }
+
+    /* Кнопка "Verileri Yenile" в строгом матовом синем стиле */
     div.stButton > button {
-        background: linear-gradient(90deg, #00B4D8 0%, #0056B3 100%) !important;
-        color: #FFFFFF !important;
+        background: #00C8E6 !important;
+        color: #0A0E17 !important;
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 15px !important;
         font-weight: 700 !important;
         border: none !important;
         border-radius: 6px !important;
         padding: 9px 20px !important;
-        box-shadow: 0 2px 10px rgba(0, 180, 216, 0.25) !important;
-        transition: all 0.25s ease !important;
+        box-shadow: none !important;
+        transition: background-color 0.2s ease !important;
     }
     div.stButton > button:hover {
-        background: linear-gradient(90deg, #00C8E6 0%, #0066CC 100%) !important;
-        box-shadow: 0 0 12px rgba(0, 200, 230, 0.4) !important;
-        transform: translateY(-1px);
+        background: #33D6ED !important;
+        box-shadow: none !important;
+        transform: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -137,7 +177,7 @@ st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px; text-shadow: 0 0 6px rgba(0, 200, 230, 0.25);">SENSÖR CANLI TAKİP SİSTEMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center; margin: 0; padding: 0;">
         {logo_tag}
