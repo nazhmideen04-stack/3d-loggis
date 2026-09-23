@@ -321,6 +321,11 @@ else:
 
 with col_nav:
     st.markdown("---")
+    # Добавлен ползунок прозрачности тоннелей
+    st.subheader("GÖRÜNÜM AYARLARI")
+    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
+
+    st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
@@ -347,7 +352,8 @@ with col_3d:
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
-            "comp": selected_comp
+            "comp": selected_comp,
+            "tunnelOpacity": float(tunnel_opacity)
         }
         json_payload = json.dumps(payload_data)
 
@@ -577,7 +583,6 @@ with col_3d:
                                 return;
                             }}
 
-                            // Проверяем явное вхождение формата имени датчика
                             const isSensorExplicit = (
                                 uName.includes("-CS") || 
                                 uName.includes("-S") || 
@@ -600,7 +605,6 @@ with col_3d:
                                 const isSelected = (name === payload.selectedSensor);
 
                                 if (child.userData.isUsable) {{
-                                    // АКТИВНЫЙ ДАТЧИК: ЯРКИЙ ЦВЕТ И НЕОНОВАЯ ПОДСВЕТКА (БЕЗ УВЕЛИЧЕНИЯ РАЗМЕРА!)
                                     const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(rawVal, payload.clim, payload.comp);
 
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -615,7 +619,6 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
-                                    // ЧУЖИЕ И НЕВАЛИДНЫЕ: ПОЛНОСТЬЮ МАТОВЫЕ ТЕМНЫЕ СИЛУЭТЫ
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0x222C38,
                                         emissive: new THREE.Color(0x000000),
@@ -626,7 +629,6 @@ with col_3d:
                                     }});
                                 }}
                             }} else {{
-                                // ТОЛЬКО ТЕЛО САМОГО ТОННЕЛЯ
                                 const isTunnel = (
                                     uName.includes("TA") || 
                                     uName.includes("TB") || 
@@ -664,7 +666,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. ПРЯМАЯ ИНТЕРПОЛЯЦИЯ НА ТЕЛО ТОННЕЛЕЙ
+                    // 3. ПРЯМАЯ ИНТЕРПОЛЯЦИЯ НА ТЕЛО ТОННЕЛЕЙ С ДИНАМИЧЕСКОЙ ПРОЗРАЧНОСТЬЮ
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -683,7 +685,6 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
-                        // ПОВЕДЕНИЕ ПРИ ОТСУТСТВИИ ДАННЫХ: ЧИСТЫЙ СВЕТЛО-СЕРЫЙ / БЕЛЫЙ СИЛУЭТ (#E6ECF2)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
@@ -728,13 +729,15 @@ with col_3d:
                         geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                         geom.attributes.color.needsUpdate = true;
                         
+                        const isTransparent = payload.tunnelOpacity < 0.98;
                         tMesh.material = new THREE.MeshStandardMaterial({{
                             color: 0xffffff,
                             vertexColors: true,
-                            transparent: true,
-                            opacity: 0.88,
+                            transparent: isTransparent,
+                            opacity: payload.tunnelOpacity,
                             roughness: 0.35,
                             metalness: 0.05,
+                            depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
                         tMesh.material.needsUpdate = true;
