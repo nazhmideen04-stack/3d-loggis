@@ -16,13 +16,15 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 
-# Фирменный стиль DESTECH с темным фоном и неоново-синими акцентами
-# Фирменный стиль DESTECH с мягким неоном и крупными кнопками выбора
+# Фирменный стиль DESTECH: темный фон, крупные пункты выбора и синий кружок без лишнего неона
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
 
-    /* Глубокий темный фон */
+    :root {
+        --primary-color: #00C8E6 !important;
+    }
+
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #0A0E17 !important;
     }
@@ -38,57 +40,80 @@ st.markdown("""
         letter-spacing: 1.5px !important;
         text-transform: uppercase;
         color: #FFFFFF !important;
+        text-shadow: none !important;
     }
 
-    /* Значения метрик */
+    code {
+        background-color: transparent !important;
+        color: #00C8E6 !important;
+        border: none !important;
+        padding: 0 !important;
+        font-weight: 700 !important;
+        text-shadow: none !important;
+    }
+
     [data-testid="stMetricValue"], .neon-data {
         color: #00C8E6 !important;
         font-weight: 700 !important;
         text-shadow: none !important;
+        box-shadow: none !important;
     }
     
     [data-testid="stMetricLabel"] {
         color: #8397AD !important;
         font-size: 13px !important;
         text-transform: uppercase;
+        letter-spacing: 1px;
     }
 
-    /* 1. Крупный текст вариантов */
+    /* Крупный текст пунктов радиокнопки */
     div[data-testid="stRadio"] label p {
-        font-size: 22px !important;
+        font-size: 21px !important;
         font-weight: 700 !important;
         color: #E6F0FA !important;
         line-height: 1.4 !important;
+        text-shadow: none !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] > label {
         margin-bottom: 14px !important;
         cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
     }
 
-    /* 2. ПРИНУДИТЕЛЬНАЯ СМЕНА КРАСНОГО ЦВЕТА НА СИНИЙ ЧЕРЕЗ HUE-ROTATE */
-    /* Сдвигает красный спектр точно в циан/синий (#00C8E6) на уровне пикселей рендера */
-   /* Принудительно меняет красный цвет кружка на синий */
+    /* Принудительный синий цвет активного кружка через фильтр */
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
         filter: hue-rotate(185deg) saturate(2) !important;
     }
-   
 
-    /* Увеличение размера самого кружка */
+    /* Увеличение размера самого кружка выбора */
     div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
-        transform: scale(1.3) !important;
+        transform: scale(1.25) !important;
         transform-origin: center center !important;
         margin-right: 14px !important;
     }
 
-    /* Селектор выпадающего списка */
     div[data-baseweb="select"] {
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
+        box-shadow: none !important;
     }
 
-    /* Кнопка "Verileri Yenile" */
+    .destech-badge {
+        font-family: 'Syne', sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        background: #00C8E6;
+        color: #000000;
+        padding: 6px 18px;
+        border-radius: 6px;
+        display: inline-block;
+        box-shadow: none !important;
+    }
+
     div.stButton > button {
         background: #00C8E6 !important;
         color: #0A0E17 !important;
@@ -98,13 +123,16 @@ st.markdown("""
         border: none !important;
         border-radius: 6px !important;
         padding: 9px 20px !important;
+        box-shadow: none !important;
+        transition: background-color 0.2s ease !important;
     }
     div.stButton > button:hover {
         background: #33D6ED !important;
+        box-shadow: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
-# Считываем логотип в Base64
+
 logo_b64 = ""
 if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
@@ -112,7 +140,6 @@ if os.path.exists(LOGO_PATH):
 
 logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.75; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
-# Заголовок и логотип
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
@@ -130,7 +157,7 @@ COLORSCALES = {
         [0.0, "#1858BA"],
         [0.35, "#1E9AD6"],
         [0.5, "#FFFFFF"],
-        [0.65, "#00C8E6"],
+        [0.65, "#FF4422"],
         [1.0, "#C60000"]
     ],
     "axial_gvp": [
@@ -162,11 +189,10 @@ def ensure_playwright_installed():
     except Exception:
         pass
 
-@st.cache_data(ttl=180)
-def fetch_category_data(cat_key):
-    cat = CATEGORIES[cat_key]
-    val_map = {}
-    latest_date_str = ""
+# Единая пакетная загрузка всех типов измерений за один проход браузера
+@st.cache_data(ttl=300)
+def fetch_all_categories_data():
+    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
         browser_args = [
@@ -192,13 +218,13 @@ def fetch_category_data(cat_key):
         page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3000)
+        page.wait_for_timeout(3500)
 
-        # 1. Вкладка Types
+        # Открываем Types
         page.get_by_text("Types").click()
         page.wait_for_timeout(800)
 
-        # 2. Селекторы периода и режима
+        # Устанавливаем фильтры один раз
         try:
             page.get_by_role("combobox").first.select_option("MONTH_02")
         except Exception:
@@ -211,73 +237,78 @@ def fetch_category_data(cat_key):
             pass
         page.wait_for_timeout(800)
 
-        # 3. Выбор датчика из listbox
-        try:
-            page.get_by_role("listbox").select_option(cat["name"])
-        except Exception:
+        # Последовательно считываем каждую категорию без перезапуска страницы
+        for cat_key, cat_cfg in CATEGORIES.items():
             try:
-                page.locator(f"option:has-text('{cat['name']}')").first.click(force=True)
+                page.get_by_role("listbox").select_option(cat_cfg["name"])
             except Exception:
-                page.get_by_text(cat["name"]).first.click(force=True)
-        page.wait_for_timeout(3000)
+                try:
+                    page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
+                except Exception:
+                    page.get_by_text(cat_cfg["name"]).first.click(force=True)
 
-        # 4. Считывание матрицы данных
-        for _ in range(25):
-            extracted = page.evaluate("""() => {
-                const table = document.querySelector('table');
-                if (!table) return null;
+            page.wait_for_timeout(2500)
 
-                const trs = Array.from(table.querySelectorAll('tr'));
-                let headerCells = [];
-                for (const tr of trs) {
-                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => c.innerText.trim());
-                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
-                        headerCells = cells;
-                        break;
+            val_map = {}
+            latest_date_str = ""
+
+            for _ in range(15):
+                extracted = page.evaluate("""() => {
+                    const table = document.querySelector('table');
+                    if (!table) return null;
+
+                    const trs = Array.from(table.querySelectorAll('tr'));
+                    let headerCells = [];
+                    for (const tr of trs) {
+                        const cells = Array.from(tr.querySelectorAll('th, td')).map(c => c.innerText.trim());
+                        if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
+                            headerCells = cells;
+                            break;
+                        }
                     }
-                }
-                if (headerCells.length === 0 && trs.length > 0) {
-                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
-                }
-
-                const tbody = table.querySelector('tbody') || table;
-                const rows = Array.from(tbody.querySelectorAll('tr'));
-                let dataCells = [];
-                for (const r of rows) {
-                    const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
-                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
-                        dataCells = cells;
-                        break;
+                    if (headerCells.length === 0 && trs.length > 0) {
+                        headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
                     }
-                }
 
-                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                return { headers: headerCells, values: dataCells };
-            }""")
+                    const tbody = table.querySelector('tbody') || table;
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    let dataCells = [];
+                    for (const r of rows) {
+                        const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
+                        if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
+                            dataCells = cells;
+                            break;
+                        }
+                    }
 
-            if extracted and extracted.get("values") and extracted.get("headers"):
-                headers = extracted["headers"]
-                values = extracted["values"]
-                latest_date_str = values[0]
+                    if (headerCells.length === 0 || dataCells.length === 0) return null;
+                    return { headers: headerCells, values: dataCells };
+                }""")
 
-                for h, v_str in zip(headers[1:], values[1:]):
-                    if "TA-" in h or "TB-" in h or cat["tag"] in h:
-                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                        s_name = m.group(1) if m else h.split()[0].strip()
-                        v = clean_num(v_str)
-                        if not np.isnan(v):
-                            val_map[s_name] = v
+                if extracted and extracted.get("values") and extracted.get("headers"):
+                    headers = extracted["headers"]
+                    values = extracted["values"]
+                    latest_date_str = values[0]
 
-                if len(val_map) > 0:
-                    break
+                    for h, v_str in zip(headers[1:], values[1:]):
+                        if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                            s_name = m.group(1) if m else h.split()[0].strip()
+                            v = clean_num(v_str)
+                            if not np.isnan(v):
+                                val_map[s_name] = v
 
-            page.wait_for_timeout(800)
+                    if len(val_map) > 0:
+                        break
+
+                page.wait_for_timeout(500)
+
+            all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
         browser.close()
 
-    return {"values": val_map, "date": latest_date_str}
+    return all_results
 
-# Геометрия тоннелей
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
     "tunnel_spacing_m": 15.0,
@@ -391,10 +422,14 @@ def build_mesh_data(patches, offset_x):
 # --- ИНТЕРФЕЙС STREAMLIT ---
 col_nav, col_3d = st.columns([1, 4])
 
+# Подгрузка всех данных сразу в кэш
+with st.spinner("Tüm sensör verileri (CS, S, TP) LoggIS üzerinden tek seferde alınıyor..."):
+    all_data = fetch_all_categories_data()
+
 with col_nav:
     st.subheader("KONTROL PANELİ")
     selected_comp = st.radio(
-        "Bileşenler:",
+        "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
     )
@@ -404,10 +439,7 @@ with col_nav:
         st.rerun()
 
 cat_cfg = CATEGORIES[selected_comp]
-
-with st.spinner(f"{cat_cfg['title']} verisi LoggIS üzerinden alınıyor..."):
-    cur_layer = fetch_category_data(selected_comp)
-
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
 v_map = cur_layer["values"]
 vals = [v for v in v_map.values() if not np.isnan(v)]
 
@@ -421,13 +453,13 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write("**En Son Veri Zamanı:**")
+    st.write("📅 **En Son Veri Zamanı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
-    st.write("**Aktif Sensör Sayısı:**")
+    st.write("📡 **Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 20px;'>{len(v_map)}</span>", unsafe_allow_html=True)
     
-    st.write("**Skala Limitleri:**")
+    st.write("📊 **Skala Limitleri:**")
     st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
@@ -498,9 +530,8 @@ with col_3d:
                 sensor_z.append(sz)
                 val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
-                sensor_colors.append("#00F0FF" if n == selected_sensor else "#FFFFFF")
+                sensor_colors.append("#00C8E6" if n == selected_sensor else "#FFFFFF")
 
-        # 3D метки TA и TB
         fig.add_trace(go.Scatter3d(
             x=label_x,
             y=label_y,
@@ -511,13 +542,12 @@ with col_3d:
             textfont=dict(
                 family="Syne, Chakra Petch, sans-serif",
                 size=28,
-                color="#00F0FF"
+                color="#00C8E6"
             ),
             hoverinfo="none",
             showlegend=False
         ))
 
-        # Маркеры сенсоров
         if sensor_x:
             fig.add_trace(go.Scatter3d(
                 x=sensor_x,
@@ -537,7 +567,7 @@ with col_3d:
             scene=dict(
                 xaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="", showticklabels=False),
                 yaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="", showticklabels=False),
-                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="Boyuna (Z)", color="#00F0FF"),
+                zaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="Boyuna (Z)", color="#00C8E6"),
                 aspectratio=dict(x=1.3, y=0.5, z=2.2),
                 camera=dict(eye=dict(x=-1.5, y=1.6, z=1.0), center=dict(x=0, y=0, z=0))
             ),
