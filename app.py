@@ -321,7 +321,6 @@ else:
 
 with col_nav:
     st.markdown("---")
-    # Добавлен ползунок прозрачности тоннелей
     st.subheader("GÖRÜNÜM AYARLARI")
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
 
@@ -545,11 +544,25 @@ with col_3d:
                     if (comp === "hoop") {{
                         return u.includes("-CS");
                     }} else if (comp === "axial") {{
+                        // Строго Boyuna gerinim (S): отсекаем любые -CS
                         return (u.includes("-S") || u.includes("-S1") || u.includes("-S2") || u.includes("-S3")) && !u.includes("-CS");
                     }} else if (comp === "temp") {{
                         return u.includes("-TP");
                     }}
                     return false;
+                }}
+
+                // Проверка, является ли объект сенсором
+                function isAnySensorObject(name) {{
+                    const u = name.toUpperCase();
+                    return (
+                        u.includes("-CS") || 
+                        u.includes("-S") || 
+                        u.includes("-TP") || 
+                        u.startsWith("TA-") || 
+                        u.startsWith("TB-") || 
+                        payload.sensorValues.hasOwnProperty(name)
+                    );
                 }}
 
                 const binaryStr = atob(modelB64);
@@ -560,6 +573,16 @@ with col_3d:
 
                 let selectedMeshRef = null;
 
+                // Единый нейтральный матовый материал для всех неактивных/чужих объектов
+                const neutralMutedMaterial = new THREE.MeshStandardMaterial({{
+                    color: 0x222630,
+                    emissive: new THREE.Color(0x000000),
+                    transparent: true,
+                    opacity: 0.18,
+                    roughness: 1.0,
+                    metalness: 0.0
+                }});
+
                 const gltfLoader = new THREE.GLTFLoader();
                 gltfLoader.parse(bytes.buffer, '', function(gltf) {{
                     const model = gltf.scene;
@@ -567,7 +590,7 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. БЕЗОПАСНАЯ КЛАССИФИКАЦИЯ БЕЗ SCALE.SET
+                    // 1. ПОЛНАЯ И БЕЗОПАСНАЯ КЛАССИФИКАЦИЯ ОБЪЕКТОВ
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -583,14 +606,9 @@ with col_3d:
                                 return;
                             }}
 
-                            const isSensorExplicit = (
-                                uName.includes("-CS") || 
-                                uName.includes("-S") || 
-                                uName.includes("-TP") || 
-                                payload.sensorValues.hasOwnProperty(name)
-                            );
+                            const isSensor = isAnySensorObject(name);
 
-                            if (isSensorExplicit) {{
+                            if (isSensor) {{
                                 sensorMeshes.push(child);
                                 child.userData.sensorName = name;
                                 child.userData.isSensor = true;
@@ -605,6 +623,7 @@ with col_3d:
                                 const isSelected = (name === payload.selectedSensor);
 
                                 if (child.userData.isUsable) {{
+                                    // ТОЛЬКО АКТИВНЫЙ СЕНСОР ТЕКУЩЕЙ КАТЕГОРИИ ПОЛУЧАЕТ ЦВЕТ
                                     const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(rawVal, payload.clim, payload.comp);
 
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -619,16 +638,11 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
-                                    child.material = new THREE.MeshStandardMaterial({{
-                                        color: 0x222C38,
-                                        emissive: new THREE.Color(0x000000),
-                                        transparent: true,
-                                        opacity: 0.18,
-                                        roughness: 0.95,
-                                        metalness: 0.0
-                                    }});
+                                    // ВСЕ ОСТАЛЬНЫЕ (BELIRSIZ / BAŞKA KATEGORİ) — ПРИНУДИТЕЛЬНО ЛИШАЮТСЯ ЦВЕТА
+                                    child.material = neutralMutedMaterial.clone();
                                 }}
                             }} else {{
+                                // ТЕЛО ТОННЕЛЯ
                                 const isTunnel = (
                                     uName.includes("TA") || 
                                     uName.includes("TB") || 
@@ -639,6 +653,7 @@ with col_3d:
                                 if (isTunnel) {{
                                     tunnelMeshes.push(child);
                                 }} else {{
+                                    // Прочие мелкие детали также делаем матовыми нейтральными
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0x141E2D,
                                         roughness: 0.8
@@ -666,7 +681,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. ПРЯМАЯ ИНТЕРПОЛЯЦИЯ НА ТЕЛО ТОННЕЛЕЙ С ДИНАМИЧЕСКОЙ ПРОЗРАЧНОСТЬЮ
+                    // 3. ПРЯМАЯ ИНТЕРПОЛЯЦИЯ НА ТЕЛО ТОННЕЛЕЙ
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -685,6 +700,7 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
+                        // ЕСЛИ ДАННЫХ НЕТ: ЧИСТЫЙ СВЕТЛО-СЕРЫЙ / БЕЛЫЙ СИЛУЭТ (#E6ECF2)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
