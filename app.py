@@ -16,7 +16,6 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -335,7 +334,7 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B THREE.JS ОБЛАСТЬ (ПРЯМАЯ ИНТЕРПОЛЯЦИЯ И СТАРТ С МОДЕЛИ) ---
+# --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -441,7 +440,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE TÜM SENSÖRLERİN İNTERPOLASYONU YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="color-legend">
@@ -500,7 +499,7 @@ with col_3d:
                 controls.panSpeed = 1.1;
                 controls.screenSpacePanning = true;
 
-                // Зум ровно в точку под курсором
+                // Zoom-to-cursor
                 const zoomRaycaster = new THREE.Raycaster();
                 const zoomMouse = new THREE.Vector2();
                 let wheelRafPending = false;
@@ -647,21 +646,25 @@ with col_3d:
                         }}
                     }});
 
-                    // 2. Сбор позиций сенсоров в мировых координатах
-                    const sensorPositions = [];
+                    // 2. Сбор ВСЕХ сенсоров с валидными значениями
+                    const allSensors = [];
                     sensorMeshes.forEach(sMesh => {{
                         if (sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
                             const wPos = new THREE.Vector3();
                             sMesh.getWorldPosition(wPos);
-                            sensorPositions.push({{
+                            const uName = sMesh.userData.sensorName.toUpperCase();
+                            const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
+
+                            allSensors.push({{
                                 pos: wPos,
                                 val: sMesh.userData.val,
-                                prefix: sMesh.userData.sensorName.substring(0, 2).toUpperCase()
+                                tun: tun,
+                                name: sMesh.userData.sensorName
                             }});
                         }}
                     }});
 
-                    // 3. ПОЛНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ВСЕГО ТЕЛА ТОННЕЛЕЙ 'TA' И 'TB'
+                    // 3. ПОЛНАЯ ИНТЕРПОЛЯЦИЯ: ВСЕ СЕНСОРЫ УЧАСТВУЮТ В ОКРАСКЕ ТОННЕЛЕЙ
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -672,9 +675,11 @@ with col_3d:
                         const worldV = new THREE.Vector3();
 
                         const isTB = tMesh.name.toUpperCase().includes("TB");
-                        const targetPrefix = isTB ? "TB" : "TA";
-                        let activeSensors = sensorPositions.filter(s => s.prefix === targetPrefix);
-                        if (activeSensors.length === 0) activeSensors = sensorPositions;
+                        const activeTun = isTB ? "TB" : "TA";
+
+                        // Выбираем сенсоры для тоннеля (с фоллбэком на все сенсоры)
+                        let pool = allSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
+                        if (pool.length < 3) pool = allSensors;
 
                         for (let i = 0; i < posAttr.count; i++) {{
                             localV.fromBufferAttribute(posAttr, i);
@@ -683,11 +688,11 @@ with col_3d:
                             let totalWeight = 0;
                             let accumR = 0, accumG = 0, accumB = 0;
 
-                            // IDW интерполяция от всех активных датчиков с акцентом на локальные пикеты
-                            for (let j = 0; j < activeSensors.length; j++) {{
-                                const s = activeSensors[j];
+                            for (let j = 0; j < pool.length; j++) {{
+                                const s = pool[j];
                                 const d = worldV.distanceTo(s.pos);
-                                const w = 1.0 / (Math.pow(d + 0.15, 2.0));
+                                // Мягкая интерполяционная формула без выпадения в темноту
+                                const w = 1.0 / Math.pow(d + 0.8, 1.6);
                                 const c = getColorForValue(s.val, payload.clim, payload.comp);
 
                                 accumR += c.r * w;
@@ -699,7 +704,7 @@ with col_3d:
                             if (totalWeight > 0) {{
                                 colors.push(accumR / totalWeight, accumG / totalWeight, accumB / totalWeight);
                             }} else {{
-                                colors.push(0.08, 0.13, 0.22);
+                                colors.push(0.1, 0.16, 0.26);
                             }}
                         }}
 
@@ -713,7 +718,7 @@ with col_3d:
                         }});
                     }});
 
-                    // 4. СТАРТ КАМЕРЫ ИМЕННО С МЕСТА, ГДЕ НАХОДИТСЯ ОБЪЕКТ
+                    // 4. СТАРТ КАМЕРЫ ПРЯМО ПЕРЕД ОБЪЕКТАМИ
                     const box = new THREE.Box3().setFromObject(model);
                     const center = box.getCenter(new THREE.Vector3());
                     const size = box.getSize(new THREE.Vector3());
@@ -724,7 +729,6 @@ with col_3d:
                     if (selectedMeshRef) {{
                         flyCameraTo(selectedMeshRef, false);
                     }} else {{
-                        // Ставим наблюдателя прямо перед тоннелями на комфортной дистанции обзора
                         camera.position.set(
                             center.x - maxDim * 0.45,
                             center.y + maxDim * 0.35,
