@@ -165,17 +165,59 @@ if os.path.exists(LOGO_PATH):
 
 logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.75; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
-st.markdown(f"""
-<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
-    <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ</div>
-    </div>
-    <div style="display: flex; align-items: center; margin: 0; padding: 0;">
-        {logo_tag}
-    </div>
-</div>
-""", unsafe_allow_html=True)
+with col_nav:
+    st.markdown("---")
+    
+    st.markdown("<div style='color: #8397AD; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;'>📅 En Son Veri Zamanı</div>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div style="
+            background-color: #0E182A;
+            border: 1px solid rgba(0, 200, 230, 0.35);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #00C8E6;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        ">
+            {cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div style='color: #8397AD; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;'>📡 Aktif Sensör Sayısı</div>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div style="
+            background-color: #0E182A;
+            border: 1px solid rgba(0, 200, 230, 0.35);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #00C8E6;
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        ">
+            {len(v_map)}
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div style='color: #8397AD; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;'>📊 Skala Limitleri</div>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div style="
+            background-color: #0E182A;
+            border: 1px solid rgba(0, 200, 230, 0.35);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #00C8E6;
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        ">
+            Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}
+        </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
 
 COLORSCALES = {
     "hoop_bwr": [
