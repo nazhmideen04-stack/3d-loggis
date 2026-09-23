@@ -347,8 +347,7 @@ with col_3d:
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
-            "comp": selected_comp,
-            "activeTag": cat_cfg["tag"]
+            "comp": selected_comp
         }
         json_payload = json.dumps(payload_data)
 
@@ -534,11 +533,17 @@ with col_3d:
                     return c;
                 }}
 
-                // Строгая проверка соответствия датчика выбранной категории
-                function isSensorForActiveCategory(name, activeTag) {{
-                    if (activeTag === "-CS") return name.includes("-CS");
-                    if (activeTag === "-S") return name.includes("-S") && !name.includes("-CS");
-                    if (activeTag === "-TP") return name.includes("-TP");
+                // СТРОГАЯ ИЗОЛИРОВАННАЯ ПРОВЕРКА КАТЕГОРИИ
+                function isSensorStrictlyForActiveCategory(name, comp) {{
+                    const u = name.toUpperCase();
+                    if (comp === "hoop") {{
+                        return u.includes("-CS");
+                    }} else if (comp === "axial") {{
+                        // Строго продольные S и исключаем CS
+                        return (u.includes("-S") || u.includes("-S1") || u.includes("-S2") || u.includes("-S3")) && !u.includes("-CS");
+                    }} else if (comp === "temp") {{
+                        return u.includes("-TP");
+                    }}
                     return false;
                 }}
 
@@ -585,17 +590,18 @@ with col_3d:
                                 child.userData.sensorName = name;
                                 child.userData.isSensor = true;
 
-                                const isMatch = isSensorForActiveCategory(name, payload.activeTag);
+                                const isMatch = isSensorStrictlyForActiveCategory(name, payload.comp);
                                 const rawVal = payload.sensorValues[name];
                                 const hasValidData = (rawVal !== undefined && !isNaN(rawVal) && typeof rawVal === "number");
                                 
+                                // Сенсор валиден ТОЛЬКО если относится к активной категории И имеет числовое значение
                                 child.userData.val = hasValidData ? rawVal : undefined;
                                 child.userData.isUsable = (isMatch && hasValidData);
 
                                 const isSelected = (name === payload.selectedSensor);
 
                                 if (child.userData.isUsable) {{
-                                    // АКТИВНЫЙ ДАТЧИК ТЕКУЩЕГО АНАЛИЗА: ЯРКИЙ ЦВЕТ
+                                    // ТОЛЬКО ДАТЧИКИ ТЕКУЩЕЙ АКТИВНОЙ КАТЕГОРИИ ИМЕЮТ ЦВЕТ И СВЕТЯТСЯ
                                     const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(rawVal, payload.clim, payload.comp);
 
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -611,12 +617,12 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
-                                    // БЕЗ ЦВЕТА: Başka analiz kategorisi или Belirsiz (темный полупрозрачный силуэт)
+                                    // ВСЕ ОСТАЛЬНЫЕ (BELIRSIZ ИЛИ ДРУГИЕ КАТЕГОРИИ): ПОЛНОСТЬЮ ЛИШЕНЫ ЦВЕТА
                                     child.material = new THREE.MeshStandardMaterial({{
-                                        color: 0x161C26,
+                                        color: 0x222C38, // Темно-серый без оттенков
                                         emissive: new THREE.Color(0x000000),
                                         transparent: true,
-                                        opacity: 0.15,
+                                        opacity: 0.18,
                                         roughness: 0.95,
                                         metalness: 0.0
                                     }});
@@ -642,7 +648,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 2. Сбор позиций ТОЛЬКО ВАЛИДНЫХ ДАТЧИКОВ (без неопределенных и чужих)
+                    // 2. Сбор позиций ТОЛЬКО ВАЛИДНЫХ ДАТЧИКОВ ТЕКУЩЕЙ КАТЕГОРИИ
                     const activeSensors = [];
                     sensorMeshes.forEach(sMesh => {{
                         if (sMesh.userData.isUsable) {{
@@ -673,40 +679,52 @@ with col_3d:
                         const uName = tMesh.name.toUpperCase();
                         const isTB = uName.includes("TB");
                         const activeTun = isTB ? "TB" : "TA";
+                        
+                        // Пул датчиков строго по тоннелю
                         let pool = activeSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
                         if (pool.length < 2) pool = activeSensors;
 
                         tMesh.updateMatrixWorld(true);
 
-                        for (let i = 0; i < posAttr.count; i++) {{
-                            localV.fromBufferAttribute(posAttr, i);
-                            worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
-
-                            let totalWeight = 0;
-                            let accumR = 0, accumG = 0, accumB = 0;
-
-                            for (let j = 0; j < pool.length; j++) {{
-                                const s = pool[j];
-                                const d = worldV.distanceTo(s.pos);
-                                
-                                const w = 1.0 / Math.pow(d + 0.6, 2.0);
-                                const c = getColorForValue(s.val, payload.clim, payload.comp);
-
-                                accumR += c.r * w;
-                                accumG += c.g * w;
-                                accumB += c.b * w;
-                                totalWeight += w;
+                        // Если данных для этого анализа нет — тоннель остается чистым светло-серым/белым
+                        if (pool.length === 0) {{
+                            for (let i = 0; i < posAttr.count; i++) {{
+                                const idx = i * 3;
+                                colors[idx] = 0.9;
+                                colors[idx + 1] = 0.92;
+                                colors[idx + 2] = 0.95;
                             }}
+                        }} else {{
+                            for (let i = 0; i < posAttr.count; i++) {{
+                                localV.fromBufferAttribute(posAttr, i);
+                                worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
 
-                            const idx = i * 3;
-                            if (totalWeight > 0) {{
-                                colors[idx] = accumR / totalWeight;
-                                colors[idx + 1] = accumG / totalWeight;
-                                colors[idx + 2] = accumB / totalWeight;
-                            }} else {{
-                                colors[idx] = 0.12;
-                                colors[idx + 1] = 0.18;
-                                colors[idx + 2] = 0.28;
+                                let totalWeight = 0;
+                                let accumR = 0, accumG = 0, accumB = 0;
+
+                                for (let j = 0; j < pool.length; j++) {{
+                                    const s = pool[j];
+                                    const d = worldV.distanceTo(s.pos);
+                                    
+                                    const w = 1.0 / Math.pow(d + 0.6, 2.0);
+                                    const c = getColorForValue(s.val, payload.clim, payload.comp);
+
+                                    accumR += c.r * w;
+                                    accumG += c.g * w;
+                                    accumB += c.b * w;
+                                    totalWeight += w;
+                                }}
+
+                                const idx = i * 3;
+                                if (totalWeight > 0) {{
+                                    colors[idx] = accumR / totalWeight;
+                                    colors[idx + 1] = accumG / totalWeight;
+                                    colors[idx + 2] = accumB / totalWeight;
+                                }} else {{
+                                    colors[idx] = 0.9;
+                                    colors[idx + 1] = 0.92;
+                                    colors[idx + 2] = 0.95;
+                                }}
                             }}
                         }}
 
