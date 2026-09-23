@@ -66,11 +66,10 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-
     /* 1. Заголовок "Görüntülenecek Bileşen:" */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
-        font-size: 16px !important;
+        font-size: 14px !important;
         color: #8397AD !important;
         font-weight: 600 !important;
     }
@@ -83,7 +82,7 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* 3. Кружок выбора: делаем чуточку крупнее и красим в тот самый синий */
+    /* 3. Кружок выбора: крупнее и в синем тоне */
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
         filter: hue-rotate(185deg) saturate(2) !important;
         transform: scale(1.2) !important;
@@ -94,18 +93,6 @@ st.markdown("""
         cursor: pointer !important;
         display: flex !important;
         align-items: center !important;
-    }
-
-    /* Принудительный синий цвет активного кружка через фильтр */
-    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
-        filter: hue-rotate(185deg) saturate(2) !important;
-    }
-
-    /* Увеличение размера самого кружка выбора */
-    div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
-        transform: scale(1.25) !important;
-        transform-origin: center center !important;
-        margin-right: 14px !important;
     }
 
     div[data-baseweb="select"] {
@@ -128,7 +115,7 @@ st.markdown("""
         box-shadow: none !important;
     }
 
- /* Кнопка "Verileri Yenile" без неона, градиента и свечения */
+    /* Кнопка "Verileri Yenile" */
     div.stButton > button {
         background-color: #0E2238 !important;
         color: #00C8E6 !important;
@@ -216,7 +203,6 @@ def ensure_playwright_installed():
     except Exception:
         pass
 
-# Единая пакетная загрузка всех типов измерений за один проход браузера
 @st.cache_data(ttl=300)
 def fetch_all_categories_data():
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
@@ -247,11 +233,9 @@ def fetch_all_categories_data():
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(3500)
 
-        # Открываем Types
         page.get_by_text("Types").click()
         page.wait_for_timeout(800)
 
-        # Устанавливаем фильтры один раз
         try:
             page.get_by_role("combobox").first.select_option("MONTH_02")
         except Exception:
@@ -264,7 +248,6 @@ def fetch_all_categories_data():
             pass
         page.wait_for_timeout(800)
 
-        # Последовательно считываем каждую категорию без перезапуска страницы
         for cat_key, cat_cfg in CATEGORIES.items():
             try:
                 page.get_by_role("listbox").select_option(cat_cfg["name"])
@@ -503,6 +486,43 @@ with col_3d:
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors, sensor_sizes = [], [], [], [], [], []
         label_x, label_y, label_z, label_text = [], [], [], []
 
+        # Ракурс камеры по умолчанию (общий изометрический вид)
+        camera_center = dict(x=0.0, y=0.0, z=0.0)
+        camera_eye = dict(x=-1.5, y=1.6, z=1.0)
+        camera_up = dict(x=0.0, y=0.0, z=1.0)
+
+        # Вычисление лицевого взгляда прямо на выбранный сенсор
+        if selected_sensor != "Seçiniz...":
+            s_pos = position(selected_sensor)
+            if s_pos is not None and None not in s_pos:
+                tun_prefix = selected_sensor.split("-")[0]
+                ti = 0 if tun_prefix == "TA" else 1
+                off_x = (ti - 0.5) * SP
+                ang_deg = s_pos[1]
+                ang_rad = np.radians(ang_deg)
+
+                # Координаты самого датчика на тоннеле
+                sx = off_x + (R + 0.15) * np.sin(ang_rad)
+                sy = (R + 0.15) * np.cos(ang_rad)
+                sz = s_pos[0] - 45.0
+
+                # Приводим к безразмерным координатам Plotly
+                norm_cx = float(sx / (SP * 1.5))
+                norm_cy = float(sy / (R * 4.0))
+                norm_cz = float(sz / 45.0)
+
+                # Фокус (центр) точно на датчике
+                camera_center = dict(x=norm_cx, y=norm_cy, z=norm_cz)
+
+                # Выставляем наблюдателя СНАРУЖИ строго по нормали кольца (лицом к лицу)
+                # Дистанция 0.45 обеспечивает идеальный масштаб приближения
+                dist = 0.45
+                camera_eye = dict(
+                    x=norm_cx + dist * np.sin(ang_rad),
+                    y=norm_cy + dist * np.cos(ang_rad),
+                    z=norm_cz + 0.08  # легкий угол сверху для идеальной читаемости
+                )
+
         for ti, tun in enumerate(("TA", "TB")):
             off_x = (ti - 0.5) * SP
             label_x.append(off_x)
@@ -558,6 +578,7 @@ with col_3d:
                 val_txt = f"{v_map.get(n, np.nan):+.2f} {cat_cfg['unit']}"
                 sensor_text.append(f"<b>{n}</b><br>Değer: {val_txt}")
 
+                # Подсветка выбранного датчика: ярко-янтарный крупный маркер
                 if n == selected_sensor:
                     sensor_colors.append("#FFD700")
                     sensor_sizes.append(16)
@@ -600,7 +621,7 @@ with col_3d:
             ))
 
         fig.update_layout(
-            uirevision="tunnel_3d_persistent_state",
+            uirevision="constant_scene",  # Сохраняет состояние интерактивности сцены
             dragmode="orbit",
             paper_bgcolor="#0A0E17",
             plot_bgcolor="#0A0E17",
@@ -610,9 +631,14 @@ with col_3d:
                 zaxis=dict(showbackground=False, showgrid=True, gridcolor="#172238", zeroline=False, title="Boyuna (Z)", color="#00C8E6"),
                 aspectratio=dict(x=1.3, y=0.5, z=2.2),
                 camera=dict(
-                    center=dict(x=0.0, y=0.0, z=0.0),
-                    eye=dict(x=-1.5, y=1.6, z=1.0)
+                    center=camera_center,
+                    eye=camera_eye,
+                    up=camera_up
                 )
+            ),
+            transition=dict(
+                duration=1000,           # Плавный поворот камеры в течение 1 сек
+                easing="cubic-in-out"     # Мягкое ускорение и замедление анимации
             ),
             margin=dict(l=0, r=0, b=0, t=10),
             height=720,
@@ -627,58 +653,3 @@ with col_3d:
         }
 
         st.plotly_chart(fig, use_container_width=True, config=config)
-
-        if selected_sensor != "Seçiniz...":
-            s_pos = position(selected_sensor)
-            if s_pos is not None and None not in s_pos:
-                tun_prefix = selected_sensor.split("-")[0]
-                ti = 0 if tun_prefix == "TA" else 1
-                off_x = (ti - 0.5) * SP
-                ang_deg = s_pos[1]
-                ang_rad = np.radians(ang_deg)
-
-                sx = off_x + (R + 0.15) * np.sin(ang_rad)
-                sy = (R + 0.15) * np.cos(ang_rad)
-                sz = s_pos[0] - 45.0
-
-                norm_cx = round(float(sx / (SP * 1.5)), 4)
-                norm_cy = round(float(sy / (R * 4.0)), 4)
-                norm_cz = round(float(sz / 45.0), 4)
-
-                dist = 0.42
-                eye_x = round(norm_cx + dist * np.sin(ang_rad), 4)
-                eye_y = round(norm_cy + dist * np.cos(ang_rad), 4)
-                eye_z = round(norm_cz + 0.06, 4)
-
-                st.components.v1.html(f"""
-                <script>
-                    const applySmoothFly = () => {{
-                        const plotElements = window.parent.document.querySelectorAll('.js-plotly-plot');
-                        if (!plotElements || plotElements.length === 0) {{
-                            setTimeout(applySmoothFly, 100);
-                            return;
-                        }}
-                        const gd = plotElements[0];
-                        if (window.parent.Plotly && gd) {{
-                            window.parent.Plotly.animate(gd, {{
-                                layout: {{
-                                    'scene.camera': {{
-                                        center: {{ x: {norm_cx}, y: {norm_cy}, z: {norm_cz} }},
-                                        eye: {{ x: {eye_x}, y: {eye_y}, z: {eye_z} }}
-                                    }}
-                                }}
-                            }}, {{
-                                transition: {{
-                                    duration: 1200,
-                                    easing: 'cubic-in-out'
-                                }},
-                                frame: {{
-                                    duration: 1200,
-                                    redraw: false
-                                }}
-                            }});
-                        }}
-                    }};
-                    setTimeout(applySmoothFly, 250);
-                </script>
-                """, height=0, width=0)
