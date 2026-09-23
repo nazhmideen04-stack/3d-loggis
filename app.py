@@ -262,7 +262,6 @@ def fetch_category_data(cat_key, reload_seed=0):
             browser.close()
 
     return {"values": val_map, "date": latest_date_str}
-
 # Geometri Tanımları
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
