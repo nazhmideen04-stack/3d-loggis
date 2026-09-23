@@ -282,7 +282,6 @@ def fetch_all_categories_data():
 
     return all_results
 
-# Базовая геометрия для RBF-интерполяции
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
     "tunnel_spacing_m": 15.0,
@@ -328,63 +327,22 @@ def position(name: str):
         return float(np.mean(chain)), GEOMETRY["s_line_angle_deg"].get(place)
     return (GEOMETRY["s_chainage_m"].get((section, point)), GEOMETRY["s_line_angle_deg"].get(place))
 
-def build_interpolation_mesh(v_map, comp):
-    meshes_payload = []
-    for ti, tun in enumerate(("TA", "TB")):
-        off_x = (ti - 0.5) * SP
-        names = [c for c in v_map if c.startswith(tun + "-") and position(c) is not None and None not in position(c)]
-        if len(names) < 3:
+# Передача обучающих точек интерполятора на клиент в Three.js
+def get_interpolation_points(v_map):
+    interp_data = {"TA": [], "TB": []}
+    for n, val in v_map.items():
+        if np.isnan(val):
             continue
-
-        pos = np.array([position(n) for n in names])
-        x0, x1 = float(pos[:, 0].min()), float(pos[:, 0].max())
-        
-        nA, nC = 28, 26
-        angles = np.linspace(0, 360.0, nA, endpoint=False)
-        chain = np.linspace(x0, x1, nC)
-
-        grid_rows = []
-        for a in angles:
-            for c in chain:
-                grid_rows.append([c, a])
-        grid = np.array(grid_rows, dtype=np.float32)
-
-        query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
-        wrapped = np.vstack([
-            np.column_stack([pos[:, 0], pos[:, 1] - 360.0]),
-            pos,
-            np.column_stack([pos[:, 0], pos[:, 1] + 360.0]),
-        ])
-        wrapped[:, 1] *= angle_scale
-
-        cur_vals = np.array([v_map.get(c, 0.0) for c in names], dtype=np.float32)
-        rbf = RBFInterpolator(wrapped, np.concatenate([cur_vals, cur_vals, cur_vals]), kernel="linear", smoothing=1.0)
-        scalars = rbf(query).tolist()
-
-        vertices, indices = [], []
-        for a in angles:
-            rad = np.radians(a)
-            for c in chain:
-                vertices.extend([round(float(off_x + (R - 0.05) * np.sin(rad)), 3),
-                                 round(float((R - 0.05) * np.cos(rad)), 3),
-                                 round(float(c - 45.0), 3)])
-
-        for a in range(nA):
-            next_a = (a + 1) % nA
-            for c in range(nC - 1):
-                p0 = a * nC + c
-                p1 = a * nC + c + 1
-                p2 = next_a * nC + c
-                p3 = next_a * nC + c + 1
-                indices.extend([p0, p2, p1, p1, p2, p3])
-
-        meshes_payload.append({
-            "tunnel": tun,
-            "vertices": vertices,
-            "indices": indices,
-            "scalars": scalars
-        })
-    return meshes_payload
+        pos = position(n)
+        if pos is not None and None not in pos:
+            tun = "TA" if n.startswith("TA-") else "TB"
+            interp_data[tun].append({
+                "name": n,
+                "chainage": float(pos[0]),
+                "angle": float(pos[1]),
+                "val": float(val)
+            })
+    return interp_data
 
 @st.cache_data
 def get_model_b64(path):
@@ -445,9 +403,9 @@ with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
     if not model_b64:
-        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb dosyasını `app.py` ile aynı klasöre yükleyiniz.")
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
-        heat_meshes = build_interpolation_mesh(v_map, selected_comp)
+        interp_points = get_interpolation_points(v_map)
 
         payload_data = {
             "sensorValues": v_map,
@@ -455,7 +413,7 @@ with col_3d:
             "unit": cat_cfg["unit"],
             "clim": clim,
             "comp": selected_comp,
-            "heatMeshes": heat_meshes
+            "interpPoints": interp_points
         }
         json_payload = json.dumps(payload_data)
 
@@ -500,6 +458,48 @@ with col_3d:
                     font-weight: 700;
                     letter-spacing: 1px;
                 }}
+                /* Цветовая легенда шкалы как в Plotly */
+                #color-legend {{
+                    position: absolute;
+                    top: 24px;
+                    right: 28px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    background: rgba(10, 14, 23, 0.85);
+                    padding: 12px 14px;
+                    border: 1px solid rgba(0, 200, 230, 0.3);
+                    border-radius: 6px;
+                    z-index: 90;
+                    user-select: none;
+                }}
+                #legend-title {{
+                    color: #FFFFFF;
+                    font-size: 12px;
+                    font-weight: 700;
+                    margin-bottom: 8px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }}
+                .legend-bar-container {{
+                    display: flex;
+                    align-items: stretch;
+                    height: 220px;
+                }}
+                #legend-bar {{
+                    width: 16px;
+                    border-radius: 3px;
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    margin-right: 8px;
+                }}
+                .legend-labels {{
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    color: #D2DEEC;
+                    font-size: 11px;
+                    font-weight: 600;
+                }}
             </style>
             <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -508,8 +508,21 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE İNTERPOLASYON YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
+                
+                <!-- Легенда шкалы значений -->
+                <div id="color-legend">
+                    <div id="legend-title">[{cat_cfg['unit']}]</div>
+                    <div class="legend-bar-container">
+                        <div id="legend-bar"></div>
+                        <div class="legend-labels">
+                            <span>{clim[1]:+.1f}</span>
+                            <span>{round((clim[0] + clim[1]) / 2.0, 1):+.1f}</span>
+                            <span>{clim[0]:+.1f}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <script>
@@ -519,6 +532,16 @@ with col_3d:
                 const container = document.getElementById('canvas-container');
                 const tooltip = document.getElementById('sensor-tooltip');
                 const loaderText = document.getElementById('loader');
+                const legendBar = document.getElementById('legend-bar');
+
+                // Настройка градиента легенды под выбранный компонент
+                if (payload.comp === "temp") {{
+                    legendBar.style.background = "linear-gradient(to bottom, #d73027, #f46d43, #fdae61, #fee08b, #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837)";
+                }} else if (payload.comp === "axial") {{
+                    legendBar.style.background = "linear-gradient(to bottom, #6A0080, #E040FB, #F0F0F0, #00E676, #006428)";
+                }} else {{
+                    legendBar.style.background = "linear-gradient(to bottom, #C60000, #FF4422, #FFFFFF, #1E9AD6, #1858BA)";
+                }}
 
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
@@ -536,17 +559,17 @@ with col_3d:
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.05;
-                controls.maxDistance = 300;
+                controls.maxDistance = 350;
                 controls.minDistance = 1;
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
                 scene.add(ambientLight);
 
                 const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.4);
                 dirLight1.position.set(40, 60, 50);
                 scene.add(dirLight1);
 
-                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.7);
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
                 dirLight2.position.set(-40, -20, -50);
                 scene.add(dirLight2);
 
@@ -558,6 +581,7 @@ with col_3d:
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
+                // Расчет точного цвета по шкале значений
                 function getColorForValue(val, clim, comp) {{
                     if (val === undefined || isNaN(val)) return new THREE.Color(0x555555);
                     const min = clim[0], max = clim[1];
@@ -569,9 +593,9 @@ with col_3d:
                         c.setHSL((1.0 - t) * 0.7, 1.0, 0.5);
                     }} else if (comp === "axial") {{
                         if (t < 0.5) {{
-                            c.setRGB(0.0, 0.4 + t * 1.2, 0.15 + t * 0.5);
+                            c.setRGB(0.0, 0.39 + t * 1.0, 0.15 + t * 0.6);
                         }} else {{
-                            c.setRGB(0.5 + (t - 0.5) * 1.0, 0.1, 0.6 + (t - 0.5) * 0.8);
+                            c.setRGB(0.5 + (t - 0.5) * 0.9, 0.1, 0.5 + (t - 0.5) * 0.9);
                         }}
                     }} else {{
                         if (t < 0.5) {{
@@ -583,32 +607,30 @@ with col_3d:
                     return c;
                 }}
 
-                if (payload.heatMeshes && payload.heatMeshes.length > 0) {{
-                    payload.heatMeshes.forEach(hm => {{
-                        const geom = new THREE.BufferGeometry();
-                        geom.setAttribute('position', new THREE.Float32BufferAttribute(hm.vertices, 3));
-                        geom.setIndex(hm.indices);
+                // 3D Inverse Distance Weighting (IDW) интерполятор для каждой вершины тоннеля
+                function interpolateValueAtPoint(worldPos, pointsList) {{
+                    if (!pointsList || pointsList.length === 0) return 0;
+                    let sumWeights = 0;
+                    let sumValues = 0;
+                    const p = 2.0;
 
-                        const colors = [];
-                        hm.scalars.forEach(val => {{
-                            const col = getColorForValue(val, payload.clim, payload.comp);
-                            colors.push(col.r, col.g, col.b);
-                        }});
-                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-                        geom.computeVertexNormals();
+                    for (let i = 0; i < pointsList.length; i++) {{
+                        const pt = pointsList[i];
+                        // Приведение цепочки пикетажа и угла к декартовым координатам тоннеля
+                        const angRad = pt.angle * Math.PI / 180.0;
+                        const sX = 3.0 * Math.sin(angRad);
+                        const sY = 3.0 * Math.cos(angRad);
+                        const sZ = pt.chainage - 45.0;
 
-                        const heatMat = new THREE.MeshStandardMaterial({{
-                            vertexColors: true,
-                            roughness: 0.5,
-                            metalness: 0.1,
-                            side: THREE.DoubleSide
-                        }});
-
-                        const heatMesh = new THREE.Mesh(geom, heatMat);
-                        scene.add(heatMesh);
-                    }});
+                        const d = Math.sqrt((worldPos.x - sX)**2 + (worldPos.y - sY)**2 + (worldPos.z - sZ)**2) + 0.001;
+                        const w = 1.0 / (d ** p);
+                        sumWeights += w;
+                        sumValues += w * pt.val;
+                    }}
+                    return sumWeights > 0 ? (sumValues / sumWeights) : 0;
                 }}
 
+                // Загрузка модели из 3ds Max
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -640,7 +662,7 @@ with col_3d:
                                 child.material = new THREE.MeshStandardMaterial({{
                                     color: sensorColor,
                                     emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
-                                    emissiveIntensity: isSelected ? 0.9 : 0.35,
+                                    emissiveIntensity: isSelected ? 0.95 : 0.4,
                                     roughness: 0.2,
                                     metalness: 0.3
                                 }});
@@ -650,18 +672,50 @@ with col_3d:
                                     flyCameraTo(child, true);
                                 }}
                             }} else {{
-                                const isTunnelBody = (name.toUpperCase().includes("TA") || name.toUpperCase().includes("TB") || name.toLowerCase().includes("tunnel"));
-                                
-                                child.material = new THREE.MeshPhysicalMaterial({{
-                                    color: isTunnelBody ? 0x0E2038 : 0x1A2634,
-                                    transparent: true,
-                                    opacity: isTunnelBody ? 0.28 : 0.6,
-                                    roughness: 0.15,
-                                    metalness: 0.1,
-                                    transmission: isTunnelBody ? 0.6 : 0.0,
-                                    depthWrite: false,
-                                    side: THREE.DoubleSide
-                                }});
+                                // ИНТЕРПОЛЯЦИЯ САМОГО ТЕЛА ТОННЕЛЕЙ (TA И TB)
+                                const isTunnelTA = name.toUpperCase().includes("TA");
+                                const isTunnelTB = name.toUpperCase().includes("TB");
+
+                                if (isTunnelTA || isTunnelTB) {{
+                                    const tunKey = isTunnelTA ? "TA" : "TB";
+                                    const ptsList = payload.interpPoints[tunKey] || [];
+                                    const geom = child.geometry;
+
+                                    if (geom && geom.attributes && geom.attributes.position) {{
+                                        const posAttr = geom.attributes.position;
+                                        const colors = [];
+                                        const vPos = new THREE.Vector3();
+
+                                        for (let i = 0; i < posAttr.count; i++) {{
+                                            vPos.fromBufferAttribute(posAttr, i);
+                                            const interpVal = interpolateValueAtPoint(vPos, ptsList);
+                                            const c = getColorForValue(interpVal, payload.clim, payload.comp);
+                                            colors.push(c.r, c.g, c.b);
+                                        }}
+
+                                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                                        
+                                        // Окрашивание стенок тоннелей с полупрозрачностью
+                                        child.material = new THREE.MeshStandardMaterial({{
+                                            vertexColors: true,
+                                            transparent: true,
+                                            opacity: 0.72,
+                                            roughness: 0.45,
+                                            metalness: 0.1,
+                                            depthWrite: false,
+                                            side: THREE.DoubleSide
+                                        }});
+                                    }}
+                                }} else {{
+                                    // Прочие вспомогательные конструкции
+                                    child.material = new THREE.MeshStandardMaterial({{
+                                        color: 0x1A2634,
+                                        transparent: true,
+                                        opacity: 0.4,
+                                        roughness: 0.6,
+                                        side: THREE.DoubleSide
+                                    }});
+                                }}
                             }}
                         }}
                     }});
