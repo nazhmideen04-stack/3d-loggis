@@ -509,6 +509,15 @@ with col_3d:
                 controls.minDistance = 0.1;
                 controls.maxDistance = 3500;
 
+                // Сохраняем состояние камеры при любых перемещениях пользователем
+                controls.addEventListener('change', () => {{
+                    const camState = {{
+                        pos: [camera.position.x, camera.position.y, camera.position.z],
+                        target: [controls.target.x, controls.target.y, controls.target.z]
+                    }};
+                    sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+                }});
+
                 const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
                 scene.add(ambientLight);
 
@@ -703,8 +712,7 @@ with col_3d:
                         }}
                     }});
 
-                    // --- РАСШИРЕННЫЙ ДИАПАЗОН И НАСЫЩЕННЫЙ ЭПИЦЕНТР ---
-                    const R_INFLUENCE = 28.0; // Расширенный радиус охвата по длине тоннеля
+                    const R_INFLUENCE = 28.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -744,11 +752,8 @@ with col_3d:
                                     const d = worldV.distanceTo(s.pos);
                                     
                                     if (d < R_INFLUENCE) {{
-                                        // 1. Плавный спад до края расширенного радиуса
                                         const ratio = d / R_INFLUENCE;
                                         const wEnvelope = Math.pow(1.0 - ratio, 1.8);
-                                        
-                                        // 2. Мощный вес в эпицентре (d -> 0) для яркой фиксации значения
                                         const wCore = 1.0 / Math.pow(d * d + 0.04, 1.25);
                                         const w = wEnvelope * wCore;
 
@@ -766,7 +771,6 @@ with col_3d:
                                     colors[idx + 1] = accumG / totalWeight;
                                     colors[idx + 2] = accumB / totalWeight;
                                 }} else {{
-                                    // Нейтральный фон обделки вне радиуса (#E6ECF2)
                                     colors[idx] = 0.902;
                                     colors[idx + 1] = 0.925;
                                     colors[idx + 2] = 0.949;
@@ -791,28 +795,45 @@ with col_3d:
                         tMesh.material.needsUpdate = true;
                     }});
 
-                    const tunnelBox = new THREE.Box3();
-                    if (tunnelMeshes.length > 0) {{
-                        tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
+                    // 4. УПРАВЛЕНИЕ КАМЕРОЙ: СОХРАНЕНИЕ ПОЗИЦИИ ИЛИ ПЛАВНЫЙ ПЕРЕЛЕТ
+                    const lastSelected = sessionStorage.getItem('threejs_last_selected');
+                    const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
+
+                    if (selectedMeshRef && isNewSensorSelected) {{
+                        // Пользователь выбрал конкретный датчик: ПЛАВНЫЙ КИНЕМАТОГРАФИЧНЫЙ ПЕРЕЛЕТ
+                        sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
+                        flyCameraTo(selectedMeshRef, true);
                     }} else {{
-                        tunnelBox.setFromObject(model);
-                    }}
+                        // Пользователь меняет прозрачность или вращает: ВОССТАНАВЛИВАЕМ ТОЧНОЕ ПОЛОЖЕНИЕ
+                        const savedStateStr = sessionStorage.getItem('threejs_camera_state');
+                        if (savedStateStr) {{
+                            try {{
+                                const st = JSON.parse(savedStateStr);
+                                camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
+                                controls.target.set(st.target[0], st.target[1], st.target[2]);
+                                controls.update();
+                            }} catch(e) {{}}
+                        }} else {{
+                            // Самый первый запуск: автоматический фокус в центр объекта
+                            const tunnelBox = new THREE.Box3();
+                            if (tunnelMeshes.length > 0) {{
+                                tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
+                            }} else {{
+                                tunnelBox.setFromObject(model);
+                            }}
 
-                    const center = tunnelBox.getCenter(new THREE.Vector3());
-                    const size = tunnelBox.getSize(new THREE.Vector3());
-                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                            const center = tunnelBox.getCenter(new THREE.Vector3());
+                            const size = tunnelBox.getSize(new THREE.Vector3());
+                            const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
-                    controls.target.copy(center);
-
-                    if (selectedMeshRef) {{
-                        flyCameraTo(selectedMeshRef, false);
-                    }} else {{
-                        camera.position.set(
-                            center.x - maxDim * 0.45,
-                            center.y + maxDim * 0.35,
-                            center.z + maxDim * 0.65
-                        );
-                        controls.update();
+                            controls.target.copy(center);
+                            camera.position.set(
+                                center.x - maxDim * 0.45,
+                                center.y + maxDim * 0.35,
+                                center.z + maxDim * 0.65
+                            );
+                            controls.update();
+                        }}
                     }}
 
                 }}, undefined, function(err) {{
@@ -820,14 +841,16 @@ with col_3d:
                     console.error(err);
                 }});
 
+                // Функция плавного полета камеры к сенсору
                 function flyCameraTo(targetMesh, animate = true) {{
                     const targetPos = new THREE.Vector3();
                     targetMesh.getWorldPosition(targetPos);
 
+                    // Рассчитываем комфортный вектор обзора (сбоку и чуть сверху)
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(2.0)).add(new THREE.Vector3(0, 0.7, 0));
+                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.5)).add(new THREE.Vector3(0, 1.8, 0));
 
                     if (!animate) {{
                         camera.position.copy(endCamPos);
@@ -836,14 +859,24 @@ with col_3d:
                         return;
                     }}
 
+                    // Плавная анимация фокуса цели
                     new TWEEN.Tween(controls.target)
-                        .to(targetPos, 1100)
+                        .to(targetPos, 1400)
                         .easing(TWEEN.Easing.Cubic.InOut)
                         .start();
 
+                    // Плавная анимация позиции камеры
                     new TWEEN.Tween(camera.position)
-                        .to(endCamPos, 1100)
+                        .to(endCamPos, 1400)
                         .easing(TWEEN.Easing.Cubic.InOut)
+                        .onUpdate(() => controls.update())
+                        .onComplete(() => {{
+                            const camState = {{
+                                pos: [camera.position.x, camera.position.y, camera.position.z],
+                                target: [controls.target.x, controls.target.y, controls.target.z]
+                            }};
+                            sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+                        }})
                         .start();
                 }}
 
