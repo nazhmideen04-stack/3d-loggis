@@ -282,7 +282,7 @@ def fetch_all_categories_data():
 
     return all_results
 
-# Базовая геометрия для RBF-интерполяции облака данных
+# Базовая геометрия для RBF-интерполяции
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
     "tunnel_spacing_m": 15.0,
@@ -440,14 +440,13 @@ with col_nav:
     if selected_sensor != "Seçiniz...":
         st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B СЦЕНА THREE.JS ---
+# --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
     if not model_b64:
         st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb dosyasını `app.py` ile aynı klasöre yükleyiniz.")
     else:
-        # Генерация интерполированного слоя напряжений и температур
         heat_meshes = build_interpolation_mesh(v_map, selected_comp)
 
         payload_data = {
@@ -559,7 +558,6 @@ with col_3d:
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
-                // Цветовая шкала
                 function getColorForValue(val, clim, comp) {{
                     if (val === undefined || isNaN(val)) return new THREE.Color(0x555555);
                     const min = clim[0], max = clim[1];
@@ -570,14 +568,12 @@ with col_3d:
                     if (comp === "temp") {{
                         c.setHSL((1.0 - t) * 0.7, 1.0, 0.5);
                     }} else if (comp === "axial") {{
-                        // Green -> Violet
                         if (t < 0.5) {{
                             c.setRGB(0.0, 0.4 + t * 1.2, 0.15 + t * 0.5);
                         }} else {{
                             c.setRGB(0.5 + (t - 0.5) * 1.0, 0.1, 0.6 + (t - 0.5) * 0.8);
                         }}
                     }} else {{
-                        // Hoop: Blue -> White -> Red
                         if (t < 0.5) {{
                             c.setRGB(0.1 + t * 1.8, 0.35 + t * 1.3, 0.8 + t * 0.4);
                         }} else {{
@@ -587,7 +583,6 @@ with col_3d:
                     return c;
                 }}
 
-                // 1. Построение интерполированных оболочек (RBF Heatmap)
                 if (payload.heatMeshes && payload.heatMeshes.length > 0) {{
                     payload.heatMeshes.forEach(hm => {{
                         const geom = new THREE.BufferGeometry();
@@ -614,7 +609,6 @@ with col_3d:
                     }});
                 }}
 
-                // 2. Загрузка 3D-модели из 3ds Max
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -655,8 +649,7 @@ with col_3d:
                                     child.scale.set(1.6, 1.6, 1.6);
                                     flyCameraTo(child, true);
                                 }}
-                            }} else {
-                                // ПОЛУПРОЗРАЧНОЕ ТЕЛО ТОННЕЛЕЙ (TA / TB)
+                            }} else {{
                                 const isTunnelBody = (name.toUpperCase().includes("TA") || name.toUpperCase().includes("TB") || name.toLowerCase().includes("tunnel"));
                                 
                                 child.material = new THREE.MeshPhysicalMaterial({{
@@ -666,10 +659,10 @@ with col_3d:
                                     roughness: 0.15,
                                     metalness: 0.1,
                                     transmission: isTunnelBody ? 0.6 : 0.0,
-                                    depthWrite: false, // Обеспечивает сквозную видимость сенсоров внутри
+                                    depthWrite: false,
                                     side: THREE.DoubleSide
                                 }});
-                            }
+                            }}
                         }}
                     }});
 
@@ -683,7 +676,6 @@ with col_3d:
                     console.error(err);
                 }});
 
-                // Плавный кинематографичный облет к выбранному сенсору
                 function flyCameraTo(targetMesh, animate = true) {{
                     const targetPos = new THREE.Vector3();
                     targetMesh.getWorldPosition(targetPos);
@@ -710,7 +702,6 @@ with col_3d:
                         .start();
                 }}
 
-                // Интерактивные подсказки при наведении мыши
                 window.addEventListener('mousemove', function(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
