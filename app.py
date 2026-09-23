@@ -114,20 +114,33 @@ st.markdown("""
         box-shadow: none !important;
     }
 
+ /* Кнопка "Verileri Yenile" без неона, градиента и свечения */
     div.stButton > button {
-        background: #00C8E6 !important;
-        color: #0A0E17 !important;
+        background-color: #0E2238 !important;
+        color: #00C8E6 !important;
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 15px !important;
         font-weight: 700 !important;
-        border: none !important;
+        border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
         padding: 9px 20px !important;
         box-shadow: none !important;
-        transition: background-color 0.2s ease !important;
+        text-shadow: none !important;
+        transition: background-color 0.2s ease, border-color 0.2s ease !important;
     }
+
     div.stButton > button:hover {
-        background: #33D6ED !important;
+        background-color: #132E4C !important;
+        border-color: #00C8E6 !important;
+        color: #FFFFFF !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+        transform: none !important;
+    }
+
+    div.stButton > button:active, div.stButton > button:focus {
+        background-color: #0E2238 !important;
+        border-color: #00C8E6 !important;
         box-shadow: none !important;
     }
 </style>
