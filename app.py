@@ -66,6 +66,17 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+/* Заголовок "Görüntülenecek Bileşen:" */
+    div[data-testid="stRadio"] > label p,
+    div[data-testid="stRadio"] > label {
+        font-size: 13px !important;  /* <--- Уменьшите здесь (например: 12px, 13px или 14px) */
+        font-weight: 600 !important;
+        color: #8397AD !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px !important;
+    }
+
     /* Крупный текст пунктов радиокнопки */
     div[data-testid="stRadio"] label p {
         font-size: 21px !important;
@@ -466,13 +477,13 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write("📅 **En Son Veri Zamanı:**")
+    st.write("**En Son Veri Zamanı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
-    st.write("📡 **Aktif Sensör Sayısı:**")
+    st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 20px;'>{len(v_map)}</span>", unsafe_allow_html=True)
     
-    st.write("📊 **Skala Limitleri:**")
+    st.write("**Skala Limitleri:**")
     st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
