@@ -330,8 +330,9 @@ elif selected_comp == "temp":
 else:
     abs_vals = [abs(v) for v in vals if not np.isnan(v)]
     if abs_vals:
-        m = round(float(np.percentile(abs_vals, 92)), 1)
-        m = max(m, 5.0)
+        # 85-й процентиль дает максимально сфокусированный и четкий контраст
+        m = round(float(np.percentile(abs_vals, 85)), 1)
+        m = max(m, 3.0)
     else:
         m = 10.0
     clim = [-m, m]
@@ -507,7 +508,7 @@ with col_3d:
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.25;
+                renderer.toneMappingExposure = 1.35;
                 container.appendChild(renderer.domElement);
 
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -524,14 +525,14 @@ with col_3d:
                     sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
                 }});
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.3);
                 scene.add(ambientLight);
 
-                const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.4);
+                const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.5);
                 dirLight1.position.set(40, 60, 50);
                 scene.add(dirLight1);
 
-                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.8);
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.9);
                 dirLight2.position.set(-40, -20, -50);
                 scene.add(dirLight2);
 
@@ -560,11 +561,15 @@ with col_3d:
                 ];
 
                 const HOOP_STOPS = [
-                    new THREE.Color("#1565C0"),
-                    new THREE.Color("#4FC3F7"),
+                    new THREE.Color("#0D47A1"),
+                    new THREE.Color("#1976D2"),
+                    new THREE.Color("#42A5F5"),
+                    new THREE.Color("#E3F2FD"),
                     new THREE.Color("#FFFFFF"),
-                    new THREE.Color("#FF7043"),
-                    new THREE.Color("#D32F2F")
+                    new THREE.Color("#FFEBEE"),
+                    new THREE.Color("#EF5350"),
+                    new THREE.Color("#E53935"),
+                    new THREE.Color("#B71C1C")
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -584,16 +589,17 @@ with col_3d:
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
-                    if (comp === "hoop") {{
+                    // УСИЛЕННЫЙ КОНТРАСТ: вытягиваем насыщенность деформаций
+                    if (comp === "hoop" || comp === "axial") {{
                         const sign = t >= 0.5 ? 1.0 : -1.0;
                         const dist = Math.abs(t - 0.5) * 2.0;
-                        const boostedDist = Math.pow(dist, 0.65);
+                        const boostedDist = Math.pow(dist, 0.45); // Максимально выразительный контраст
                         t = 0.5 + sign * (boostedDist / 2.0);
-                        return sampleColorRamp(HOOP_STOPS, t);
-                    }} else if (comp === "axial") {{
-                        return sampleColorRamp(AXIAL_STOPS, t);
+                        return (comp === "hoop") ? sampleColorRamp(HOOP_STOPS, t) : sampleColorRamp(AXIAL_STOPS, t);
                     }} else {{
-                        return sampleColorRamp(SPECTRAL_STOPS, t);
+                        // Для температуры: легкий контраст пиков
+                        const tTemp = Math.pow(t, 0.85);
+                        return sampleColorRamp(SPECTRAL_STOPS, tTemp);
                     }}
                 }}
 
@@ -602,7 +608,6 @@ with col_3d:
                     return m ? m[0] : name;
                 }}
 
-                // Крупные неоновые маркеры TA / TB
                 function createPortalMarker(text) {{
                     const canvas = document.createElement('canvas');
                     canvas.width = 512;
@@ -628,7 +633,6 @@ with col_3d:
                     return sprite;
                 }}
 
-                // Четкие метки метров для пикетажа
                 function createRulerLabel(text) {{
                     const canvas = document.createElement('canvas');
                     canvas.width = 256;
@@ -723,9 +727,9 @@ with col_3d:
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: sensorColor,
                                         emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
-                                        emissiveIntensity: isSelected ? 1.0 : 0.85,
-                                        roughness: 0.15,
-                                        metalness: 0.25
+                                        emissiveIntensity: isSelected ? 1.0 : 0.9,
+                                        roughness: 0.1,
+                                        metalness: 0.2
                                     }});
 
                                     if (isSelected) {{
@@ -774,7 +778,8 @@ with col_3d:
                         }}
                     }});
 
-                    const R_INFLUENCE = (payload.comp === "hoop") ? 42.0 : 28.0;
+                    // ШИРОКИЙ ОХВАТ И МАКСИМАЛЬНАЯ ВЫРАЗИТЕЛЬНОСТЬ
+                    const R_INFLUENCE = (payload.comp === "hoop") ? 45.0 : 32.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -815,8 +820,9 @@ with col_3d:
                                     
                                     if (d < R_INFLUENCE) {{
                                         const ratio = d / R_INFLUENCE;
-                                        const wEnvelope = Math.pow(1.0 - ratio, payload.comp === "hoop" ? 1.4 : 1.8);
-                                        const wCore = 1.0 / Math.pow(d * d + 0.02, payload.comp === "hoop" ? 1.35 : 1.25);
+                                        const wEnvelope = Math.pow(1.0 - ratio, 1.25);
+                                        // Сингулярный фокус ядра для максимально выразительного пика
+                                        const wCore = 1.0 / Math.pow(d * d + 0.005, 1.45);
                                         const w = wEnvelope * wCore;
 
                                         const c = getColorForValue(s.val, payload.clim, payload.comp);
@@ -849,7 +855,7 @@ with col_3d:
                             vertexColors: true,
                             transparent: isTransparent,
                             opacity: payload.tunnelOpacity,
-                            roughness: 0.35,
+                            roughness: 0.25,
                             metalness: 0.05,
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
@@ -857,7 +863,7 @@ with col_3d:
                         tMesh.material.needsUpdate = true;
                     }});
 
-                    // 1. КРУПНЫЕ ПЛАШКИ TA И TB СТРОГО НАД ПОРТАЛАМИ
+                    // 1. КРУПНЫЕ ПЛАШКИ TA И TB
                     const boxTA = new THREE.Box3();
                     const boxTB = new THREE.Box3();
                     let hasTA = false, hasTB = false;
@@ -891,7 +897,7 @@ with col_3d:
 
                     scene.add(portalsGroup);
 
-                    // 2. ПИКЕТАЖНАЯ ЛИНЕЙКА СТРОГО В ДЛИНУ ТОННЕЛЯ (ОТ 0 ДО МАКСИМУМА С РАЗВЕРНУТЫМ ПОРЯДКОМ МЕТРОВ)
+                    // 2. ПИКЕТАЖНАЯ ЛИНЕЙКА
                     if (payload.showMeters) {{
                         const overallBox = new THREE.Box3();
                         tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
@@ -927,7 +933,6 @@ with col_3d:
 
                             for (let i = 0; i <= stepsCount; i++) {{
                                 const currentPos = startCoord + i * step;
-                                // ПЕРЕВЕРНУТЫЙ ПОРЯДОК ЧИСЕЛ: ОТСЧЕТ ИДЕТ В ОБРАТНУЮ СТОРОНУ
                                 const reversedDistance = (totalDistanceM - (i * step)).toFixed(0);
                                 const distanceText = reversedDistance + " m";
 
