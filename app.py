@@ -390,11 +390,11 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.write("📅 **En Son Veri Zamanı:**")
+    st.write("**En Son Veri Zamanı:**")
     st.write(f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}")
-    st.write("📡 **Aktif Sensör Sayısı:**")
+    st.write("**Aktif Sensör Sayısı:**")
     st.write(f"{len(v_map)}")
-    st.write("📊 **Skala Limitleri:**")
+    st.write("**Skala Limitleri:**")
     st.write(f"Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}")
 
     st.markdown("---")
