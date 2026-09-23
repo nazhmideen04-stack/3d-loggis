@@ -546,21 +546,27 @@ with col_3d:
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
-                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+                // 1. Уменьшаем near-plane с 0.1 до 0.01, чтобы геометрия не обрезалась при близком фокусе
+                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 2000);
                 camera.position.set(-30, 24, 45);
 
-                const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
+                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
                 renderer.toneMappingExposure = 1.25;
                 container.appendChild(renderer.domElement);
 
+                // 2. Снимаем ограничение приближения и настраиваем управление
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.05;
-                controls.maxDistance = 350;
-                controls.minDistance = 1;
+                controls.dampingFactor = 0.06;
+                controls.minDistance = 0.05;  // <-- Разрешает приближаться вплотную к стенкам и внутрь тоннеля
+                controls.maxDistance = 500;
+                controls.zoomSpeed = 1.4;     // <-- Более отзывчивый зум колесиком мыши
+                controls.enablePan = true;    // <-- Перемещение камеры правой кнопкой мыши или двумя пальцами на тачпаде
+                controls.panSpeed = 1.0;
+                controls.screenSpacePanning = true;
 
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
                 scene.add(ambientLight);
