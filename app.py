@@ -1,7 +1,6 @@
 import os
 import re
 import sys
-import base64
 import subprocess
 import numpy as np
 import streamlit as st
@@ -66,15 +65,15 @@ def fetch_category_data(cat_key, reload_seed=0):
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3000)
 
-            # Переход во вкладку Types
+            # 1. Переход на Types
             page.locator("text='Types'").first.click(force=True)
             page.wait_for_timeout(800)
 
-            # Выбор категории
+            # 2. Выбор категории
             page.get_by_text(cat["name"]).first.click(force=True)
             page.wait_for_timeout(1500)
 
-            # Переключение выпадающих списков на 2 mois и Tableau
+            # 3. Переключение на 2 mois и Tableau
             page.evaluate("""() => {
                 const selects = Array.from(document.querySelectorAll('select'));
                 for (const sel of selects) {
@@ -95,14 +94,14 @@ def fetch_category_data(cat_key, reload_seed=0):
             }""")
             page.wait_for_timeout(3500)
 
-            # Раскрытие всех записей при наличии кнопки
+            # Раскрытие всех данных при наличии ограничения
             try:
                 page.locator("button, a").filter(has_text=re.compile(r"Afficher tout", re.I)).first.click(force=True, timeout=2000)
                 page.wait_for_timeout(1000)
             except Exception:
                 pass
 
-            # Извлечение данных из таблицы
+            # 4. Сбор первой строки с замерами
             for _ in range(25):
                 extracted = page.evaluate("""() => {
                     const table = document.querySelector('table');
@@ -185,7 +184,6 @@ def build_operator(names, patches):
     grid = np.array(rows, dtype=np.float32)
     query = np.column_stack([grid[:, 0], grid[:, 1] * angle_scale])
 
-    # Защита от LinAlgError при малом количестве сенсоров (< 3)
     if len(names) < 3:
         W = np.full((query.shape[0], len(names)), 1.0 / max(len(names), 1), dtype=np.float32)
         return pos, W
@@ -205,7 +203,7 @@ def build_operator(names, patches):
         W[:, j] = rbf(query)
     return pos, W
 
-# --- ИНТЕРФЕЙС ---
+# --- ИСХОДНЫЙ ИНТЕРФЕЙС ---
 if "reload_counter" not in st.session_state:
     st.session_state.reload_counter = 0
 
