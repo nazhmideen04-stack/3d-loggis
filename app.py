@@ -321,12 +321,11 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("TÜNEL GÖRÜNÜMÜ")
-    
+    st.subheader("TÜNEL KONTROLLERİ")
     show_ta = st.checkbox("Tünel TA Göster", value=True)
     show_tb = st.checkbox("Tünel TB Göster", value=True)
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
-    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=75, step=5) / 100.0
+    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=10, max_value=100, value=85, step=5) / 100.0
 
     st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
@@ -489,7 +488,6 @@ with col_3d:
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
-                // Корневая группа модели для идеальной центровки в (0,0,0)
                 const rootGroup = new THREE.Group();
                 scene.add(rootGroup);
 
@@ -502,12 +500,11 @@ with col_3d:
                 renderer.toneMappingExposure = 1.35;
                 container.appendChild(renderer.domElement);
 
-                // --- ЧИСТЫЙ, ПЛАВНЫЙ И БЕЗДЕРГАННЫЙ ORBITCONTROLS ---
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.05; // Мягкая инерция без рывков
+                controls.dampingFactor = 0.05;
                 controls.minDistance = 0.2;
-                controls.maxDistance = 2500;
+                controls.maxDistance = 3000;
                 controls.zoomSpeed = 1.15;
                 controls.panSpeed = 1.0;
                 controls.screenSpacePanning = true;
@@ -517,7 +514,7 @@ with col_3d:
                     RIGHT: THREE.MOUSE.PAN
                 }};
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 1.3);
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
                 scene.add(ambientLight);
 
                 const dirLight1 = new THREE.DirectionalLight(0x00C8E6, 1.5);
@@ -534,7 +531,7 @@ with col_3d:
                 const mouse = new THREE.Vector2();
 
                 function getColorForValue(val, clim, comp) {{
-                    if (val === undefined || isNaN(val)) return new THREE.Color(0x333333);
+                    if (val === undefined || isNaN(val)) return new THREE.Color(0x444444);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
@@ -562,7 +559,6 @@ with col_3d:
                     return c;
                 }}
 
-                // Функция создания 3D-текстовых меток для метража
                 function makeTextSprite(message) {{
                     const canvas = document.createElement('canvas');
                     canvas.width = 256;
@@ -601,7 +597,7 @@ with col_3d:
                     rootGroup.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. Поиск датчиков и мешей тоннелей
+                    // 1. Сбор датчиков и мешей тоннелей
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -642,16 +638,8 @@ with col_3d:
                                     selectedMeshRef = child;
                                 }}
                             }} else {{
-                                const isTunnel = (name.toUpperCase().includes("TA") || name.toUpperCase().includes("TB") || name.toLowerCase().includes("tunnel") || name.toLowerCase().includes("tünel"));
-                                if (isTunnel) {{
-                                    tunnelMeshes.push(child);
-                                }} else {{
-                                    child.material = new THREE.MeshStandardMaterial({{
-                                        color: 0x141E2D,
-                                        roughness: 0.8,
-                                        metalness: 0.1
-                                    }});
-                                }}
+                                // Все остальные меши классифицируем как тело тоннелей
+                                tunnelMeshes.push(child);
                             }}
                         }}
                     }});
@@ -674,7 +662,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. ЯРКАЯ ИНТЕРПОЛЯЦИЯ НА ОБДЕЛКУ ТОННЕЛЕЙ
+                    // 3. ОКРАШИВАНИЕ ВЕРШИН ТОННЕЛЕЙ (С ФИКСАЦИЕЙ БЕЛОГО БАЗОВОГО ЦВЕТА)
                     tunnelMeshes.forEach(tMesh => {{
                         const isTB = tMesh.name.toUpperCase().includes("TB");
                         
@@ -692,15 +680,13 @@ with col_3d:
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
 
                         const posAttr = geom.attributes.position;
-                        const colors = [];
+                        const colors = new Float32Array(posAttr.count * 3);
                         const localV = new THREE.Vector3();
                         const worldV = new THREE.Vector3();
 
                         const activeTun = isTB ? "TB" : "TA";
                         let pool = allSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
                         if (pool.length < 3) pool = allSensors;
-
-                        const R_SHARP = 6.0;
 
                         for (let i = 0; i < posAttr.count; i++) {{
                             localV.fromBufferAttribute(posAttr, i);
@@ -712,7 +698,9 @@ with col_3d:
                             for (let j = 0; j < pool.length; j++) {{
                                 const s = pool[j];
                                 const d = worldV.distanceTo(s.pos);
-                                const w = 1.0 / Math.pow(d + 0.35, 2.3);
+                                
+                                // Мягкая квадратичная интерполяция
+                                const w = 1.0 / Math.pow(d + 0.5, 2.0);
                                 const c = getColorForValue(s.val, payload.clim, payload.comp);
 
                                 accumR += c.r * w;
@@ -721,41 +709,47 @@ with col_3d:
                                 totalWeight += w;
                             }}
 
+                            const idx = i * 3;
                             if (totalWeight > 0) {{
-                                colors.push(accumR / totalWeight, accumG / totalWeight, accumB / totalWeight);
+                                colors[idx] = accumR / totalWeight;
+                                colors[idx + 1] = accumG / totalWeight;
+                                colors[idx + 2] = accumB / totalWeight;
                             }} else {{
-                                colors.push(0.08, 0.12, 0.2);
+                                colors[idx] = 0.1;
+                                colors[idx + 1] = 0.15;
+                                colors[idx + 2] = 0.25;
                             }}
                         }}
 
-                        geom.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                        geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                        geom.attributes.color.needsUpdate = true;
                         
                         const isTransparent = payload.tunnelOpacity < 0.98;
                         tMesh.material = new THREE.MeshStandardMaterial({{
+                            color: 0xffffff, // ОБЯЗАТЕЛЬНО БЕЛЫЙ, чтобы не глушить цвета вершин!
                             vertexColors: true,
                             transparent: isTransparent,
                             opacity: payload.tunnelOpacity,
-                            roughness: 0.3,
-                            metalness: 0.1,
+                            roughness: 0.35,
+                            metalness: 0.05,
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
+                        tMesh.material.needsUpdate = true;
                     }});
 
-                    // 4. ГАРАНТИРОВАННОЕ ФИЗИЧЕСКОЕ ЦЕНТРИРОВАНИЕ МОДЕЛИ В (0,0,0)
+                    // 4. ФИЗИЧЕСКОЕ ЦЕНТРИРОВАНИЕ МОДЕЛИ В (0,0,0)
                     rootGroup.updateMatrixWorld(true);
                     const sceneBox = new THREE.Box3().setFromObject(rootGroup);
                     const centerOffset = sceneBox.getCenter(new THREE.Vector3());
 
-                    // Сдвигаем группу так, чтобы центр тоннелей строго совпал с началом координат
                     rootGroup.position.sub(centerOffset);
                     rootGroup.updateMatrixWorld(true);
 
-                    // Пересчитываем габариты уже центрированной модели
                     const centeredBox = new THREE.Box3().setFromObject(rootGroup);
                     const size = centeredBox.getSize(new THREE.Vector3());
 
-                    // 5. ПОСТРОЕНИЕ МЕТРАЖА / ПИКЕТАЖА ВДОЛЬ ДЛИНЫ ТОННЕЛЯ (METERS RULER)
+                    // 5. МЕТРАЖ / ПИКЕТАЖ ВДОЛЬ ТОННЕЛЯ
                     if (payload.showMeters) {{
                         const rulerGroup = new THREE.Group();
                         const zMin = centeredBox.min.z;
@@ -766,7 +760,6 @@ with col_3d:
                         const yLevel = centeredBox.min.y - 0.2;
                         const xOffset = centeredBox.max.x + 2.0;
 
-                        // Продольная линия шкалы
                         const lineMat = new THREE.LineBasicMaterial({{ color: 0x00C8E6, linewidth: 2 }});
                         const linePoints = [
                             new THREE.Vector3(xOffset, yLevel, zMin),
@@ -775,12 +768,10 @@ with col_3d:
                         const lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
                         rulerGroup.add(new THREE.Line(lineGeom, lineMat));
 
-                        // Засечки и подписи каждые 10 метров
                         for (let s = 0; s <= numSteps; s++) {{
                             const curZ = zMin + s * stepMeters;
                             const curDist = s * stepMeters;
 
-                            // Поперечная засечка
                             const tickPoints = [
                                 new THREE.Vector3(xOffset - 0.6, yLevel, curZ),
                                 new THREE.Vector3(xOffset + 0.6, yLevel, curZ)
@@ -788,7 +779,6 @@ with col_3d:
                             const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
                             rulerGroup.add(new THREE.Line(tickGeom, lineMat));
 
-                            // Текстовый спрайт с метражом
                             const sprite = makeTextSprite(curDist.toFixed(0) + " m");
                             sprite.position.set(xOffset + 2.6, yLevel + 0.4, curZ);
                             rulerGroup.add(sprite);
@@ -797,7 +787,7 @@ with col_3d:
                         scene.add(rulerGroup);
                     }}
 
-                    // 6. ИДЕАЛЬНЫЙ СТАРТ КАМЕРЫ: ТОННЕЛЬ СРАЗУ ПО ЦЕНТРУ ЭКРАНА
+                    // 6. СТАРТ КАМЕРЫ ПО ЦЕНТРУ СЦЕНЫ
                     controls.target.set(0, 0, 0);
 
                     if (selectedMeshRef) {{
@@ -808,7 +798,6 @@ with col_3d:
                         let idealDist = (maxDim / 2.0) / Math.tan(fovRad / 2.0) * 1.05;
                         idealDist = Math.max(idealDist, 25.0);
 
-                        // Камера смотрит прямо на центрированный тоннель
                         camera.position.set(
                             size.x * 0.85 + 15.0,
                             size.y * 0.7 + 10.0,
