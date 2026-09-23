@@ -146,7 +146,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Точные единицы измерения: µm/m для CS и S
+# Точные единицы измерения: строго µm/m для деформаций и °C для температуры
 CATEGORIES = {
     "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
     "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
@@ -434,8 +434,8 @@ with col_3d:
                     user-select: none;
                 }}
                 #legend-title {{
-                    color: #FFFFFF;
-                    font-size: 12px;
+                    color: #00C8E6;
+                    font-size: 13px;
                     font-weight: 700;
                     margin-bottom: 8px;
                     text-transform: uppercase;
@@ -472,7 +472,7 @@ with col_3d:
                 <div id="sensor-tooltip"></div>
                 
                 <div id="color-legend">
-                    <div id="legend-title">[{cat_cfg['unit']}]</div>
+                    <div id="legend-title"></div>
                     <div class="legend-bar-container">
                         <div id="legend-bar"></div>
                         <div class="legend-labels">
@@ -492,12 +492,17 @@ with col_3d:
                 const tooltip = document.getElementById('sensor-tooltip');
                 const loaderText = document.getElementById('loader');
                 const legendBar = document.getElementById('legend-bar');
+                const legendTitle = document.getElementById('legend-title');
 
+                // ПРЯМОЕ ОБНОВЛЕНИЕ ЕДИНИЦЫ ИЗМЕРЕНИЯ В ЛЕГЕНДЕ
                 if (payload.comp === "temp") {{
+                    legendTitle.innerText = "[°C]";
                     legendBar.style.background = "linear-gradient(to bottom, #d73027, #f46d43, #fdae61, #fee08b, #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837)";
                 }} else if (payload.comp === "axial") {{
+                    legendTitle.innerText = "[µm/m]";
                     legendBar.style.background = "linear-gradient(to bottom, #7B1FA2, #BA68C8, #F5F5F5, #81C784, #2E7D32)";
                 }} else {{
+                    legendTitle.innerText = "[µm/m]";
                     legendBar.style.background = "linear-gradient(to bottom, #D32F2F, #FF7043, #FFFFFF, #4FC3F7, #1565C0)";
                 }}
 
