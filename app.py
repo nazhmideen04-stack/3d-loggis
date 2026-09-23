@@ -165,7 +165,29 @@ if os.path.exists(LOGO_PATH):
 
 logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.75; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
+# --- ИНТЕРФЕЙС STREAMLIT ---
+
+# 1. Сначала подгружаем все данные в кэш
+with st.spinner("Tüm sensör verileri (CS, S, TP) LoggIS üzerinden tek seferde alınıyor..."):
+    all_data = fetch_all_categories_data()
+
+# 2. ОБЯЗАТЕЛЬНО: объявляем колонки col_nav и col_3d
+col_nav, col_3d = st.columns([1, 4])
+
+# 3. И только после этого заходим внутрь col_nav
 with col_nav:
+    st.subheader("KONTROL PANELİ")
+    selected_comp = st.radio(
+        "Görüntülenecek Bileşen:",
+        options=["hoop", "axial", "temp"],
+        format_func=lambda k: CATEGORIES[k]["title"]
+    )
+
+    if st.button("Verileri Yenile"):
+        st.cache_data.clear()
+        st.rerun()
+
+    # Стилизованные плашки со значениями
     st.markdown("---")
     
     st.markdown("<div style='color: #8397AD; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;'>📅 En Son Veri Zamanı</div>", unsafe_allow_html=True)
@@ -181,7 +203,7 @@ with col_nav:
             letter-spacing: 0.5px;
             margin-bottom: 12px;
         ">
-            {cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}
+            {all_data.get(selected_comp, {}).get('date', 'Bilinmiyor')}
         </div>
     """, unsafe_allow_html=True)
 
