@@ -355,6 +355,7 @@ with col_3d:
             "unit": cat_cfg["unit"],
             "clim": clim,
             "comp": selected_comp,
+            "activeTag": cat_cfg["tag"], # -CS, -S, или -TP
             "showTA": show_ta,
             "showTB": show_tb,
             "showMeters": show_meters,
@@ -582,6 +583,18 @@ with col_3d:
                     return sprite;
                 }}
 
+                // Проверка принадлежности сенсора к выбранной группе анализа
+                function isSensorForActiveCategory(name, activeTag) {{
+                    if (activeTag === "-CS") {{
+                        return name.includes("-CS");
+                    }} else if (activeTag === "-S") {{
+                        return name.includes("-S") && !name.includes("-CS");
+                    }} else if (activeTag === "-TP") {{
+                        return name.includes("-TP");
+                    }}
+                    return false;
+                }}
+
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -597,7 +610,7 @@ with col_3d:
                     rootGroup.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. Сбор датчиков и мешей тоннелей
+                    // 1. Поиск датчиков и мешей тоннелей
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -612,48 +625,63 @@ with col_3d:
                                 return;
                             }}
 
-                            const isSensor = (name.includes("-CS") || name.includes("-S") || name.includes("-TP") || payload.sensorValues.hasOwnProperty(name));
+                            const isAnySensor = (name.includes("-CS") || name.includes("-S") || name.includes("-TP") || payload.sensorValues.hasOwnProperty(name));
 
-                            if (isSensor) {{
+                            if (isAnySensor) {{
                                 sensorMeshes.push(child);
                                 child.userData.sensorName = name;
                                 child.userData.isSensor = true;
 
+                                const isCategoryMatch = isSensorForActiveCategory(name, payload.activeTag);
                                 const val = payload.sensorValues[name];
                                 child.userData.val = val;
+                                child.userData.isActiveCategory = isCategoryMatch;
 
                                 const isSelected = (name === payload.selectedSensor);
-                                const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(val, payload.clim, payload.comp);
 
-                                child.material = new THREE.MeshStandardMaterial({{
-                                    color: sensorColor,
-                                    emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
-                                    emissiveIntensity: isSelected ? 1.0 : 0.65,
-                                    roughness: 0.15,
-                                    metalness: 0.2
-                                }});
+                                if (isCategoryMatch && val !== undefined && !isNaN(val)) {{
+                                    // Сенсор текущего типа анализа — ГОРИТ ЯРКИМ ЦВЕТОМ
+                                    const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(val, payload.clim, payload.comp);
 
-                                if (isSelected) {{
-                                    child.scale.set(1.75, 1.75, 1.75);
-                                    selectedMeshRef = child;
+                                    child.material = new THREE.MeshStandardMaterial({{
+                                        color: sensorColor,
+                                        emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
+                                        emissiveIntensity: isSelected ? 1.0 : 0.65,
+                                        roughness: 0.15,
+                                        metalness: 0.2
+                                    }});
+
+                                    if (isSelected) {{
+                                        child.scale.set(1.75, 1.75, 1.75);
+                                        selectedMeshRef = child;
+                                    }}
+                                }} else {{
+                                    // Сенсор НЕ относится к текущему типу анализа — ПРИГЛУШАЕТСЯ
+                                    child.material = new THREE.MeshStandardMaterial({{
+                                        color: 0x222C38,
+                                        transparent: true,
+                                        opacity: 0.28,
+                                        roughness: 0.9,
+                                        metalness: 0.0
+                                    }});
+                                    child.scale.set(0.9, 0.9, 0.9);
                                 }}
                             }} else {{
-                                // Все остальные меши классифицируем как тело тоннелей
                                 tunnelMeshes.push(child);
                             }}
                         }}
                     }});
 
-                    // 2. Сбор позиций сенсоров
-                    const allSensors = [];
+                    // 2. Сбор позиций ТОЛЬКО АКТИВНЫХ ДАТЧИКОВ ТЕКУЩЕЙ КАТЕГОРИИ
+                    const activeSensors = [];
                     sensorMeshes.forEach(sMesh => {{
-                        if (sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
+                        if (sMesh.userData.isActiveCategory && sMesh.userData.val !== undefined && !isNaN(sMesh.userData.val)) {{
                             const wPos = new THREE.Vector3();
                             sMesh.getWorldPosition(wPos);
                             const uName = sMesh.userData.sensorName.toUpperCase();
                             const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
 
-                            allSensors.push({{
+                            activeSensors.push({{
                                 pos: wPos,
                                 val: sMesh.userData.val,
                                 tun: tun,
@@ -662,7 +690,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. ОКРАШИВАНИЕ ВЕРШИН ТОННЕЛЕЙ (С ФИКСАЦИЕЙ БЕЛОГО БАЗОВОГО ЦВЕТА)
+                    // 3. НЕПРЕРЫВНАЯ ГЛОБАЛЬНАЯ ИНТЕРПОЛЯЦИЯ НА ВСЮ ДЛИНУ ТОННЕЛЕЙ
                     tunnelMeshes.forEach(tMesh => {{
                         const isTB = tMesh.name.toUpperCase().includes("TB");
                         
@@ -685,8 +713,8 @@ with col_3d:
                         const worldV = new THREE.Vector3();
 
                         const activeTun = isTB ? "TB" : "TA";
-                        let pool = allSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
-                        if (pool.length < 3) pool = allSensors;
+                        let pool = activeSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
+                        if (pool.length < 3) pool = activeSensors;
 
                         for (let i = 0; i < posAttr.count; i++) {{
                             localV.fromBufferAttribute(posAttr, i);
@@ -695,12 +723,13 @@ with col_3d:
                             let totalWeight = 0;
                             let accumR = 0, accumG = 0, accumB = 0;
 
+                            // Глобальный расчет IDW без отсечения по дистанции
                             for (let j = 0; j < pool.length; j++) {{
                                 const s = pool[j];
                                 const d = worldV.distanceTo(s.pos);
                                 
-                                // Мягкая квадратичная интерполяция
-                                const w = 1.0 / Math.pow(d + 0.5, 2.0);
+                                // Мягкий весовой коэффициент для плавного перехода по всей длине
+                                const w = 1.0 / Math.pow(d + 0.6, 2.0);
                                 const c = getColorForValue(s.val, payload.clim, payload.comp);
 
                                 accumR += c.r * w;
@@ -715,9 +744,9 @@ with col_3d:
                                 colors[idx + 1] = accumG / totalWeight;
                                 colors[idx + 2] = accumB / totalWeight;
                             }} else {{
-                                colors[idx] = 0.1;
-                                colors[idx + 1] = 0.15;
-                                colors[idx + 2] = 0.25;
+                                colors[idx] = 0.12;
+                                colors[idx + 1] = 0.18;
+                                colors[idx + 2] = 0.28;
                             }}
                         }}
 
@@ -726,7 +755,7 @@ with col_3d:
                         
                         const isTransparent = payload.tunnelOpacity < 0.98;
                         tMesh.material = new THREE.MeshStandardMaterial({{
-                            color: 0xffffff, // ОБЯЗАТЕЛЬНО БЕЛЫЙ, чтобы не глушить цвета вершин!
+                            color: 0xffffff,
                             vertexColors: true,
                             transparent: isTransparent,
                             opacity: payload.tunnelOpacity,
@@ -850,12 +879,18 @@ with col_3d:
                         const mesh = intersects[0].object;
                         const name = mesh.userData.sensorName;
                         const val = mesh.userData.val;
+                        const isMatch = mesh.userData.isActiveCategory;
                         const valTxt = (val !== undefined && !isNaN(val)) ? (val > 0 ? "+" + val : val) + " " + payload.unit : "Bilinmiyor";
 
                         tooltip.style.display = 'block';
                         tooltip.style.left = (e.clientX + 14) + 'px';
                         tooltip.style.top = (e.clientY + 14) + 'px';
-                        tooltip.innerHTML = '<b>' + name + '</b><br>Değer: ' + valTxt;
+                        
+                        if (isMatch) {{
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00C8E6;">Aktif Analiz Değeri: ' + valTxt + '</span>';
+                        }} else {{
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#8899AA;">(Başka analiz kategorisi)</span>';
+                        }}
                         renderer.domElement.style.cursor = 'pointer';
                     }} else {{
                         tooltip.style.display = 'none';
