@@ -308,9 +308,22 @@ with col_nav:
 
 cat_cfg = CATEGORIES[selected_comp]
 cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
-v_map = cur_layer["values"]
-vals = [v for v in v_map.values() if not np.isnan(v)]
+raw_v_map = cur_layer["values"]
 
+# --- СТРОГАЯ ФИЛЬТРАЦИЯ НА БЭКЕНДЕ ДЛЯ ИЗОЛЯЦИИ КАТЕГОРИИ ---
+active_category_values = {}
+for s_name, val in raw_v_map.items():
+    if val is None or np.isnan(val):
+        continue
+    u_name = s_name.upper()
+    if selected_comp == "hoop" and "-CS" in u_name:
+        active_category_values[s_name] = float(val)
+    elif selected_comp == "axial" and ("-S" in u_name) and ("-CS" not in u_name):
+        active_category_values[s_name] = float(val)
+    elif selected_comp == "temp" and "-TP" in u_name:
+        active_category_values[s_name] = float(val)
+
+vals = list(active_category_values.values())
 if not vals:
     clim = [0.0, 1.0]
 elif selected_comp == "temp":
@@ -329,15 +342,15 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 20px;'>{len(v_map)}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 20px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
     
     st.write("**Skala Limitleri:**")
     st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
-    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(v_map.keys())))
+    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(active_category_values.keys())))
     if selected_sensor != "Seçiniz...":
-        st.metric(label=selected_sensor, value=f"{v_map[selected_sensor]:+.2f} {cat_cfg['unit']}")
+        st.metric(label=selected_sensor, value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
@@ -347,7 +360,7 @@ with col_3d:
         st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
         payload_data = {
-            "sensorValues": v_map,
+            "activeCategoryValues": active_category_values,
             "selectedSensor": selected_sensor,
             "unit": cat_cfg["unit"],
             "clim": clim,
@@ -538,31 +551,10 @@ with col_3d:
                     return c;
                 }}
 
-                // СТРОГАЯ ИЗОЛИРОВАННАЯ ФИЛЬТРАЦИЯ КАТЕГОРИЙ
-                function isSensorStrictlyForActiveCategory(name, comp) {{
-                    const u = name.toUpperCase();
-                    if (comp === "hoop") {{
-                        return u.includes("-CS");
-                    }} else if (comp === "axial") {{
-                        // Строго Boyuna gerinim (S): отсекаем любые -CS
-                        return (u.includes("-S") || u.includes("-S1") || u.includes("-S2") || u.includes("-S3")) && !u.includes("-CS");
-                    }} else if (comp === "temp") {{
-                        return u.includes("-TP");
-                    }}
-                    return false;
-                }}
-
-                // Проверка, является ли объект сенсором
-                function isAnySensorObject(name) {{
-                    const u = name.toUpperCase();
-                    return (
-                        u.includes("-CS") || 
-                        u.includes("-S") || 
-                        u.includes("-TP") || 
-                        u.startsWith("TA-") || 
-                        u.startsWith("TB-") || 
-                        payload.sensorValues.hasOwnProperty(name)
-                    );
+                // Извлечение стандартного имени датчика
+                function extractSensorId(name) {{
+                    const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
+                    return m ? m[0] : name;
                 }}
 
                 const binaryStr = atob(modelB64);
@@ -573,14 +565,14 @@ with col_3d:
 
                 let selectedMeshRef = null;
 
-                // Единый нейтральный матовый материал для всех неактивных/чужих объектов
+                // Материал по умолчанию для неактивных/чужих объектов (абсолютно темный, без цвета)
                 const neutralMutedMaterial = new THREE.MeshStandardMaterial({{
-                    color: 0x222630,
+                    color: 0x1A222D,
                     emissive: new THREE.Color(0x000000),
-                    transparent: true,
-                    opacity: 0.18,
                     roughness: 1.0,
-                    metalness: 0.0
+                    metalness: 0.0,
+                    transparent: true,
+                    opacity: 0.25
                 }});
 
                 const gltfLoader = new THREE.GLTFLoader();
@@ -590,7 +582,7 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. ПОЛНАЯ И БЕЗОПАСНАЯ КЛАССИФИКАЦИЯ ОБЪЕКТОВ
+                    // 1. СТРОГИЙ ОБХОД ОБЪЕКТОВ И ПРИНУДИТЕЛЬНОЕ ОБНУЛЕНИЕ ЧУЖИХ МАТЕРИАЛОВ
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -606,30 +598,37 @@ with col_3d:
                                 return;
                             }}
 
-                            const isSensor = isAnySensorObject(name);
+                            const isSensorLike = (
+                                uName.startsWith("TA-") || 
+                                uName.startsWith("TB-") || 
+                                uName.includes("-CS") || 
+                                uName.includes("-S") || 
+                                uName.includes("-TP")
+                            );
 
-                            if (isSensor) {{
+                            if (isSensorLike) {{
                                 sensorMeshes.push(child);
-                                child.userData.sensorName = name;
+                                const sensorId = extractSensorId(name);
+                                child.userData.sensorName = sensorId;
                                 child.userData.isSensor = true;
 
-                                const isMatch = isSensorStrictlyForActiveCategory(name, payload.comp);
-                                const rawVal = payload.sensorValues[name];
-                                const hasValidData = (rawVal !== undefined && !isNaN(rawVal) && typeof rawVal === "number");
+                                // Проверяем, есть ли датчик в строго отфильтрованном бэкенд-списке активной категории
+                                const hasData = payload.activeCategoryValues.hasOwnProperty(sensorId);
+                                const rawVal = hasData ? payload.activeCategoryValues[sensorId] : undefined;
                                 
-                                child.userData.val = hasValidData ? rawVal : undefined;
-                                child.userData.isUsable = (isMatch && hasValidData);
+                                child.userData.val = rawVal;
+                                child.userData.isUsable = hasData;
 
-                                const isSelected = (name === payload.selectedSensor);
+                                const isSelected = (sensorId === payload.selectedSensor);
 
-                                if (child.userData.isUsable) {{
-                                    // ТОЛЬКО АКТИВНЫЙ СЕНСОР ТЕКУЩЕЙ КАТЕГОРИИ ПОЛУЧАЕТ ЦВЕТ
+                                if (hasData) {{
+                                    // ТОЛЬКО ДАТЧИКИ ТЕКУЩЕЙ АКТИВНОЙ КАТЕГОРИИ ИМЕЮТ ЦВЕТ
                                     const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(rawVal, payload.clim, payload.comp);
 
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: sensorColor,
                                         emissive: isSelected ? new THREE.Color(0xFFD700) : sensorColor,
-                                        emissiveIntensity: isSelected ? 1.0 : 0.6,
+                                        emissiveIntensity: isSelected ? 1.0 : 0.65,
                                         roughness: 0.2,
                                         metalness: 0.3
                                     }});
@@ -638,22 +637,22 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
-                                    // ВСЕ ОСТАЛЬНЫЕ (BELIRSIZ / BAŞKA KATEGORİ) — ПРИНУДИТЕЛЬНО ЛИШАЮТСЯ ЦВЕТА
+                                    // ВСЕ ОСТАЛЬНЫЕ: ПРИНУДИТЕЛЬНО ПЕРЕЗАПИСЫВАЮТСЯ В МАТОВЫЙ СЕРЫЙ
                                     child.material = neutralMutedMaterial.clone();
                                 }}
                             }} else {{
-                                // ТЕЛО ТОННЕЛЯ
                                 const isTunnel = (
-                                    uName.includes("TA") || 
-                                    uName.includes("TB") || 
                                     uName.includes("TUNNEL") || 
-                                    uName.includes("TÜNEL")
+                                    uName.includes("TÜNEL") || 
+                                    uName === "TA" || 
+                                    uName === "TB" || 
+                                    uName.startsWith("TA_") || 
+                                    uName.startsWith("TB_")
                                 );
 
                                 if (isTunnel) {{
                                     tunnelMeshes.push(child);
                                 }} else {{
-                                    // Прочие мелкие детали также делаем матовыми нейтральными
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0x141E2D,
                                         roughness: 0.8
@@ -663,7 +662,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 2. Сбор позиций ТОЛЬКО ВАЛИДНЫХ ДАТЧИКОВ ТЕКУЩЕЙ КАТЕГОРИИ
+                    // 2. СБОР ТОЛЬКО ВАЛИДНЫХ ДАТЧИКОВ ТЕКУЩЕЙ КАТЕГОРИИ В МИРОВЫХ КООРДИНАТАХ
                     const activeSensors = [];
                     sensorMeshes.forEach(sMesh => {{
                         if (sMesh.userData.isUsable) {{
@@ -681,7 +680,9 @@ with col_3d:
                         }}
                     }});
 
-                    // 3. ПРЯМАЯ ИНТЕРПОЛЯЦИЯ НА ТЕЛО ТОННЕЛЕЙ
+                    // 3. НОВЫЙ АЛГОРИТМ ИНТЕРПОЛЯЦИИ С РАДИУСОМ ВЛИЯНИЯ (COMPACT SUPPORT IDW)
+                    const R_INFLUENCE = 12.0; // Радиус затухания влияния каждого кольца датчиков в метрах
+
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -700,13 +701,13 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
-                        // ЕСЛИ ДАННЫХ НЕТ: ЧИСТЫЙ СВЕТЛО-СЕРЫЙ / БЕЛЫЙ СИЛУЭТ (#E6ECF2)
+                        // Если данных для этого тоннеля нет вообще — чистый нейтральный белый (#E6ECF2)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
-                                colors[idx] = 0.902;     // #E6
-                                colors[idx + 1] = 0.925; // #EC
-                                colors[idx + 2] = 0.949; // #F2
+                                colors[idx] = 0.902;
+                                colors[idx + 1] = 0.925;
+                                colors[idx + 2] = 0.949;
                             }}
                         }} else {{
                             for (let i = 0; i < posAttr.count; i++) {{
@@ -720,21 +721,26 @@ with col_3d:
                                     const s = pool[j];
                                     const d = worldV.distanceTo(s.pos);
                                     
-                                    const w = 1.0 / Math.pow(d + 0.6, 2.0);
-                                    const c = getColorForValue(s.val, payload.clim, payload.comp);
+                                    // Локализованный вес с плавным спадом до 0 на границе R_INFLUENCE
+                                    if (d < R_INFLUENCE) {{
+                                        const wDist = (1.0 - (d / R_INFLUENCE));
+                                        const w = (wDist * wDist) / (d * d + 0.1);
+                                        const c = getColorForValue(s.val, payload.clim, payload.comp);
 
-                                    accumR += c.r * w;
-                                    accumG += c.g * w;
-                                    accumB += c.b * w;
-                                    totalWeight += w;
+                                        accumR += c.r * w;
+                                        accumG += c.g * w;
+                                        accumB += c.b * w;
+                                        totalWeight += w;
+                                    }}
                                 }}
 
                                 const idx = i * 3;
-                                if (totalWeight > 0) {{
+                                if (totalWeight > 0.0001) {{
                                     colors[idx] = accumR / totalWeight;
                                     colors[idx + 1] = accumG / totalWeight;
                                     colors[idx + 2] = accumB / totalWeight;
                                 }} else {{
+                                    // Вне радиуса действия датчиков: чистый нейтральный тон #E6ECF2
                                     colors[idx] = 0.902;
                                     colors[idx + 1] = 0.925;
                                     colors[idx + 2] = 0.949;
