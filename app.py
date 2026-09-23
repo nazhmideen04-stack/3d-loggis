@@ -484,12 +484,14 @@ with col_3d:
                 const loaderText = document.getElementById('loader');
                 const legendBar = document.getElementById('legend-bar');
 
+                // Определение 100% идентичных градиентов для шкалы и 3D-модели
                 if (payload.comp === "temp") {{
+                    // Точная палитра Spectral: Красный -> Оранжевый -> Желтый -> Салатовый -> Зеленый
                     legendBar.style.background = "linear-gradient(to bottom, #d73027, #f46d43, #fdae61, #fee08b, #ffffbf, #d9ef8b, #a6d96a, #66bd63, #1a9850, #006837)";
                 }} else if (payload.comp === "axial") {{
-                    legendBar.style.background = "linear-gradient(to bottom, #6A0080, #E040FB, #F0F0F0, #00E676, #006428)";
+                    legendBar.style.background = "linear-gradient(to bottom, #7B1FA2, #BA68C8, #F5F5F5, #81C784, #2E7D32)";
                 }} else {{
-                    legendBar.style.background = "linear-gradient(to bottom, #C60000, #FF4422, #FFFFFF, #1E9AD6, #1858BA)";
+                    legendBar.style.background = "linear-gradient(to bottom, #D32F2F, #FF7043, #FFFFFF, #4FC3F7, #1565C0)";
                 }}
 
                 const scene = new THREE.Scene();
@@ -526,29 +528,58 @@ with col_3d:
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
+                // Ключевые опорные цвета для точной линейной интерполяции
+                const SPECTRAL_STOPS = [
+                    new THREE.Color("#006837"), // 0.00: темный зеленый (минимум шкалы)
+                    new THREE.Color("#1a9850"), // 0.12
+                    new THREE.Color("#66bd63"), // 0.25
+                    new THREE.Color("#a6d96a"), // 0.37
+                    new THREE.Color("#ffffbf"), // 0.50: мягкий желтый (середина)
+                    new THREE.Color("#fdae61"), // 0.62
+                    new THREE.Color("#f46d43"), // 0.75
+                    new THREE.Color("#d73027")  // 1.00: красный (максимум)
+                ];
+
+                const AXIAL_STOPS = [
+                    new THREE.Color("#2E7D32"),
+                    new THREE.Color("#81C784"),
+                    new THREE.Color("#F5F5F5"),
+                    new THREE.Color("#BA68C8"),
+                    new THREE.Color("#7B1FA2")
+                ];
+
+                const HOOP_STOPS = [
+                    new THREE.Color("#1565C0"),
+                    new THREE.Color("#4FC3F7"),
+                    new THREE.Color("#FFFFFF"),
+                    new THREE.Color("#FF7043"),
+                    new THREE.Color("#D32F2F")
+                ];
+
+                function sampleColorRamp(stops, t) {{
+                    t = Math.max(0, Math.min(1, t));
+                    const scaled = t * (stops.length - 1);
+                    const idx = Math.floor(scaled);
+                    const fract = scaled - idx;
+                    if (idx >= stops.length - 1) return stops[stops.length - 1].clone();
+                    const c = new THREE.Color();
+                    c.lerpColors(stops[idx], stops[idx + 1], fract);
+                    return c;
+                }}
+
                 function getColorForValue(val, clim, comp) {{
                     if (val === undefined || isNaN(val)) return new THREE.Color(0x555555);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
-                    const c = new THREE.Color();
                     if (comp === "temp") {{
-                        c.setHSL((1.0 - t) * 0.7, 1.0, 0.5);
+                        return sampleColorRamp(SPECTRAL_STOPS, t);
                     }} else if (comp === "axial") {{
-                        if (t < 0.5) {{
-                            c.setRGB(0.0, 0.39 + t * 1.0, 0.15 + t * 0.6);
-                        }} else {{
-                            c.setRGB(0.5 + (t - 0.5) * 0.9, 0.1, 0.5 + (t - 0.5) * 0.9);
-                        }}
+                        return sampleColorRamp(AXIAL_STOPS, t);
                     }} else {{
-                        if (t < 0.5) {{
-                            c.setRGB(0.1 + t * 1.8, 0.35 + t * 1.3, 0.8 + t * 0.4);
-                        }} else {{
-                            c.setRGB(1.0, (1.0 - t) * 1.4, (1.0 - t) * 0.3);
-                        }}
+                        return sampleColorRamp(HOOP_STOPS, t);
                     }}
-                    return c;
                 }}
 
                 function extractSensorId(name) {{
@@ -600,8 +631,6 @@ with col_3d:
                                 child.userData.sensorName = sensorId;
                                 child.userData.isSensor = true;
 
-                                // Для категории "temp": если геометрия датчиков в 3ds Max названа как CS или S,
-                                // мы связываем температурные показания с этими же сечениями
                                 let resolvedSensorId = sensorId;
                                 if (payload.comp === "temp" && !sensorId.includes("-TP")) {{
                                     const baseMatch = sensorId.match(/^(T[AB]-(?:CS|S)\d+-[LR](?:-M\d+)?)/i);
@@ -616,7 +645,6 @@ with col_3d:
                                 const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
 
                                 if (hasData) {{
-                                    // ВИДИМ ТОЛЬКО ДАТЧИКИ ТЕКУЩЕЙ АКТИВНОЙ КАТЕГОРИИ
                                     child.visible = true;
                                     const rawVal = payload.activeCategoryValues[resolvedSensorId];
                                     child.userData.val = rawVal;
@@ -638,7 +666,6 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
-                                    // ЧУЖИЕ КАТЕГОРИИ И БЕЗ ДАННЫХ — ПОЛНОСТЬЮ СКРЫВАЮТСЯ С ЭКРАНА
                                     child.visible = false;
                                     child.userData.isUsable = false;
                                 }}
@@ -740,7 +767,6 @@ with col_3d:
                                     colors[idx + 1] = accumG / totalWeight;
                                     colors[idx + 2] = accumB / totalWeight;
                                 }} else {{
-                                    // Нейтральный фон вне зоны датчиков (#E6ECF2)
                                     colors[idx] = 0.902;
                                     colors[idx + 1] = 0.925;
                                     colors[idx + 2] = 0.949;
