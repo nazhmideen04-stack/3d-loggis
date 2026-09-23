@@ -537,13 +537,11 @@ with col_3d:
                 function isSensorStrictlyForActiveCategory(name, comp) {{
                     const u = name.toUpperCase();
                     if (comp === "hoop") {{
-                        // Строго Çevresel gerinim (CS)
                         return u.includes("-CS");
                     }} else if (comp === "axial") {{
-                        // Строго Boyuna gerinim (S): проверяем -S, -S1, -S2, -S3 и ЖЕСТКО отсекаем -CS
+                        // Строго Boyuna gerinim (S): отсекаем -CS
                         return (u.includes("-S") || u.includes("-S1") || u.includes("-S2") || u.includes("-S3")) && !u.includes("-CS");
                     }} else if (comp === "temp") {{
-                        // Строго Sıcaklık (TP)
                         return u.includes("-TP");
                     }}
                     return false;
@@ -564,7 +562,7 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. Поиск датчиков и тоннелей
+                    // 1. ТОЧНЫЙ РАЗБОР ОБЪЕКТОВ БЕЗ СМЕШИВАНИЯ СЕНСОРОВ С ТОННЕЛЕМ
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -580,14 +578,22 @@ with col_3d:
                                 return;
                             }}
 
-                            const isSensor = (
+                            // Вычисляем размер геометрии для 100% исключения сенсора из тоннеля
+                            if (!child.geometry.boundingBox) child.geometry.computeBoundingBox();
+                            const bbox = child.geometry.boundingBox;
+                            const geomSize = new THREE.Vector3();
+                            bbox.getSize(geomSize);
+                            const maxDim = Math.max(geomSize.x, geomSize.y, geomSize.z);
+
+                            const isSensorExplicit = (
                                 uName.includes("-CS") || 
                                 uName.includes("-S") || 
                                 uName.includes("-TP") || 
                                 payload.sensorValues.hasOwnProperty(name)
                             );
 
-                            if (isSensor) {{
+                            // Сенсоры в 3ds Max всегда компактные (меньше 5 метров)
+                            if (isSensorExplicit || maxDim < 5.0) {{
                                 sensorMeshes.push(child);
                                 child.userData.sensorName = name;
                                 child.userData.isSensor = true;
@@ -602,7 +608,6 @@ with col_3d:
                                 const isSelected = (name === payload.selectedSensor);
 
                                 if (child.userData.isUsable) {{
-                                    // ТОЛЬКО ДАТЧИКИ ТЕКУЩЕЙ АКТИВНОЙ КАТЕГОРИИ ИМЕЮТ ЦВЕТ И СВЕТЯТСЯ
                                     const sensorColor = isSelected ? new THREE.Color(0xFFD700) : getColorForValue(rawVal, payload.clim, payload.comp);
 
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -618,7 +623,7 @@ with col_3d:
                                         selectedMeshRef = child;
                                     }}
                                 }} else {{
-                                    // ВСЕ ОСТАЛЬНЫЕ: МАТОВЫЕ ТЕМНО-СЕРЫЕ ТОЧКИ (0x222C38), БЕЗ СВЕЧЕНИЯ
+                                    // ВСЕ ОСТАЛЬНЫЕ: МАТОВЫЕ ТЕМНЫЕ ТОЧКИ БЕЗ СВЕТА И ЦВЕТА
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0x222C38,
                                         emissive: new THREE.Color(0x000000),
@@ -630,6 +635,7 @@ with col_3d:
                                     child.scale.set(0.85, 0.85, 0.85);
                                 }}
                             }} else {{
+                                // ТОЛЬКО крупное тело самого тоннеля попадает сюда
                                 const isTunnel = (
                                     uName.includes("TA") || 
                                     uName.includes("TB") || 
@@ -637,7 +643,7 @@ with col_3d:
                                     uName.includes("TÜNEL")
                                 );
 
-                                if (isTunnel) {{
+                                if (isTunnel && maxDim > 10.0) {{
                                     tunnelMeshes.push(child);
                                 }} else {{
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -686,13 +692,13 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
-                        // ПОВЕДЕНИЕ ТОННЕЛЯ ПРИ ОТСУТСТВИИ ДАННЫХ: ЧИСТЫЙ СВЕТЛО-СЕРЫЙ/БЕЛЫЙ СИЛУЭТ (0xE6ECF2)
+                        // ЕСЛИ ДАННЫХ НЕТ: ЧИСТЫЙ СВЕТЛО-СЕРЫЙ / БЕЛЫЙ СИЛУЭТ (#E6ECF2)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
-                                colors[idx] = 0.902;     // 230/255 (#E6)
-                                colors[idx + 1] = 0.925; // 236/255 (#EC)
-                                colors[idx + 2] = 0.949; // 242/255 (#F2)
+                                colors[idx] = 0.902;     // #E6
+                                colors[idx + 1] = 0.925; // #EC
+                                colors[idx + 2] = 0.949; // #F2
                             }}
                         }} else {{
                             for (let i = 0; i < posAttr.count; i++) {{
@@ -755,6 +761,7 @@ with col_3d:
                     const size = tunnelBox.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
+                    // Фокус ровно в центр тоннелей
                     controls.target.copy(center);
 
                     if (selectedMeshRef) {{
