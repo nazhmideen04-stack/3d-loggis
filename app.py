@@ -67,24 +67,26 @@ st.markdown("""
     }
 
 
-    /* Заголовок "Görüntülenecek Bileşen:" (делаем его маленьким и аккуратным) */
-    div[data-testid="stRadio"] > label p,
+    /* 1. Заголовок "Görüntülenecek Bileşen:" */
     div[data-testid="stRadio"] > label {
-        font-size: 15px !important;  /* <--- ВОТ ЗДЕСЬ МЕНЯТЬ РАЗМЕР ЗАГОЛОВКА */
-        font-weight: 600 !important;
+        font-family: 'Chakra Petch', sans-serif !important;
+        font-size: 14px !important;
         color: #8397AD !important;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 6px !important;
+        font-weight: 600 !important;
     }
 
-    /* Сами пункты выбора (Çevresel gerinim, Boyuna gerinim, Sıcaklık) */
+    /* 2. Сами варианты (Çevresel gerinim, Boyuna gerinim, Sıcaklık) */
     div[data-testid="stRadio"] div[role="radiogroup"] label p {
-        font-size: 21px !important;  /* <--- ВОТ ЗДЕСЬ МЕНЯТЬ РАЗМЕР САМИХ ВАРИАНТОВ */
-        font-weight: 700 !important;
+        font-family: 'Chakra Petch', sans-serif !important;
+        font-size: 19px !important;
         color: #E6F0FA !important;
-        line-height: 1.4 !important;
-        text-shadow: none !important;
+        font-weight: 600 !important;
+    }
+
+    /* 3. Кружок выбора: делаем чуточку крупнее и красим в тот самый синий */
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
+        filter: hue-rotate(185deg) saturate(2) !important;
+        transform: scale(1.2) !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] > label {
@@ -165,81 +167,17 @@ if os.path.exists(LOGO_PATH):
 
 logo_tag = f'<img src="data:image/jpeg;base64,{logo_b64}" style="width: 200px; height: auto; display: block; margin: 0; opacity: 0.75; border-radius: 4px;" alt="DESTECH">' if logo_b64 else '<span class="destech-badge">DESTECH</span>'
 
-# --- ИНТЕРФЕЙС STREAMLIT ---
-
-# 1. Сначала подгружаем все данные в кэш
-with st.spinner("Tüm sensör verileri (CS, S, TP) LoggIS üzerinden tek seferde alınıyor..."):
-    all_data = fetch_all_categories_data()
-
-# 2. ОБЯЗАТЕЛЬНО: объявляем колонки col_nav и col_3d
-col_nav, col_3d = st.columns([1, 4])
-
-# 3. И только после этого заходим внутрь col_nav
-with col_nav:
-    st.subheader("KONTROL PANELİ")
-    selected_comp = st.radio(
-        "Görüntülenecek Bileşen:",
-        options=["hoop", "axial", "temp"],
-        format_func=lambda k: CATEGORIES[k]["title"]
-    )
-
-    if st.button("Verileri Yenile"):
-        st.cache_data.clear()
-        st.rerun()
-
-    # Стилизованные плашки со значениями
-    st.markdown("---")
-    
-    st.markdown("<div style='color: #8397AD; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;'>📅 En Son Veri Zamanı</div>", unsafe_allow_html=True)
-    st.markdown(f"""
-        <div style="
-            background-color: #0E182A;
-            border: 1px solid rgba(0, 200, 230, 0.35);
-            border-radius: 6px;
-            padding: 8px 12px;
-            color: #00C8E6;
-            font-size: 16px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-        ">
-            {all_data.get(selected_comp, {}).get('date', 'Bilinmiyor')}
-        </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<div style='color: #8397AD; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;'>📡 Aktif Sensör Sayısı</div>", unsafe_allow_html=True)
-    st.markdown(f"""
-        <div style="
-            background-color: #0E182A;
-            border: 1px solid rgba(0, 200, 230, 0.35);
-            border-radius: 6px;
-            padding: 8px 12px;
-            color: #00C8E6;
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 12px;
-        ">
-            {len(v_map)}
-        </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<div style='color: #8397AD; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;'>📊 Skala Limitleri</div>", unsafe_allow_html=True)
-    st.markdown(f"""
-        <div style="
-            background-color: #0E182A;
-            border: 1px solid rgba(0, 200, 230, 0.35);
-            border-radius: 6px;
-            padding: 8px 12px;
-            color: #00C8E6;
-            font-size: 15px;
-            font-weight: 700;
-            margin-bottom: 12px;
-        ">
-            Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}
-        </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("---")
+st.markdown(f"""
+<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
+    <div style="display: flex; flex-direction: column; justify-content: center; margin: 0; padding: 0;">
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">LOGGIS 3B</h1>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR CANLI TAKİP SİSTEMİ</div>
+    </div>
+    <div style="display: flex; align-items: center; margin: 0; padding: 0;">
+        {logo_tag}
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 COLORSCALES = {
     "hoop_bwr": [
