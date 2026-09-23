@@ -70,7 +70,7 @@ st.markdown("""
     /* 1. Заголовок "Görüntülenecek Bileşen:" */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
-        font-size: 14px !important;
+        font-size: 16px !important;
         color: #8397AD !important;
         font-weight: 600 !important;
     }
