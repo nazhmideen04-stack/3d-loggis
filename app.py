@@ -150,6 +150,8 @@ def fetch_category_data(cat_key, reload_seed=0):
     cat = CATEGORIES[cat_key]
     val_map = {}
     latest_date_str = ""
+    screenshot_b64 = ""
+    dom_debug = ""
 
     with sync_playwright() as p:
         browser_args = [
@@ -174,117 +176,106 @@ def fetch_category_data(cat_key, reload_seed=0):
 
         try:
             page.goto(URL, timeout=60000, wait_until="networkidle")
-            page.wait_for_timeout(2500)
+            page.wait_for_timeout(3000)
 
-            # 1. Переходим на вкладку Types
-            # Ищем точную кнопку вкладки Types в верхней навигации
-            types_tab = page.locator("button, div, span, a").filter(has_text=re.compile(r"^Types$", re.I)).last
-            if types_tab.is_visible():
-                types_tab.click(force=True)
-                page.wait_for_timeout(800)
-
-            # 2. Реальный клик по нужной строке в списке
-            # В Blazor важно сделать hover, а затем click точно по координатам элемента
-            item_locator = page.get_by_text(cat["name"], exact=True).first
-            if not item_locator.is_visible():
-                item_locator = page.locator(f"*:text-matches('{cat['name']}', 'i')").first
-
-            item_locator.hover()
-            page.wait_for_timeout(300)
-            item_locator.click(force=True)
-            page.wait_for_timeout(1000)
-
-            # 3. Если выбор не зафиксировался, делаем двойной клик или клик по родителю
-            is_selected = page.evaluate("""() => {
-                const b = document.body.innerText;
-                return b.includes('Selected : 1') || b.includes('Selected: 1');
-            }""")
-
-            if not is_selected:
-                # Пробуем через имитацию прямого события Blazor
-                page.evaluate(f"""() => {{
-                    const els = Array.from(document.querySelectorAll('*'));
-                    const target = els.find(e => e.children.length === 0 && e.textContent.trim().toLowerCase() === '{cat['name']}'.toLowerCase());
-                    if (target) {{
-                        ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {{
-                            target.dispatchEvent(new MouseEvent(evt, {{ bubbles: true, cancelable: true, view: window }}));
-                        }});
-                    }}
-                }}""")
-                page.wait_for_timeout(1500)
-
-            # 4. Проверяем кнопку 'Afficher tout' (если таблица ограничена)
+            # 1. Types sekmesine tıkla
             try:
-                afficher_btn = page.locator("button, a").filter(has_text=re.compile(r"Afficher tout", re.I)).first
-                if afficher_btn.is_visible():
-                    afficher_btn.click(force=True)
-                    page.wait_for_timeout(1000)
+                page.locator("text='Types'").first.click(force=True)
+                page.wait_for_timeout(1000)
             except Exception:
                 pass
 
-            # 5. Считываем данные из таблицы
-            for _ in range(35):
-                extracted = page.evaluate("""(tag) => {
-                    const table = document.querySelector('table');
-                    if (!table) return null;
+            # 2. İlgili kategoriye tıkla (Temperature vb.)
+            try:
+                page.get_by_text(cat["name"]).first.click(force=True)
+                page.wait_for_timeout(2000)
+            except Exception:
+                pass
 
-                    // Находим строку с именами сенсоров
-                    const trs = Array.from(table.querySelectorAll('tr'));
-                    let headerCells = [];
-                    for (const tr of trs) {
-                        const cells = Array.from(tr.querySelectorAll('th, td')).map(c => c.innerText.trim());
-                        if (cells.some(c => c.includes(tag) || c.includes('TA-') || c.includes('TB-'))) {
-                            headerCells = cells;
-                            break;
-                        }
+            # 3. Blazor tetiklemesi için JS ile tıklama
+            page.evaluate(f"""() => {{
+                const all = Array.from(document.querySelectorAll('*'));
+                for (const el of all) {{
+                    if (el.textContent && el.textContent.trim().toLowerCase() === '{cat['name']}'.toLowerCase() && el.children.length === 0) {{
+                        el.click();
+                        break;
+                    }}
+                }}
+            }}""")
+            page.wait_for_timeout(3000)
+
+            # EKRAN GÖRÜNTÜSÜ AL
+            img_bytes = page.screenshot(full_page=False)
+            screenshot_b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+            # DOM ÖZETİ
+            dom_debug = page.evaluate("""() => {
+                const tables = document.querySelectorAll('table');
+                const iframes = document.querySelectorAll('iframe');
+                const selectedText = document.body.innerText.match(/Selected\\s*:\\s*\\d+\\/\\d+/i);
+                return {
+                    table_count: tables.length,
+                    iframe_count: iframes.length,
+                    selected_info: selectedText ? selectedText[0] : 'Not Found',
+                    first_300_chars: document.body.innerText.slice(0, 300).replace(/\\n/g, ' ')
+                };
+            }""")
+
+            # 4. Tablodan veri çekme denemesi
+            extracted = page.evaluate("""(tag) => {
+                const table = document.querySelector('table');
+                if (!table) return null;
+
+                const trs = Array.from(table.querySelectorAll('tr'));
+                let headerCells = [];
+                for (const tr of trs) {
+                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => c.innerText.trim());
+                    if (cells.some(c => c.includes(tag) || c.includes('TA-') || c.includes('TB-'))) {
+                        headerCells = cells;
+                        break;
                     }
+                }
+                if (headerCells.length === 0 && trs.length > 0) {
+                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
+                }
 
-                    if (headerCells.length === 0 && trs.length > 0) {
-                        headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
+                const tbody = table.querySelector('tbody') || table;
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                let dataCells = [];
+                for (const r of rows) {
+                    const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
+                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':'))) {
+                        dataCells = cells;
+                        break;
                     }
+                }
 
-                    // Находим первую строку с датой и значениями в tbody
-                    const tbody = table.querySelector('tbody') || table;
-                    const bodyRows = Array.from(tbody.querySelectorAll('tr'));
-                    let dataCells = [];
-                    for (const r of bodyRows) {
-                        const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
-                        if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':'))) {
-                            dataCells = cells;
-                            break;
-                        }
-                    }
+                return { headers: headerCells, values: dataCells };
+            }""", cat["tag"])
 
-                    if (headerCells.length === 0 || dataCells.length === 0) return null;
+            if extracted and extracted.get("values") and extracted.get("headers"):
+                headers = extracted["headers"]
+                values = extracted["values"]
+                latest_date_str = values[0]
+                for h, v_str in zip(headers[1:], values[1:]):
+                    if cat["tag"] in h or "TA-" in h or "TB-" in h:
+                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                        s_name = m.group(1) if m else h.split()[0].strip()
+                        v = clean_num(v_str)
+                        if not np.isnan(v):
+                            val_map[s_name] = v
 
-                    return { headers: headerCells, values: dataCells };
-                }""", cat["tag"])
-
-                if extracted and extracted.get("values") and extracted.get("headers"):
-                    headers = extracted["headers"]
-                    values = extracted["values"]
-
-                    latest_date_str = values[0]
-
-                    for h, v_str in zip(headers[1:], values[1:]):
-                        if cat["tag"] in h or "TA-" in h or "TB-" in h:
-                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                            s_name = m.group(1) if m else h.split()[0].strip()
-                            v = clean_num(v_str)
-                            if not np.isnan(v):
-                                val_map[s_name] = v
-
-                    if len(val_map) > 0:
-                        break
-
-                page.wait_for_timeout(800)
-
-        except Exception:
+        except Exception as e:
             pass
         finally:
             browser.close()
 
-    return {"values": val_map, "date": latest_date_str}
+    return {
+        "values": val_map,
+        "date": latest_date_str,
+        "screenshot": screenshot_b64,
+        "debug": dom_debug
+    }
 # Geometri Tanımları
 GEOMETRY = {
     "tunnel_radius_m": 3.0,
@@ -438,8 +429,14 @@ with col_nav:
 # --- 3B PLOTLY SAHNESİ ---
 with col_3d:
     if not v_map:
-        st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı. Lütfen 'Verileri Yenile' butonunu deneyiniz.")
+        st.warning("⚠️ LoggIS sisteminden güncel veri alınamadı.")
+        if cur_layer.get("debug"):
+            st.write("🔍 **Sayfa Teşhis Bilgisi:**", cur_layer["debug"])
+        if cur_layer.get("screenshot"):
+            st.write("📸 **Botun Açtığı Sayfanın O Anki Hali:**")
+            st.image(f"data:image/png;base64,{cur_layer['screenshot']}", use_column_width=True)
     else:
+        # 3B Plotly çizim kodları...
         fig = go.Figure()
         sensor_x, sensor_y, sensor_z, sensor_text, sensor_colors = [], [], [], [], []
         label_x, label_y, label_z, label_text = [], [], [], []
