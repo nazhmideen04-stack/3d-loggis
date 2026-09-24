@@ -538,15 +538,15 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ИНЖЕНЕРНАЯ ШКАЛА (ТОЧНО ТАКАЯ ЖЕ, КАК НА СЦЕНЕ)
+                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const strainStops = [
-                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий (мин)
-                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
-                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
-                    new THREE.Color("#FFE600"), // 0.50: Желтый
-                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
-                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжевый
-                    new THREE.Color("#FF0022")  // 1.00: Алый красный (макс)
+                    new THREE.Color("#0022FF"), // Глубокий синий
+                    new THREE.Color("#00E5FF"), // Циан
+                    new THREE.Color("#00FF44"), // Зеленый
+                    new THREE.Color("#FFE600"), // Желтый
+                    new THREE.Color("#FFAA00"), // Оранжевый
+                    new THREE.Color("#FF5500"), // Красно-оранжевый
+                    new THREE.Color("#FF0022")  // Алый красный
                 ];
 
                 const tempStops = [
@@ -562,10 +562,7 @@ with col_3d:
 
                 let currentStops = strainStops;
 
-                // ДИНАМИЧЕСКОЕ ПОСТРОЕНИЕ CSS-ГРАДИЕНТА СТРОГО ИЗ МАССИВА ЦВЕТОВ
                 function makeCssGradient(stops) {{
-                    // В Three.js 0 — это минимум (низ), 1 — это максимум (верх)
-                    // В CSS linear-gradient to bottom верх идет первым, поэтому разворачиваем массив
                     const reversed = [...stops].reverse();
                     const colorHexStrings = reversed.map(c => '#' + c.getHexString());
                     return 'linear-gradient(to bottom, ' + colorHexStrings.join(', ') + ')';
@@ -582,7 +579,6 @@ with col_3d:
                     legendTitle.innerText = "Çevresel [µm/m]";
                 }}
 
-                // Применяем точный градиент к шкале легенды
                 legendBar.style.background = makeCssGradient(currentStops);
 
                 function sampleColorRamp(stops, t) {{
@@ -660,7 +656,13 @@ with col_3d:
                     return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
                 }}
 
-                // КАРТА НОРМАЛИЗОВАННЫХ КЛЮЧЕЙ ИЗ ТАБЛИЦЫ ДАННЫХ
+                // БАЗОВЫЙ ИДЕНТИФИКАТОР (для исключения наложения парных линий/мешей)
+                function getBaseSensorKey(sensorId) {{
+                    // Например, TA-S1-L-M1 превращается в TA-S1-L
+                    const m = sensorId.match(/^(T[AB]-(?:CS|S|TP)\d+-[LR])/i);
+                    return m ? m[1].toUpperCase() : sensorId.toUpperCase();
+                }}
+
                 const normalizedDataMap = {{}};
                 for (const rawKey in payload.activeCategoryValues) {{
                     const nKey = normalizeKey(rawKey);
@@ -861,9 +863,30 @@ with col_3d:
                         }}
                     }});
 
+                    // 1. АНАЛИЗ ВСЕХ СЕНСОРОВ: ОПРЕДЕЛЯЕМ ТОЧКИ И БАЗОВЫЕ ИМЕНА С ДАННЫМИ
+                    const activeBaseKeys = new Set();
+                    const activeSensorPositions = [];
+
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
+                        const dataLookup = findSensorData(sensorId, payload.comp);
+                        
+                        if (dataLookup.found) {{
+                            activeBaseKeys.add(getBaseSensorKey(sensorId));
+                            activeBaseKeys.add(getBaseSensorKey(dataLookup.key));
+                            
+                            const wPos = new THREE.Vector3();
+                            child.getWorldPosition(wPos);
+                            activeSensorPositions.push(wPos);
+                        }}
+                    }});
+
+                    // 2. ФИЛЬТРАЦИЯ И ПЕРЕНОС: ИСКЛЮЧАЕМ НАЛОЖЕНИЕ КРАСНЫХ ЛИНИЙ НА РАБОЧИЕ СЕНСОРЫ
+                    rawSensors.forEach(child => {{
+                        const name = child.name;
+                        const sensorId = extractSensorId(name);
+                        const baseKey = getBaseSensorKey(sensorId);
 
                         const dataLookup = findSensorData(sensorId, payload.comp);
                         const hasData = dataLookup.found;
@@ -871,6 +894,30 @@ with col_3d:
                         const sensorVal = dataLookup.val;
 
                         const isCategory = isCategoryMatch(canonicalId, payload.comp) || isCategoryMatch(sensorId, payload.comp) || (payload.comp === "temp" && (sensorId.toUpperCase().includes("-TP") || canonicalId.toUpperCase().includes("-TP")));
+
+                        const wPos = new THREE.Vector3();
+                        child.getWorldPosition(wPos);
+
+                        // Проверяем: лежит ли этот объект в той же точке, где уже есть рабочий белый датчик?
+                        let isCoveringActiveSensor = false;
+                        if (!hasData) {{
+                            if (activeBaseKeys.has(baseKey)) {{
+                                isCoveringActiveSensor = true;
+                            }} else {{
+                                for (let p of activeSensorPositions) {{
+                                    if (wPos.distanceTo(p) < 0.35) {{ // Если объект лежит прямо поверх рабочего сенсора
+                                        isCoveringActiveSensor = true;
+                                        break;
+                                    }}
+                                }}
+                            }}
+                        }}
+
+                        // Если у объекта нет данных, но поверх него уже стоит рабочий датчик -> СКРЫВАЕМ ЕГО, НЕ КРАСИМ В КРАСНЫЙ!
+                        if (!hasData && isCoveringActiveSensor) {{
+                            child.visible = false;
+                            return;
+                        }}
 
                         if (hasData || (isCategory && payload.showNoDataRed)) {{
                             child.userData.sensorName = canonicalId;
@@ -880,11 +927,11 @@ with col_3d:
 
                             const isSelected = (canonicalId === payload.selectedSensor || sensorId === payload.selectedSensor);
                             
-                            let sensorColor = 0xFFFFFF;
+                            let sensorColor = 0xFFFFFF; // Белый по умолчанию
                             if (isSelected) {{
-                                sensorColor = 0xFFD700;
+                                sensorColor = 0xFFD700; // Золотой
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033;
+                                sensorColor = 0xFF0033; // Красный ТОЛЬКО ЕСЛИ ДАТЧИК РЕАЛЬНО БЕЗ ДАННЫХ И НЕ ПЕРЕКРЫВАЕТ БЕЛЫЙ
                             }}
 
                             child.material = new THREE.MeshBasicMaterial({{
@@ -896,10 +943,8 @@ with col_3d:
                                 depthWrite: true
                             }});
 
-                            const wPos = new THREE.Vector3();
                             const wQuat = new THREE.Quaternion();
                             const wScale = new THREE.Vector3();
-                            child.getWorldPosition(wPos);
                             child.getWorldQuaternion(wQuat);
                             child.getWorldScale(wScale);
 
@@ -923,6 +968,7 @@ with col_3d:
                         }}
                     }});
 
+                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -963,6 +1009,7 @@ with col_3d:
                         }}
                     }});
 
+                    // ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -1142,6 +1189,7 @@ with col_3d:
                         }}
                     }}
 
+                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1296,6 +1344,7 @@ with col_3d:
                     renderer.setSize(container.clientWidth, container.clientHeight);
                 }});
 
+                // ДВУХПРОХОДНЫЙ РЕНДЕР
                 function animate(time) {{
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
