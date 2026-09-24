@@ -538,7 +538,7 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ИНЖЕНЕРНАЯ ШКАЛА
+                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const strainStops = [
                     new THREE.Color("#0022FF"), // Глубокий синий
                     new THREE.Color("#00E5FF"), // Неоновый циан
@@ -656,6 +656,7 @@ with col_3d:
                     return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
                 }}
 
+                // ПОСТРОЕНИЕ ТАБЛИЦЫ НОРМАЛИЗОВАННЫХ ДАННЫХ
                 const normalizedDataMap = {{}};
                 for (const rawKey in payload.activeCategoryValues) {{
                     const nKey = normalizeKey(rawKey);
@@ -665,7 +666,44 @@ with col_3d:
                     }};
                 }}
 
-                function findSensorData(sensorId, comp) {{
+                // ПРЕОБРАЗОВАНИЕ ИМЕНИ ДАТЧИКА В ЦЕЛЕВОЙ ТИП
+                function mapSensorNameToCurrentCategory(sensorId, comp) {{
+                    let s = sensorId.toUpperCase();
+                    if (comp === "temp") {{
+                        // Если открыта температура, любой CS или S трансформируется в TP
+                        return s.replace("-CS", "-TP").replace("-S", "-TP");
+                    }} else if (comp === "hoop") {{
+                        // Если открыт CS, трансформируем TP или S в CS
+                        return s.replace("-TP", "-CS").replace("-S", "-CS");
+                    }} else if (comp === "axial") {{
+                        // Если открыт S, трансформируем TP или CS в S
+                        return s.replace("-TP", "-S").replace("-CS", "-S");
+                    }}
+                    return s;
+                }}
+
+                // СВЕРКА ДАННЫХ СТРОГО ПО ЦЕЛЕВОМУ НАЗВАНИЮ КАТЕГОРИИ
+                function findSensorDataForCategory(sensorId, comp) {{
+                    const targetName = mapSensorNameToCurrentCategory(sensorId, comp);
+
+                    // 1. Прямой поиск целевого названия в таблице данных
+                    if (payload.activeCategoryValues.hasOwnProperty(targetName)) {{
+                        const v = payload.activeCategoryValues[targetName];
+                        if (v !== undefined && v !== null && !isNaN(v)) {{
+                            return {{ found: true, key: targetName, val: v }};
+                        }}
+                    }}
+
+                    // 2. Поиск по нормализованному ключу
+                    const nTarget = normalizeKey(targetName);
+                    if (normalizedDataMap.hasOwnProperty(nTarget)) {{
+                        const item = normalizedDataMap[nTarget];
+                        if (item.val !== undefined && item.val !== null && !isNaN(item.val)) {{
+                            return {{ found: true, key: item.canonicalKey, val: item.val }};
+                        }}
+                    }}
+
+                    // 3. Проверка прямого исходного имени (если оно уже соответствовало)
                     if (payload.activeCategoryValues.hasOwnProperty(sensorId)) {{
                         const v = payload.activeCategoryValues[sensorId];
                         if (v !== undefined && v !== null && !isNaN(v)) {{
@@ -673,50 +711,7 @@ with col_3d:
                         }}
                     }}
 
-                    if (comp === "temp" && !sensorId.toUpperCase().includes("-TP")) {{
-                        const tpCandidate = sensorId.replace(/-CS|-S/gi, "-TP");
-                        if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
-                            const v = payload.activeCategoryValues[tpCandidate];
-                            if (v !== undefined && v !== null && !isNaN(v)) {{
-                                return {{ found: true, key: tpCandidate, val: v }};
-                            }}
-                        }}
-                    }}
-
-                    const nId = normalizeKey(sensorId);
-                    if (normalizedDataMap.hasOwnProperty(nId)) {{
-                        const item = normalizedDataMap[nId];
-                        if (item.val !== undefined && item.val !== null && !isNaN(item.val)) {{
-                            return {{ found: true, key: item.canonicalKey, val: item.val }};
-                        }}
-                    }}
-
-                    if (comp === "temp" && !nId.includes("TP")) {{
-                        const nTpCandidate = nId.replace(/CS|S/g, "TP");
-                        if (normalizedDataMap.hasOwnProperty(nTpCandidate)) {{
-                            const item = normalizedDataMap[nTpCandidate];
-                            if (item.val !== undefined && item.val !== null && !isNaN(item.val)) {{
-                                return {{ found: true, key: item.canonicalKey, val: item.val }};
-                            }}
-                        }}
-                    }}
-
-                    return {{ found: false, key: sensorId, val: NaN }};
-                }}
-
-                // СТРОГОЕ СООТВЕТСТВИЕ ТЕКУЩЕЙ ОТКРЫТОЙ КАТЕГОРИИ
-                function isCategoryMatch(name, comp) {{
-                    const u = name.toUpperCase();
-                    if (comp === "hoop") {{
-                        return u.includes("-CS");
-                    }}
-                    if (comp === "axial") {{
-                        return u.includes("-S") && !u.includes("-CS");
-                    }}
-                    if (comp === "temp") {{
-                        return u.includes("-TP");
-                    }}
-                    return false;
+                    return {{ found: false, key: targetName, val: NaN }};
                 }}
 
                 function createPortalMarker(text) {{
@@ -857,76 +852,75 @@ with col_3d:
                         }}
                     }});
 
-                    // 1. СОБИРАЕМ СПИСОК РАБОЧИХ ДАТЧИКОВ
-                    const activeSensorsRegistry = [];
+                    // ГРУППИРОВКА ОБЪЕКТОВ ПО УНИКАЛЬНОЙ ПОЗИЦИИ И ЦЕЛЕВОМУ ИМЕНИ
+                    // Исключает дублирование нескольких мешей (CS + TP) в одной и той же точке
+                    const positionClusters = [];
 
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
-                        const dataLookup = findSensorData(sensorId, payload.comp);
                         
-                        if (dataLookup.found) {{
-                            const wPos = new THREE.Vector3();
-                            child.getWorldPosition(wPos);
-                            activeSensorsRegistry.push({{
-                                id: dataLookup.key.toUpperCase(),
-                                pos: wPos
-                            }});
-                        }}
-                    }});
-
-                    // 2. РЕНДЕРИНГ: И РАБОЧИЕ (БЕЛЫЕ), И ДЕЙСТВИТЕЛЬНО НЕРАБОЧИЕ (КРАСНЫЕ)
-                    rawSensors.forEach(child => {{
-                        const name = child.name;
-                        const sensorId = extractSensorId(name);
-
-                        const dataLookup = findSensorData(sensorId, payload.comp);
-                        const hasData = dataLookup.found;
-                        const canonicalId = dataLookup.key;
-                        const sensorVal = dataLookup.val;
-
-                        // Относится ли датчик строго к текущей категории
-                        const isCategory = isCategoryMatch(canonicalId, payload.comp) || isCategoryMatch(sensorId, payload.comp) || (payload.comp === "temp" && (sensorId.toUpperCase().includes("-TP") || canonicalId.toUpperCase().includes("-TP")));
+                        // Получаем статус строго для текущей активной категории
+                        const dataInfo = findSensorDataForCategory(sensorId, payload.comp);
+                        const targetCategoryName = dataInfo.key;
+                        const hasData = dataInfo.found;
+                        const val = dataInfo.val;
 
                         const wPos = new THREE.Vector3();
                         child.getWorldPosition(wPos);
 
-                        // Проверяем: лежит ли этот меш ровно поверх УЖЕ существующего активного датчика с тем же смысловым именем?
-                        let isExactDuplicateOfActive = false;
-                        if (!hasData) {{
-                            for (let active of activeSensorsRegistry) {{
-                                // Скрываем только точный дубль в пределах 5 см с тем же именем
-                                if (wPos.distanceTo(active.pos) < 0.05 && active.id === canonicalId.toUpperCase()) {{
-                                    isExactDuplicateOfActive = true;
-                                    break;
-                                }}
+                        // Проверяем наличие точки в кластерах
+                        let cluster = null;
+                        for (let c of positionClusters) {{
+                            if (c.pos.distanceTo(wPos) < 0.25) {{
+                                cluster = c;
+                                break;
                             }}
                         }}
 
-                        if (!hasData && isExactDuplicateOfActive) {{
-                            child.visible = false;
-                            return;
+                        if (!cluster) {{
+                            cluster = {{
+                                pos: wPos,
+                                mesh: child,
+                                sensorName: targetCategoryName,
+                                hasData: hasData,
+                                val: val
+                            }};
+                            positionClusters.push(cluster);
+                        }} else {{
+                            // Если в этой же точке найден меш, у которого ЕСТЬ данные для целевой категории,
+                            // он имеет наивысший приоритет и заменяет нерабочий аналог!
+                            if (!cluster.hasData && hasData) {{
+                                cluster.mesh = child;
+                                cluster.sensorName = targetCategoryName;
+                                cluster.hasData = true;
+                                cluster.val = val;
+                            }}
                         }}
+
+                        child.visible = false; // Скрываем оригиналы в модели
+                    }});
+
+                    // СОЗДАЕМ ОКОНЧАТЕЛЬНЫЕ МАРКЕРЫ СЕНСОРОВ В ОТДЕЛЬНОМ НЕЗАВИСИМОМ СЛОЕ
+                    positionClusters.forEach(c => {{
+                        const hasData = c.hasData;
+                        const sensorName = c.sensorName;
+                        const val = c.val;
 
                         // Показываем:
-                        // 1. Все датчики с данными (Белые)
-                        // 2. Если включен чекбокс — ВСЕ датчики текущего типа без данных (Красные)
-                        if (hasData || (isCategory && payload.showNoDataRed)) {{
-                            child.userData.sensorName = canonicalId;
-                            child.userData.val = hasData ? sensorVal : NaN;
-                            child.userData.isUsable = hasData;
-                            child.userData.isNoData = !hasData;
+                        // 1. Все рабочие сенсоры (БЕЛЫЕ)
+                        // 2. Если включен чекбокс — нерабочие сенсоры текущего типа (КРАСНЫЕ)
+                        if (hasData || payload.showNoDataRed) {{
+                            const isSelected = (sensorName === payload.selectedSensor);
 
-                            const isSelected = (canonicalId === payload.selectedSensor || sensorId === payload.selectedSensor);
-                            
-                            let sensorColor = 0xFFFFFF; // Белый по умолчанию
+                            let sensorColor = 0xFFFFFF; // Рабочий сенсор всегда белый
                             if (isSelected) {{
-                                sensorColor = 0xFFD700; // Золотой
+                                sensorColor = 0xFFD700; // Золотой при выборе
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033; // Ярко-красный для нерабочих
+                                sensorColor = 0xFF0033; // Красный ТОЛЬКО если данных для текущего типа действительно нет
                             }}
 
-                            child.material = new THREE.MeshBasicMaterial({{
+                            const sensorMat = new THREE.MeshBasicMaterial({{
                                 color: sensorColor,
                                 side: THREE.DoubleSide,
                                 transparent: false,
@@ -937,26 +931,26 @@ with col_3d:
 
                             const wQuat = new THREE.Quaternion();
                             const wScale = new THREE.Vector3();
-                            child.getWorldQuaternion(wQuat);
-                            child.getWorldScale(wScale);
+                            c.mesh.getWorldQuaternion(wQuat);
+                            c.mesh.getWorldScale(wScale);
 
-                            const detachedMesh = new THREE.Mesh(child.geometry.clone(), child.material);
-                            detachedMesh.position.copy(wPos);
+                            const detachedMesh = new THREE.Mesh(c.mesh.geometry.clone(), sensorMat);
+                            detachedMesh.position.copy(c.pos);
                             detachedMesh.quaternion.copy(wQuat);
                             detachedMesh.scale.copy(wScale);
-                            detachedMesh.userData = child.userData;
+
+                            detachedMesh.userData.sensorName = sensorName;
+                            detachedMesh.userData.val = hasData ? val : NaN;
+                            detachedMesh.userData.isUsable = hasData;
+                            detachedMesh.userData.isNoData = !hasData;
 
                             sensorScene.add(detachedMesh);
                             interactiveSensors.push(detachedMesh);
 
-                            child.visible = false;
-
                             if (isSelected) {{
                                 selectedMeshRef = detachedMesh;
-                                updateHud(canonicalId, detachedMesh.userData.val);
+                                updateHud(sensorName, val);
                             }}
-                        }} else {{
-                            child.visible = false;
                         }}
                     }});
 
@@ -1234,8 +1228,7 @@ with col_3d:
                 }}
 
                 function flyCameraTo(targetMesh, animate = true) {{
-                    const targetPos = new THREE.Vector3();
-                    targetMesh.getWorldPosition(targetPos);
+                    const targetPos = targetMesh.position.clone();
 
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
