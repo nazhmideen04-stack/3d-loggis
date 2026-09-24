@@ -78,7 +78,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -88,7 +87,7 @@ st.markdown("""
 
     div[data-testid="stRadio"] div[role="radiogroup"] label p {
         font-family: 'Chakra Petch', sans-serif !important;
-        font-size: 18px !important;
+        font-size: 16px !important;
         color: #E6F0FA !important;
         font-weight: 600 !important;
     }
@@ -114,7 +113,6 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -179,7 +177,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & TAM CSV VERİTABANI</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & VERİ ARŞİVİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -209,8 +207,8 @@ def ensure_playwright_installed():
 @st.cache_data(ttl=1800)
 def fetch_full_csv_database():
     """
-    Полностью считывает базу LoggIS: заходит -> выбирает ALL -> скачивает CSV для каждой категории.
-    Сохраняет 100% данных и формирует точный список дат.
+    Скачивает и кэширует 100% данных (актуальные + архив) за 1 раз.
+    Извлекает все доступные таймстампы напрямую из файлов.
     """
     historical_db = {k: {} for k in CATEGORIES}
     dates_set = set()
@@ -226,7 +224,6 @@ def fetch_full_csv_database():
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
 
-        # accept_downloads ОБЯЗАТЕЛЕН для загрузки файлов!
         context = browser.new_context(
             accept_downloads=True,
             viewport={"width": 1920, "height": 1080},
@@ -239,19 +236,17 @@ def fetch_full_csv_database():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(4000)
 
-            # 1. Открываем Types
             try:
                 page.get_by_text("Types").click(timeout=8000)
             except: pass
             page.wait_for_timeout(1000)
 
-            # 2. Выбираем ALL для подгрузки всей истории
+            # Выбор ALL для скачивания полной базы
             try:
                 page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except: pass
             page.wait_for_timeout(2000)
 
-            # 3. Скачиваем CSV для каждой категории
             for cat_key, cat_cfg in CATEGORIES.items():
                 try:
                     page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
@@ -260,19 +255,15 @@ def fetch_full_csv_database():
                         page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
                     except: pass
                 
-                # Ждем 4 секунды, чтобы таблица и кнопка CSV успели появиться после смены категории!
                 page.wait_for_timeout(4000)
 
                 csv_path = None
-                
-                # Ищем кнопку CSV гибким локатором и ждем её видимости
                 csv_btn = page.locator("text=CSV").first
                 try:
                     csv_btn.wait_for(state="visible", timeout=20000)
                 except Exception:
-                    print(f"Warning: CSV button not visible for {cat_key}")
+                    pass
 
-                # Твой двойной клик с защитой от ошибок popup
                 try:
                     csv_btn.click(force=True, timeout=5000)
                     page.wait_for_timeout(2000)
@@ -283,14 +274,12 @@ def fetch_full_csv_database():
                                 csv_btn.click(force=True)
                             p_info.value.close()
                         except:
-                            # Если popup не вылез, просто жмём еще раз
                             csv_btn.click(force=True)
                             
                     csv_path = d_info.value.path()
                 except Exception as e:
                     print(f"CSV İndirme Hatası ({cat_key}): {e}")
 
-                # Читаем скачанный CSV файл (100% данных)
                 if csv_path and os.path.exists(csv_path):
                     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                         lines = f.readlines()
@@ -321,7 +310,7 @@ def fetch_full_csv_database():
         finally:
             browser.close()
 
-    # Сортируем даты от новых к старым
+    # Сортируем все даты (от самых свежих к самым старым)
     sorted_dates = sorted(list(dates_set), reverse=True)
     return sorted_dates, historical_db
 
@@ -334,39 +323,76 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# ОДИН ЗАПРОС ПРИ СТАРТЕ - скачиваем всё и кэшируем в память
+# ОДИН ЗАПРОС ПРИ СТАРТЕ - скачиваем всё и кэшируем
 with st.spinner("LoggIS veritabanı indiriliyor ve senkronize ediliyor (15-30 saniye sürebilir)..."):
     all_dates, full_db = fetch_full_csv_database()
 
+# Структурируем даты для удобного выбора (Год-Месяц-День -> Часы)
+date_tree = {}
+if all_dates:
+    for d_str in all_dates:
+        if " " in d_str:
+            d_part, t_part = d_str.split(" ", 1)
+            d_part = d_part.replace("/", "-")
+            if d_part not in date_tree:
+                date_tree[d_part] = []
+            date_tree[d_part].append(t_part)
+
+    # Сортировка структуры
+    for k in date_tree:
+        date_tree[k] = sorted(date_tree[k], reverse=True)
+
 with col_nav:
     st.subheader("KONTROL PANELİ")
+    
+    # 1. Выбор категории
     selected_comp = st.radio(
-        "Görüntülenecek Bileşen:",
+        "Görüntülenecek Bileşen (Kategori):",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
     st.markdown("---")
-    st.subheader("⏱️ Zaman Seçimi (Tüm Arşiv)")
+    st.subheader("⏱️ Zaman Seçimi")
     
-    # Сразу выводим все доступные даты, верхняя будет самой актуальной
-    if not all_dates:
-        st.error("Veri bulunamadı. Lütfen 'Verileri Yenile' butonuna basınız.")
-        selected_date = ""
-    else:
-        selected_date = st.selectbox("Tarih ve Saat Seç:", options=all_dates)
+    # 2. Переключатель режима: Текущие или Архивные
+    data_mode = st.radio(
+        "Veri Modu Seçimi:",
+        options=["🔴 Canlı (Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
+    )
 
-    if st.button("Verileri Yenile"):
+    target_timestamp = None
+    if not all_dates:
+        st.error("Veri tabanında kayıt bulunamadı.")
+    else:
+        if data_mode == "🔴 Canlı (Güncel) Veriler":
+            # Автоматически берем самую свежую дату из CSV
+            latest_d = sorted(list(date_tree.keys()), reverse=True)[0]
+            latest_t = date_tree[latest_d][0]
+            target_timestamp = f"{latest_d.replace('-', '/')} {latest_t}"
+            st.success(f"En son ölçüm yükleniyor: **{target_timestamp}**")
+        else:
+            # Удобные выпадающие списки (Дата отдельно, Время отдельно)
+            col_d, col_t = st.columns(2)
+            with col_d:
+                unique_dates = sorted(list(date_tree.keys()), reverse=True)
+                sel_date = st.selectbox("📅 Tarih Seç:", options=unique_dates)
+            with col_t:
+                sel_time = st.selectbox("⏱️ Saat Seç:", options=date_tree[sel_date])
+            
+            if sel_date and sel_time:
+                target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
+
+    if st.button("🔄 Ekranı Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# Извлекаем данные из памяти (мгновенно)
+# Извлекаем значения для выбранной даты и категории
 active_category_values = {}
-date_label = selected_date
 cat_cfg = CATEGORIES[selected_comp]
 
-if selected_date and full_db.get(selected_comp):
-    raw_v_map = full_db[selected_comp].get(selected_date, {})
+if target_timestamp and full_db.get(selected_comp):
+    raw_v_map = full_db[selected_comp].get(target_timestamp, {})
     for s_name, val in raw_v_map.items():
         if val is None or np.isnan(val):
             continue
@@ -379,7 +405,7 @@ if selected_date and full_db.get(selected_comp):
         elif selected_comp == "temp" and "-TP" in u_name:
             active_category_values[s_name] = float(val)
 
-# Расчет лимитов СТРОГО по текущим данным (без буферов)
+# Расчет лимитов СТРОГО по текущим данным
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -402,7 +428,7 @@ with col_nav:
 
     st.markdown("---")
     st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{date_label}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp else 'Bulunamadı'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
@@ -417,18 +443,18 @@ with col_3d:
     sel_col1, sel_col2 = st.columns([3, 1])
     with sel_col1:
         selected_sensor = st.selectbox(
-            "Sensör Değerini İncele:", 
+            "Modelde Sensör Odakla:", 
             options=sensor_options,
             help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
         )
     with sel_col2:
         if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
             st.metric(
-                label=f"Seçilen Sensör Değeri",
+                label=f"Ölçüm ({selected_sensor})",
                 value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
             )
         else:
-            st.metric(label="Sensör Değeri", value="--")
+            st.metric(label="Ölçüm", value="--")
 
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -618,10 +644,12 @@ with col_3d:
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
             new THREE.Color("#00FF66"), new THREE.Color("#FFEE00"), new THREE.Color("#FF7700"), new THREE.Color("#FF0022")
         ];
+
         const axialStops = [
             new THREE.Color("#080038"), new THREE.Color("#2A0A5E"), new THREE.Color("#630F78"),
             new THREE.Color("#9E1B7F"), new THREE.Color("#D32B6E"), new THREE.Color("#F55447"), new THREE.Color("#FF9500") 
         ];
+
         const temperatureStops = [
             new THREE.Color("#020024"), new THREE.Color("#0033FF"), new THREE.Color("#00D8FF"),
             new THREE.Color("#00FF44"), new THREE.Color("#B4FF00"), new THREE.Color("#FFDD00"),
@@ -629,15 +657,25 @@ with col_3d:
         ];
 
         let currentStops = hoopStops;
-        if (payload.comp === "axial") { currentStops = axialStops; legendTitle.innerText = "Boyuna [µm/m]"; }
-        else if (payload.comp === "temp") { currentStops = temperatureStops; legendTitle.innerText = "Sıcaklık [°C]"; }
-        else { currentStops = hoopStops; legendTitle.innerText = "Çevresel [µm/m]"; }
+        if (payload.comp === "axial") {
+            currentStops = axialStops;
+            legendTitle.innerText = "Boyuna [µm/m]";
+        } else if (payload.comp === "temp") {
+            currentStops = temperatureStops;
+            legendTitle.innerText = "Sıcaklık [°C]";
+        } else {
+            currentStops = hoopStops;
+            legendTitle.innerText = "Çevresel [µm/m]";
+        }
 
         function buildExactLegendGradient(stops) {
-            const n = stops.length; const items = [];
+            const n = stops.length;
+            const items = [];
             for (let i = 0; i < n; i++) {
                 const colorObj = stops[n - 1 - i];
-                items.push('#' + colorObj.getHexString() + ' ' + ((i / (n - 1)) * 100).toFixed(1) + '%');
+                const hex = '#' + colorObj.getHexString();
+                const percent = ((i / (n - 1)) * 100).toFixed(1);
+                items.push(hex + ' ' + percent + '%');
             }
             return 'linear-gradient(to bottom, ' + items.join(', ') + ')';
         }
@@ -663,18 +701,23 @@ with col_3d:
         lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(2);
         lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(2);
 
-        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0A0E17);
+
         const sensorScene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.autoClear = false; container.appendChild(renderer.domElement);
+        renderer.autoClear = false;
+        container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true; controls.dampingFactor = 0.05;
-        controls.minDistance = 0.5; controls.maxDistance = 2500;
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 0.5;
+        controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
         controls.addEventListener('change', () => {
@@ -749,11 +792,15 @@ with col_3d:
                     if (uName.includes("BOX001")) { child.visible = false; return; }
 
                     const isSensorObject = (uName.startsWith("TA-") || uName.startsWith("TB-") || uName.includes("-CS") || uName.includes("-S") || uName.includes("-TP"));
-                    if (isSensorObject) rawSensors.push(child);
-                    else {
+                    if (isSensorObject) {
+                        rawSensors.push(child);
+                    } else {
                         const isTunnel = (uName.includes("TUNNEL") || uName.includes("TÜNEL") || uName === "TA" || uName === "TB" || uName.startsWith("TA_") || uName.startsWith("TB_"));
-                        if (isTunnel) tunnelMeshes.push(child);
-                        else child.material = new THREE.MeshStandardMaterial({ color: 0x141E2D, roughness: 0.8 });
+                        if (isTunnel) {
+                            tunnelMeshes.push(child);
+                        } else {
+                            child.material = new THREE.MeshStandardMaterial({ color: 0x141E2D, roughness: 0.8 });
+                        }
                     }
                 }
             });
@@ -886,16 +933,49 @@ with col_3d:
                 }
             }
 
+            // ИСПРАВЛЕНИЕ АВТОЦЕНТРИРОВАНИЯ
             const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
-            if (selectedMeshRef && isNewSensorSelected) { sessionStorage.setItem('threejs_last_selected', payload.selectedSensor); flyCameraTo(selectedMeshRef, true); }
-            else {
+
+            if (selectedMeshRef && isNewSensorSelected) {
+                sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
+                flyCameraTo(selectedMeshRef, true);
+            } else {
                 const savedStateStr = sessionStorage.getItem('threejs_camera_state');
-                if (savedStateStr) { try { const st = JSON.parse(savedStateStr); camera.position.set(st.pos[0], st.pos[1], st.pos[2]); controls.target.set(st.target[0], st.target[1], st.target[2]); controls.update(); } catch(e) {} }
-                else {
-                    const tunnelBox = new THREE.Box3(); if (tunnelMeshes.length > 0) tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm)); else tunnelBox.setFromObject(model);
-                    const center = tunnelBox.getCenter(new THREE.Vector3()); const size = tunnelBox.getSize(new THREE.Vector3()); const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                    controls.target.copy(center); camera.position.set(center.x - maxDim * 0.40, center.y + maxDim * 0.45, center.z + maxDim * 0.55); controls.update();
+                let stateRestored = false;
+                if (savedStateStr) {
+                    try { 
+                        const st = JSON.parse(savedStateStr); 
+                        if (st.pos && st.pos.length === 3 && !isNaN(st.pos[0])) {
+                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]); 
+                            controls.target.set(st.target[0], st.target[1], st.target[2]); 
+                            controls.update(); 
+                            stateRestored = true;
+                        }
+                    } catch(e) {}
+                }
+                
+                // Если камеры не было в кэше (первый запуск) — принудительно центрируем!
+                if (!stateRestored) {
+                    const tunnelBox = new THREE.Box3(); 
+                    if (tunnelMeshes.length > 0) {
+                        tunnelMeshes.forEach(tm => {
+                            if(tm.geometry) tm.geometry.computeBoundingBox();
+                            tunnelBox.expandByObject(tm);
+                        });
+                    } else { 
+                        model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
+                        tunnelBox.setFromObject(model); 
+                    }
+                    
+                    if (!tunnelBox.isEmpty()) {
+                        const center = tunnelBox.getCenter(new THREE.Vector3()); 
+                        const size = tunnelBox.getSize(new THREE.Vector3()); 
+                        const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                        controls.target.copy(center); 
+                        camera.position.set(center.x - maxDim * 0.5, center.y + maxDim * 0.6, center.z + maxDim * 0.8); 
+                        controls.update();
+                    }
                 }
             }
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
@@ -945,10 +1025,10 @@ with col_3d:
                 tooltip.style.display = 'block'; tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY + 14) + 'px';
                 if (isUsable) {
                     const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Ölçüm: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 }
             } else { tooltip.style.display = 'none'; renderer.domElement.style.cursor = 'default'; }
