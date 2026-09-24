@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -30,7 +30,6 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -78,7 +77,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -101,20 +99,12 @@ st.markdown("""
         background-color: #00C8E6 !important;
     }
 
-    div[data-testid="stRadio"] div[role="radiogroup"] > label {
-        margin-bottom: 12px !important;
-        cursor: pointer !important;
-        display: flex !important;
-        align-items: center !important;
-    }
-
     div[data-baseweb="select"] {
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
     }
 
-    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -124,15 +114,6 @@ st.markdown("""
     div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
-    }
-
-    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
-        border-color: #00C8E6 !important;
-    }
-
-    div[data-testid="stCheckbox"] svg path {
-        fill: #0A0E17 !important;
-        stroke: #0A0E17 !important;
     }
 
     .destech-badge {
@@ -166,7 +147,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1rem !important;
@@ -208,7 +188,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & DİNAMİK ZAMAN SEÇİMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ZAMAN SEÇİMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -237,7 +217,6 @@ def ensure_playwright_installed():
 
 @st.cache_data(ttl=300)
 def fetch_loggis_data(target_date_str=None):
-    """Динамически извлекает список дат со страницы LoggIS и парсит данные для указанной даты."""
     dates_list = []
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
@@ -396,7 +375,6 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Первичный запрос для сбора доступных дат и свежих данных
 with st.spinner("LoggIS zaman etiketleri ve güncel veriler yükleniyor..."):
     extracted_dates, current_data = fetch_loggis_data(None)
 
@@ -423,12 +401,10 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-# Загрузка данных для выбранного периода
 if selected_date_choice != "En Son (Güncel)":
     with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
         _, current_data = fetch_loggis_data(selected_date_choice)
 
-# Загрузка базы для сравнения
 if enable_comparison and selected_base_choice != selected_date_choice:
     with st.spinner(f"Karşılaştırma verisi alınıyor ({selected_base_choice})..."):
         _, base_data = fetch_loggis_data(selected_base_choice)
@@ -468,7 +444,6 @@ for s_name, val in raw_v_map.items():
         else:
             active_delta_values[s_name] = 0.0
 
-# Точный расчёт диапазона clim с технологическим буфером
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -772,7 +747,13 @@ with col_3d:
                     }
                 }
                 geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                tMesh.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.2, transparent: true, opacity: payload.tunnelOpacity });
+                tMesh.material = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    roughness: 0.2,
+                    metalness: 0.02,
+                    transparent: false,
+                    depthWrite: true
+                });
             });
 
             const box = new THREE.Box3().setFromObject(model);
