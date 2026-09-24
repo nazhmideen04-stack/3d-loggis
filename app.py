@@ -288,8 +288,9 @@ def get_model_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# --- СИНХРОНИЗАЦИЯ: СЧИТЫВАНИЕ СЕНСОРА ИЗ URL ---
-selected_sensor_from_url = st.query_params.get("sensor", "Seçiniz...")
+# --- СЧИТЫВАНИЕ URL ПАРАМЕТРА ПРИ КЛИКЕ ИЗ 3D ---
+query_params = st.query_params
+selected_sensor_from_url = query_params.get("sensor", "Seçiniz...")
 
 col_nav, col_3d = st.columns([1, 4])
 
@@ -324,7 +325,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Расчет точных границ диапазона
+# Расчет границ шкалы строго по реальным экстремумам
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -355,7 +356,7 @@ with col_nav:
 
     st.markdown("---")
     
-    # Синхронизированный выпадающий список
+    # Синхронизированный выбор сенсора
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
     default_idx = 0
     if selected_sensor_from_url in sensor_options:
@@ -368,7 +369,7 @@ with col_nav:
         key="sensor_selector_box"
     )
 
-    # При ручном изменении в selectbox обновляем параметр в URL
+    # При ручном изменении в выпадающем списке обновляем query params
     if selected_sensor != "Seçiniz..." and selected_sensor != selected_sensor_from_url:
         st.query_params["sensor"] = selected_sensor
         st.rerun()
@@ -376,7 +377,7 @@ with col_nav:
         del st.query_params["sensor"]
         st.rerun()
 
-    # ОТОБРАЖЕНИЕ ЗНАЧЕНИЯ ВЫБРАННОГО ДАТЧИКА СЛЕВА
+    # ПОКАЗ ЗНАЧЕНИЯ ВЫБРАННОГО ДАТЧИКА В ЛЕВОЙ КОЛОНКЕ
     if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
         st.metric(
             label=f"Seçilen: {selected_sensor}",
@@ -524,13 +525,13 @@ with col_3d:
 
                 // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
-                    new THREE.Color("#0022FF"), // Глубокий синий
-                    new THREE.Color("#00E5FF"), // Циан
-                    new THREE.Color("#00FF44"), // Чистый зеленый
-                    new THREE.Color("#FFE600"), // Желтый
-                    new THREE.Color("#FFAA00"), // Янтарный
-                    new THREE.Color("#FF5500"), // Оранжевый
-                    new THREE.Color("#FF0022")  // Алый красный
+                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
+                    new THREE.Color("#00E5FF"), // 0.16: Циан
+                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
+                    new THREE.Color("#FFE600"), // 0.50: Желтый
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарный
+                    new THREE.Color("#FF5500"), // 0.83: Оранжевый
+                    new THREE.Color("#FF0022")  // 1.00: Алый красный
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -594,7 +595,12 @@ with col_3d:
 
                 const interactiveSensors = [];
                 const tunnelMeshes = [];
+                
+                // РАСШИРЕННЫЙ ЛУЧ RAYCASTER ДЛЯ БЕЗОШИБОЧНОГО ЗАХВАТА КЛИКА
                 const raycaster = new THREE.Raycaster();
+                raycaster.params.Line = {{ threshold: 0.8 }};
+                raycaster.params.Points = {{ threshold: 0.8 }};
+                
                 const mouse = new THREE.Vector2();
 
                 function extractSensorId(name) {{
@@ -782,7 +788,7 @@ with col_3d:
                         }}
                     }});
 
-                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
+                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА СТРОГО ПО СЕНСОРАМ
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -808,18 +814,17 @@ with col_3d:
                     lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
                     lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
 
-                    // НЕЙТРАЛЬНЫЙ БЕЛЫЙ ЦВЕТ ДАТЧИКОВ (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
+                    // СВЕТЛЫЕ НЕЙТРАЛЬНЫЕ ДАТЧИКИ (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
                     interactiveSensors.forEach(child => {{
                         if (child.userData.isUsable) {{
                             const sensorId = child.userData.sensorName;
                             const isSelected = (sensorId === payload.selectedSensor);
-                            
                             const sensorColor = isSelected ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
 
                             child.material = new THREE.MeshStandardMaterial({{
                                 color: sensorColor,
                                 emissive: sensorColor,
-                                emissiveIntensity: isSelected ? 2.5 : 1.6,
+                                emissiveIntensity: isSelected ? 2.8 : 1.8,
                                 roughness: 0.1,
                                 metalness: 0.1,
                                 depthTest: false,
@@ -850,7 +855,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ШИРОКАЯ И ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ
+                    // ВЫРАЗИТЕЛЬНАЯ ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ
                     const R_INFLUENCE = 45.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -1029,7 +1034,7 @@ with col_3d:
                         }}
                     }}
 
-                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (ПРИБЛИЖЕННЫЙ РАКУРС)
+                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1059,9 +1064,9 @@ with col_3d:
 
                             controls.target.copy(center);
                             camera.position.set(
-                                center.x - maxDim * 0.35,
-                                center.y + maxDim * 0.38,
-                                center.z + maxDim * 0.48
+                                center.x - maxDim * 0.40,
+                                center.y + maxDim * 0.45,
+                                center.z + maxDim * 0.55
                             );
                             controls.update();
                         }}
@@ -1107,49 +1112,63 @@ with col_3d:
                         .start();
                 }}
 
-                // КЛИК В 3D: АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ И ОБНОВЛЕНИЕ ВЫБОРА СЛЕВА
-                window.addEventListener('click', function(e) {{
+                // НАДЕЖНЫЙ КЛИК ПО ДАТЧИКУ И МГНОВЕННАЯ ПЕРЕДАЧА ВЫБОРА В СИСТЕМУ
+                function getIntersectedSensor(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
                     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
                     raycaster.setFromCamera(mouse, camera);
-                    const intersects = raycaster.intersectObjects(interactiveSensors);
+                    const intersects = raycaster.intersectObjects(interactiveSensors, true);
 
                     if (intersects.length > 0) {{
-                        const mesh = intersects[0].object;
-                        const sensorName = mesh.userData.sensorName;
-                        if (mesh.userData.isUsable || mesh.userData.isNoData) {{
-                            flyCameraTo(mesh, true);
-                            
-                            // Мгновенная передача выбора родителю Streamlit
-                            try {{
-                                const currentUrl = new URL(window.parent.location.href);
-                                if (currentUrl.searchParams.get('sensor') !== sensorName) {{
-                                    currentUrl.searchParams.set('sensor', sensorName);
-                                    window.parent.location.assign(currentUrl.toString());
-                                }}
-                            }} catch(err) {{
-                                console.log('Синхронизация URL:', err);
+                        let obj = intersects[0].object;
+                        while (obj && !obj.userData.sensorName && obj.parent) {{
+                            obj = obj.parent;
+                        }}
+                        return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null;
+                    }}
+                    return null;
+                }}
+
+                window.addEventListener('click', function(e) {{
+                    const sensorMesh = getIntersectedSensor(e);
+                    if (sensorMesh) {{
+                        const sensorName = sensorMesh.userData.sensorName;
+                        
+                        // Мгновенная подсветка золотым
+                        interactiveSensors.forEach(m => {{
+                            if (m.userData.isUsable) {{
+                                const isSel = (m.userData.sensorName === sensorName);
+                                const c = isSel ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
+                                m.material.color = c;
+                                m.material.emissive = c;
+                                m.material.emissiveIntensity = isSel ? 2.8 : 1.8;
                             }}
+                        }});
+
+                        flyCameraTo(sensorMesh, true);
+                        
+                        // ПРЯМАЯ ПЕРЕДАЧА В СТРОКУ URL ДЛЯ ОБНОВЛЕНИЯ STREAMLIT
+                        try {{
+                            const pUrl = new URL(window.parent.location.href);
+                            if (pUrl.searchParams.get('sensor') !== sensorName) {{
+                                pUrl.searchParams.set('sensor', sensorName);
+                                window.parent.location.href = pUrl.toString();
+                            }}
+                        }} catch(err) {{
+                            console.error('Ошибка синхронизации:', err);
                         }}
                     }}
                 }});
 
                 window.addEventListener('mousemove', function(e) {{
-                    const rect = renderer.domElement.getBoundingClientRect();
-                    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-                    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-                    raycaster.setFromCamera(mouse, camera);
-                    const intersects = raycaster.intersectObjects(interactiveSensors);
-
-                    if (intersects.length > 0) {{
-                        const mesh = intersects[0].object;
-                        const name = mesh.userData.sensorName;
-                        const val = mesh.userData.val;
-                        const isUsable = mesh.userData.isUsable;
-                        const isNoData = mesh.userData.isNoData;
+                    const sensorMesh = getIntersectedSensor(e);
+                    if (sensorMesh) {{
+                        const name = sensorMesh.userData.sensorName;
+                        const val = sensorMesh.userData.val;
+                        const isUsable = sensorMesh.userData.isUsable;
+                        const isNoData = sensorMesh.userData.isNoData;
 
                         tooltip.style.display = 'block';
                         tooltip.style.left = (e.clientX + 14) + 'px';
@@ -1162,9 +1181,6 @@ with col_3d:
                         }} else if (isNoData) {{
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span>';
                             renderer.domElement.style.cursor = 'pointer';
-                        }} else {{
-                            tooltip.style.display = 'none';
-                            renderer.domElement.style.cursor = 'default';
                         }}
                     }} else {{
                         tooltip.style.display = 'none';
