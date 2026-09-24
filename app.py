@@ -288,7 +288,10 @@ def get_model_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# --- STREAMLIT ARAYÜZÜ ---
+# --- СЧИТЫВАНИЕ ВЫБРАННОГО ИЗ URL СЕНСОРА ---
+query_params = st.query_params
+url_selected_sensor = query_params.get("sensor", "Seçiniz...")
+
 col_nav, col_3d = st.columns([1, 4])
 
 with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
@@ -322,7 +325,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА СТРОГО ПО ФАКТИЧЕСКИМ МИНИМУМАМ И МАКСИМУМАМ
+# Расчет границ по фактическим данным
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -352,11 +355,29 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]:+.1f} | Maks: {clim[1]:+.1f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
-    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(active_category_values.keys())))
-    if selected_sensor != "Seçiniz...":
+    
+    # АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ: список учитывает клик из 3D
+    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
+    default_idx = 0
+    if url_selected_sensor in sensor_options:
+        default_idx = sensor_options.index(url_selected_sensor)
+
+    selected_sensor = st.selectbox(
+        "Sensör Değerini İncele:",
+        options=sensor_options,
+        index=default_idx
+    )
+
+    # Если выбор изменился вручную в выпадающем списке, обновляем URL
+    if selected_sensor != "Seçiniz..." and selected_sensor != url_selected_sensor:
+        st.query_params["sensor"] = selected_sensor
+    elif selected_sensor == "Seçiniz..." and "sensor" in st.query_params:
+        del st.query_params["sensor"]
+
+    if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
         st.metric(label=selected_sensor, value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}")
 
-# --- 3B THREE.JS GÖRSELLEŞTİRME ---
+# --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -495,15 +516,15 @@ with col_3d:
                 const lblMid = document.getElementById('lbl-mid');
                 const lblMin = document.getElementById('lbl-min');
 
-                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА (TURBO / RAINBOW)
+                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
-                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
-                    new THREE.Color("#00E5FF"), // 0.16: Циан
-                    new THREE.Color("#00FF44"), // 0.33: Зеленый / Лайм
-                    new THREE.Color("#FFE600"), // 0.50: Желтый
-                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
-                    new THREE.Color("#FF5500"), // 0.83: Оранжево-красный
-                    new THREE.Color("#FF0022")  // 1.00: Алый красный
+                    new THREE.Color("#0022FF"),
+                    new THREE.Color("#00E5FF"),
+                    new THREE.Color("#00FF44"),
+                    new THREE.Color("#FFE600"),
+                    new THREE.Color("#FFAA00"),
+                    new THREE.Color("#FF5500"),
+                    new THREE.Color("#FF0022")
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -525,7 +546,6 @@ with col_3d:
                     return sampleColorRamp(RAINBOW_STOPS, t);
                 }}
 
-                // ЕДИНАЯ РАДУЖНАЯ ПОЛОСА ЛЕГЕНДЫ ДЛЯ ВСЕХ РЕЖИМОВ
                 legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
                 legendTitle.innerText = payload.comp === "temp" ? "[°C]" : "[µm/m]";
 
@@ -651,7 +671,6 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    // 1. ПЕРВЫЙ ПРОХОД: СОПОСТАВЛЕНИЕ ДАТЧИКОВ
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -720,6 +739,7 @@ with col_3d:
                                     child.userData.isNoData = true;
                                     interactiveSensors.push(child);
 
+                                    // ЗАЩИТА ОТ ПРОПАДАНИЯ ВНУТРИ СТЕНКИ
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0xFF0033,
                                         emissive: 0xFF0000,
@@ -729,7 +749,7 @@ with col_3d:
                                         depthTest: false,
                                         depthWrite: false
                                     }});
-                                    child.renderOrder = 999;
+                                    child.renderOrder = 9999;
                                 }} else {{
                                     child.visible = false;
                                     child.userData.isUsable = false;
@@ -757,7 +777,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 2. ВЫЧИСЛЕНИЕ ФАКТИЧЕСКИХ ГРАНИЦ ДИАПАЗОНА СТРОГО ПО НАЙДЕННЫМ СЕНСОРАМ
+                    // ТОЧНЫЙ РАСЧЕТ ШКАЛЫ ПО ФАКТИЧЕСКИМ МИНИМУМАМ И МАКСИМУМАМ
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -775,7 +795,6 @@ with col_3d:
                         dynamicClim = payload.clim;
                     }}
 
-                    // ОБНОВЛЕНИЕ ЧИСЕЛ НА ШКАЛЕ ЛЕГЕНДЫ ПО РЕАЛЬНЫМ ЭКСТРЕМУМАМ
                     const finalMin = dynamicClim[0];
                     const finalMax = dynamicClim[1];
                     const finalMid = (finalMin + finalMax) / 2.0;
@@ -784,7 +803,7 @@ with col_3d:
                     lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
                     lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
 
-                    // 3. НАЗНАЧЕНИЕ МАТЕРИАЛОВ ДАТЧИКАМ ПОСЛЕ РАСЧЕТА ШКАЛЫ
+                    // ПРИОРИТЕТ ОТОБРАЖЕНИЯ СЕНСОРОВ ПОВЕРХ ТОННЕЛЕЙ
                     interactiveSensors.forEach(child => {{
                         if (child.userData.isUsable) {{
                             const sensorId = child.userData.sensorName;
@@ -797,10 +816,10 @@ with col_3d:
                                 emissiveIntensity: isSelected ? 2.6 : 1.8,
                                 roughness: 0.05,
                                 metalness: 0.1,
-                                depthTest: false,
+                                depthTest: false, // Сенсор никогда не тонет в стенке
                                 depthWrite: false
                             }});
-                            child.renderOrder = 999;
+                            child.renderOrder = 9999;
 
                             if (isSelected) {{
                                 selectedMeshRef = child;
@@ -808,7 +827,6 @@ with col_3d:
                         }}
                     }});
 
-                    // 4. СБОР ТОЧЕК И РАСЧЕТ ИНТЕРПОЛЯЦИИ НА СВОД ТАКЖЕ ПО DYNAMIC_CLIM
                     const interpolationSensors = [];
                     interactiveSensors.forEach(sMesh => {{
                         if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {{
@@ -1004,7 +1022,7 @@ with col_3d:
                         }}
                     }}
 
-                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ
+                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (ПРИБЛИЖЕННЫЙ РАКУРС)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1033,10 +1051,11 @@ with col_3d:
                             const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
                             controls.target.copy(center);
+                            // Комфортный ракурс вблизи тоннелей
                             camera.position.set(
-                                center.x - maxDim * 0.40,
-                                center.y + maxDim * 0.45,
-                                center.z + maxDim * 0.55
+                                center.x - maxDim * 0.35,
+                                center.y + maxDim * 0.38,
+                                center.z + maxDim * 0.48
                             );
                             controls.update();
                         }}
@@ -1054,7 +1073,7 @@ with col_3d:
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.5)).add(new THREE.Vector3(0, 1.8, 0));
+                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
 
                     if (!animate) {{
                         camera.position.copy(endCamPos);
@@ -1082,6 +1101,7 @@ with col_3d:
                         .start();
                 }}
 
+                // КЛИК В 3D: ПЕРЕДАЧА ВЫБРАННОГО ДАТЧИКА В STREAMLIT ВЫПАДАЮЩИЙ СПИСОК
                 window.addEventListener('click', function(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1092,8 +1112,22 @@ with col_3d:
 
                     if (intersects.length > 0) {{
                         const mesh = intersects[0].object;
+                        const sensorName = mesh.userData.sensorName;
                         if (mesh.userData.isUsable || mesh.userData.isNoData) {{
                             flyCameraTo(mesh, true);
+                            
+                            // АВТОМАТИЧЕСКИЙ ВЫБОР В STREAMLIT ЧЕРЕЗ URL
+                            try {{
+                                const currentUrl = new URL(window.parent.location.href);
+                                if (currentUrl.searchParams.get('sensor') !== sensorName) {{
+                                    currentUrl.searchParams.set('sensor', sensorName);
+                                    window.parent.history.pushState({{}}, '', currentUrl);
+                                    // Отправляем событие родителю Streamlit для мгновенного обновления
+                                    window.parent.dispatchEvent(new Event('popstate'));
+                                }}
+                            }} catch(err) {{
+                                console.log('Синхронизация URL:', err);
+                            }}
                         }}
                     }}
                 }});
@@ -1119,7 +1153,7 @@ with col_3d:
                         
                         if (isUsable) {{
                             const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
-                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                             renderer.domElement.style.cursor = 'pointer';
                         }} else if (isNoData) {{
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span>';
