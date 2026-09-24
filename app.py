@@ -591,7 +591,6 @@ with col_3d:
             font-weight: 700;
         }
 
-        /* Оптимизация плашек на смартфонах */
         @media (max-width: 600px) {
             #color-legend {
                 padding: 6px 8px;
@@ -823,6 +822,7 @@ with col_3d:
             normalizedDataMap[getCanonicalSensorId(rawKey)] = { canonicalKey: rawKey, val: val };
         }
 
+        // СТРОГАЯ ПРОВЕРКА ДАННЫХ БЕЗ ВИРТУАЛЬНЫХ ПОДМЕН
         function checkSensorData(sensorId, comp) {
             const uId = sensorId.toUpperCase();
             const nId = normalizeKey(sensorId);
@@ -831,13 +831,6 @@ with col_3d:
             if (normalizedDataMap[uId]) return { found: true, key: normalizedDataMap[uId].canonicalKey, val: normalizedDataMap[uId].val };
             if (normalizedDataMap[cId]) return { found: true, key: normalizedDataMap[cId].canonicalKey, val: normalizedDataMap[cId].val };
             if (normalizedDataMap[nId]) return { found: true, key: normalizedDataMap[nId].canonicalKey, val: normalizedDataMap[nId].val };
-
-            if (comp === "temp" && !uId.includes("-TP")) {
-                const tpVariant = uId.replace("-CS", "-TP").replace("-S", "-TP");
-                const cTpVariant = getCanonicalSensorId(tpVariant);
-                if (normalizedDataMap[tpVariant]) return { found: true, key: normalizedDataMap[tpVariant].canonicalKey, val: normalizedDataMap[tpVariant].val };
-                if (normalizedDataMap[cTpVariant]) return { found: true, key: normalizedDataMap[cTpVariant].canonicalKey, val: normalizedDataMap[cTpVariant].val };
-            }
 
             return { found: false, key: sensorId, val: NaN };
         }
@@ -967,6 +960,7 @@ with col_3d:
                 const uName = name.toUpperCase();
                 const sensorId = extractSensorId(name);
 
+                // СТРОГАЯ ФИЛЬТРАЦИЯ: В ТЕМПЕРАТУРЕ ТОЛЬКО МЕШИ С -TP
                 let isCategory = false;
                 if (payload.comp === "hoop") {
                     if (uName.includes("-CS")) isCategory = true;
@@ -974,7 +968,6 @@ with col_3d:
                     if (uName.includes("-S") && !uName.includes("-CS")) isCategory = true;
                 } else if (payload.comp === "temp") {
                     if (uName.includes("-TP")) isCategory = true;
-                    else if (checkSensorData(sensorId, "temp").found) isCategory = true;
                 }
 
                 if (!isCategory) return;
@@ -1058,7 +1051,7 @@ with col_3d:
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
                     
-                    // ПОЛНЫЙ ВОЗВРАТ К ИСХОДНОМУ МАСШТАБУ БЕЗ УВЕЛИЧЕНИЙ
+                    // Исходный масштаб
                     detachedMesh.scale.copy(wScale);
 
                     detachedMesh.userData.sensorName = sensorName;
