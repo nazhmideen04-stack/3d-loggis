@@ -352,7 +352,7 @@ with col_nav:
 
     st.markdown("---")
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
-    selected_sensor = st.selectbox("Sensör Değerini Иncele:", options=sensor_options)
+    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=sensor_options)
 
     if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
         st.metric(
@@ -538,15 +538,14 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // СОЧНАЯ ИНЖЕНЕРНАЯ 7-СТУПЕНЧАТАЯ РАДУГА
                 const strainStops = [
-                    new THREE.Color("#0022FF"), // Глубокий синий
-                    new THREE.Color("#00E5FF"), // Циан
-                    new THREE.Color("#00FF44"), // Зеленый
-                    new THREE.Color("#FFE600"), // Желтый
-                    new THREE.Color("#FFAA00"), // Оранжевый
-                    new THREE.Color("#FF5500"), // Красно-оранжевый
-                    new THREE.Color("#FF0022")  // Алый красный
+                    new THREE.Color("#0022FF"),
+                    new THREE.Color("#00E5FF"),
+                    new THREE.Color("#00FF44"),
+                    new THREE.Color("#FFE600"),
+                    new THREE.Color("#FFAA00"),
+                    new THREE.Color("#FF5500"),
+                    new THREE.Color("#FF0022")
                 ];
 
                 const tempStops = [
@@ -647,11 +646,18 @@ with col_3d:
                     return m ? m[0] : name;
                 }}
 
+                // СТРОГАЯ ФИЛЬТРАЦИЯ КАТЕГОРИЙ (ТОЛЬКО ТОТ ТИП, КОТОРЫЙ ВЫБРАН)
                 function isCategoryMatch(name, comp) {{
                     const u = name.toUpperCase();
-                    if (comp === "hoop") return u.includes("-CS");
-                    if (comp === "axial") return (u.includes("-S") || u.includes("-S1") || u.includes("-S2") || u.includes("-S3")) && !u.includes("-CS");
-                    if (comp === "temp") return u.includes("-TP") || u.includes("-CS") || u.includes("-S");
+                    if (comp === "hoop") {{
+                        return u.includes("-CS");
+                    }}
+                    if (comp === "axial") {{
+                        return u.includes("-S") && !u.includes("-CS");
+                    }}
+                    if (comp === "temp") {{
+                        return u.includes("-TP");
+                    }}
                     return false;
                 }}
 
@@ -739,7 +745,6 @@ with col_3d:
                                 return;
                             }}
 
-                            // СКРЫВАЕМ ТОЛЬКО ВНУТРЕННИЕ КРУГИ И ПЛОСКИЕ ДИСКИ
                             const isParasiticRing = (
                                 uName.includes("RING") ||
                                 uName.includes("SEGMENT") ||
@@ -757,7 +762,6 @@ with col_3d:
                                 uName.includes("COVER")
                             );
 
-                            // Важно: не скрываем меши, которые начинаются на TA- или TB-, т.к. это могут быть датчики
                             if (isParasiticRing && !uName.startsWith("TA-") && !uName.startsWith("TB-")) {{
                                 child.visible = false;
                                 return;
@@ -795,7 +799,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ПЕРЕНОСИМ ДАТЧИКИ В ОТДЕЛЬНЫЙ СЛОЙ (ЧИСТЫЙ БЕЛЫЙ ЦВЕТ)
+                    // ПЕРЕНОС СЕНСОРОВ В ОТДЕЛЬНУЮ СЦЕНУ: ПОКАЗ КРАСНЫХ СТРОГО В РАМКАХ ТЕКУЩЕГО ТИПА
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
@@ -812,16 +816,25 @@ with col_3d:
                         }}
 
                         const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
-                        const isCategory = isCategoryMatch(sensorId, payload.comp);
+                        
+                        // Проверка принадлежности объекта ИСКЛЮЧИТЕЛЬНО выбранному типу
+                        const isCategory = isCategoryMatch(resolvedSensorId, payload.comp) || (payload.comp === "temp" && isCategoryMatch(sensorId, "temp"));
 
                         if (hasData || (isCategory && payload.showNoDataRed)) {{
-                            child.userData.sensorName = sensorId;
+                            child.userData.sensorName = resolvedSensorId;
                             child.userData.val = hasData ? payload.activeCategoryValues[resolvedSensorId] : NaN;
                             child.userData.isUsable = hasData;
                             child.userData.isNoData = !hasData;
 
                             const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
-                            const sensorColor = isSelected ? 0xFFD700 : (hasData ? 0xFFFFFF : 0xFF0033);
+                            
+                            // Если есть данные - белый (или золотой при выборе), если данных нет и чекбокс включен - ярко-красный
+                            let sensorColor = 0xFFFFFF;
+                            if (isSelected) {{
+                                sensorColor = 0xFFD700;
+                            }} else if (!hasData) {{
+                                sensorColor = 0xFF0033;
+                            }}
 
                             child.material = new THREE.MeshBasicMaterial({{
                                 color: sensorColor,
@@ -852,7 +865,7 @@ with col_3d:
 
                             if (isSelected) {{
                                 selectedMeshRef = detachedMesh;
-                                updateHud(sensorId, detachedMesh.userData.val);
+                                updateHud(resolvedSensorId, detachedMesh.userData.val);
                             }}
                         }} else {{
                             child.visible = false;
@@ -900,7 +913,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ЧИСТАЯ ПОЛАЯ ИНТЕРПОЛЯЦИЯ СВОДА (БЕЗ ВНУТРЕННИХ ДИСКОВ)
+                    // ЧИСТАЯ ПОЛАЯ ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -980,6 +993,7 @@ with col_3d:
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
+                        tMesh.renderOrder = 0;
                         tMesh.material.needsUpdate = true;
                     }});
 
