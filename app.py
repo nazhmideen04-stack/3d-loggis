@@ -722,30 +722,33 @@ with col_3d:
             return { found: false, key: sensorId, val: NaN };
         }
 
+        // ШРИФТ И РАЗМЕР СПРАЙТА УВЕЛИЧЕНЫ РОВНО В 4 РАЗА
         function createPortalMarker(text) {
             const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 256;
+            canvas.width = 2048; // Увеличенное разрешение холста в 4 раза
+            canvas.height = 1024;
             const ctx = canvas.getContext('2d');
 
             ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
             ctx.strokeStyle = '#00C8E6';
-            ctx.lineWidth = 14;
-            ctx.strokeRect(10, 10, 492, 236);
-            ctx.fillRect(10, 10, 492, 236);
+            ctx.lineWidth = 56; // 14 * 4
+            ctx.strokeRect(40, 40, 1968, 944);
+            ctx.fillRect(40, 40, 1968, 944);
 
-            ctx.font = '900 135px Syne, Chakra Petch, sans-serif';
+            // 135px * 4 = 540px
+            ctx.font = '900 540px Syne, Chakra Petch, sans-serif';
             ctx.fillStyle = '#00E5FF';
             ctx.shadowColor = '#00C8E6';
-            ctx.shadowBlur = 18;
+            ctx.shadowBlur = 72;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(text, 256, 128);
+            ctx.fillText(text, 1024, 512);
 
             const texture = new THREE.CanvasTexture(canvas);
             const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
             const sprite = new THREE.Sprite(mat);
-            sprite.scale.set(6.0, 3.0, 1);
+            // Масштаб увеличен в 4 раза: 6.0 * 4 = 24.0, 3.0 * 4 = 12.0
+            sprite.scale.set(24.0, 12.0, 1);
             return sprite;
         }
 
@@ -1000,8 +1003,7 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
-            // АЛЬТЕРНАТИВНОЕ РЕШЕНИЕ: DEPTH-MASK / FRONT-SIDE РЕНДЕРИНГ
-            // Тоннель полностью оригинальный. Диски исчезают, а прозрачность работает на 100%!
+            // ИНТЕРПОЛЯЦИЯ И АЛЬТЕРНАТИВНОЕ РЕШЕНИЕ: ПРЯМАЯ ПРОЗРАЧНОСТЬ И ЧИСТЫЙ СВОД
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -1070,7 +1072,6 @@ with col_3d:
 
                 const isTransparent = payload.tunnelOpacity < 0.98;
 
-                // 1. Предварительный проход глубины: скрывает всё, что находится внутри трубы
                 if (isTransparent) {
                     const depthMaskMat = new THREE.MeshBasicMaterial({
                         colorWrite: false,
@@ -1082,7 +1083,6 @@ with col_3d:
                     tMesh.add(depthMaskMesh);
                 }
 
-                // 2. Основной визуальный материал: рисует внешнюю полупрозрачную оболочку свода
                 const visualMat = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
@@ -1091,7 +1091,7 @@ with col_3d:
                     roughness: 0.18,
                     metalness: 0.02,
                     depthWrite: !isTransparent,
-                    side: THREE.FrontSide // Строго FrontSide убирает просвечивание внутренних дисков и перегородок!
+                    side: THREE.FrontSide
                 });
 
                 tMesh.material = visualMat;
@@ -1116,17 +1116,19 @@ with col_3d:
 
             const portalsGroup = new THREE.Group();
 
+            // ПОЗИЦИОНИРОВАНИЕ УВЕЛИЧЕННЫХ ПОРТАЛОВ
             if (hasTA) {
                 const cA = boxTA.getCenter(new THREE.Vector3());
                 const spriteTA = createPortalMarker("TA");
-                spriteTA.position.set(cA.x, boxTA.max.y + 3.2, boxTA.min.z - 2.0);
+                // Поднят выше с учетом увеличенного размера (24x12)
+                spriteTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0);
                 portalsGroup.add(spriteTA);
             }
 
             if (hasTB) {
                 const cB = boxTB.getCenter(new THREE.Vector3());
                 const spriteTB = createPortalMarker("TB");
-                spriteTB.position.set(cB.x, boxTB.max.y + 3.2, boxTB.min.z - 2.0);
+                spriteTB.position.set(cB.x, boxTB.max.y + 8.5, boxTB.min.z - 4.0);
                 portalsGroup.add(spriteTB);
             }
 
@@ -1238,6 +1240,7 @@ with col_3d:
             console.error(err);
         });
 
+        // ПЛАШКА ВЫБРАННОГО ДАТЧИКА: И ДЛЯ РАБОЧИХ, И ДЛЯ НЕРАБОЧИХ
         function updateHud(name, val, isUsable) {
             selectedHud.style.display = 'block';
             hudName.innerText = name;
