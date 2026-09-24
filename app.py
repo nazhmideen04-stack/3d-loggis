@@ -793,7 +793,6 @@ with col_3d:
             const rawSensors = [];
 
             model.traverse(function(child) {
-                // Прячем все линии и вспомогательные сплайны Max
                 if (child.isLine || child.isLineSegments) {
                     child.visible = false;
                     return;
@@ -804,30 +803,6 @@ with col_3d:
                     const uName = name.toUpperCase();
 
                     if (uName.includes("BOX001")) {
-                        child.visible = false;
-                        return;
-                    }
-
-                    // ТОЧНЫЙ СПИСОК ПАРАЗИТНЫХ ОБЪЕКТОВ ИЗ ПРОШЛОГО РАБОЧЕГО ШАГА:
-                    // Отсекает только вспомогательные диски, кольца и швы Max, не трогая основное тело тоннеля
-                    const isParasiticRing = (
-                        uName.includes("RING") ||
-                        uName.includes("SEGMENT") ||
-                        uName.includes("JOINT") ||
-                        uName.includes("SEAM") ||
-                        uName.includes("BORDER") ||
-                        uName.includes("EDGE") ||
-                        uName.includes("FRAME") ||
-                        uName.includes("CIRCLE") ||
-                        uName.includes("DISC") ||
-                        uName.includes("DISK") ||
-                        uName.includes("CAP") ||
-                        uName.includes("CONTOUR") ||
-                        uName.includes("PLUG") ||
-                        uName.includes("COVER")
-                    );
-
-                    if (isParasiticRing && !uName.startsWith("TA-") && !uName.startsWith("TB-") && uName !== "TA" && uName !== "TB") {
                         child.visible = false;
                         return;
                     }
@@ -853,7 +828,7 @@ with col_3d:
                         );
 
                         if (isTunnel) {
-                            // ОРИГИНАЛЬНАЯ ГЕОМЕТРИЯ СВОДА — НИКАКИХ СРЕЗОК И МОДИФИКАЦИЙ ВЕРШИН
+                            // ОРИГИНАЛЬНАЯ ГЕОМЕТРИЯ: СОХРАНЯЕТСЯ ЦЕЛОЙ И НЕ ПОВРЕЖДАЕТСЯ
                             tunnelMeshes.push(child);
                         } else {
                             child.material = new THREE.MeshStandardMaterial({
@@ -1018,12 +993,23 @@ with col_3d:
                 }
             });
 
+            // ОПРЕДЕЛЯЕМ ПРОДОЛЬНУЮ ОСЬ ТОННЕЛЯ (Z ИЛИ X)
+            const overallBox = new THREE.Box3();
+            tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
+            const tunnelSize = overallBox.getSize(new THREE.Vector3());
+            const isZAxis = tunnelSize.z >= tunnelSize.x;
+
             const R_INFLUENCE = 48.0;
 
-            // ИНТЕРПОЛЯЦИЯ СВОДА ТОННЕЛЯ
+            // ИНТЕРПОЛЯЦИЯ СВОДА С ШЕЙДЕРНЫМ ОТСЕЧЕНИЕМ ПОПЕРЕЧНЫХ ДИСКОВ
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
+
+                // Вычисляем нормали геометрии, если их не было
+                if (!geom.attributes.normal) {
+                    geom.computeVertexNormals();
+                }
 
                 const posAttr = geom.attributes.position;
                 const colors = new Float32Array(posAttr.count * 3);
@@ -1089,8 +1075,8 @@ with col_3d:
                 
                 const isTransparent = payload.tunnelOpacity < 0.98;
 
-                // СВОД ТОННЕЛЯ: БЕЗ ВНУТРЕННИХ ДИСКОВ И НАЛОЖЕНИЯ ГРАНЕЙ
-                tMesh.material = new THREE.MeshStandardMaterial({
+                // БЕЗОПАСНЫЙ ШЕЙДЕРНЫЙ МАТЕРИАЛ: СКРЫВАЕТ ТОЛЬКО ВНУТРЕННИЕ ДИСКИ БЕЗ ПОВРЕЖДЕНИЯ СВОДА
+                const mat = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
                     transparent: isTransparent,
@@ -1100,6 +1086,45 @@ with col_3d:
                     depthWrite: !isTransparent,
                     side: THREE.DoubleSide
                 });
+
+                // Передаем нормали в мировом пространстве во фрагментный шейдер
+                mat.onBeforeCompile = (shader) => {
+                    shader.vertexShader = shader.vertexShader.replace(
+                        '#include <common>',
+                        `
+                        #include <common>
+                        varying vec3 vWorldNormalDisc;
+                        `
+                    );
+
+                    shader.vertexShader = shader.vertexShader.replace(
+                        '#include <defaultnormal_vertex>',
+                        `
+                        #include <defaultnormal_vertex>
+                        vWorldNormalDisc = normalize(mat3(modelMatrix) * objectNormal);
+                        `
+                    );
+
+                    shader.fragmentShader = shader.fragmentShader.replace(
+                        '#include <common>',
+                        `
+                        #include <common>
+                        varying vec3 vWorldNormalDisc;
+                        `
+                    );
+
+                    // У дисков нормаль направлена строго вдоль оси Z (или X). Отбрасываем их!
+                    shader.fragmentShader = shader.fragmentShader.replace(
+                        '#include <dithering_fragment>',
+                        `
+                        #include <dithering_fragment>
+                        vec3 wn = normalize(vWorldNormalDisc);
+                        ${isZAxis ? 'if (abs(wn.z) > 0.85) discard;' : 'if (abs(wn.x) > 0.85) discard;'}
+                        `
+                    );
+                };
+
+                tMesh.material = mat;
                 tMesh.renderOrder = 0;
                 tMesh.material.needsUpdate = true;
             });
@@ -1138,14 +1163,10 @@ with col_3d:
             scene.add(portalsGroup);
 
             if (payload.showMeters) {
-                const overallBox = new THREE.Box3();
-                tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
-
                 if (!overallBox.isEmpty()) {
                     const size = overallBox.getSize(new THREE.Vector3());
                     const rulerGroup = new THREE.Group();
 
-                    const isZAxis = size.z >= size.x;
                     const lengthM = isZAxis ? size.z : size.x;
                     const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x;
                     const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
