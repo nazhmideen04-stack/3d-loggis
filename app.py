@@ -556,13 +556,13 @@ with col_3d:
 
         // 1. ПАЛИТРА ДЛЯ ÇEVRESEL GERİNİM (CS) - Турбо Радуга
         const hoopStops = [
-            new THREE.Color("#0022FF"), // Глубокий синий (мин)
-            new THREE.Color("#00E5FF"), // Циан
-            new THREE.Color("#00FF44"), // Зеленый
-            new THREE.Color("#FFE600"), // Желтый
-            new THREE.Color("#FFAA00"), // Янтарный
-            new THREE.Color("#FF5500"), // Оранжевый
-            new THREE.Color("#FF0022")  // Алый красный (макс)
+            new THREE.Color("#0022FF"),
+            new THREE.Color("#00E5FF"),
+            new THREE.Color("#00FF44"),
+            new THREE.Color("#FFE600"),
+            new THREE.Color("#FFAA00"),
+            new THREE.Color("#FF5500"),
+            new THREE.Color("#FF0022")
         ];
 
         // 2. ПАЛИТРА ДЛЯ BOYUNA GERİNİM (S) - Осевая деформация
@@ -809,15 +809,13 @@ with col_3d:
                         return;
                     }
 
-                    // БЕЗОПАСНОЕ СКРЫТИЕ ОТДЕЛЬНЫХ ПЕРЕГОРОДОК БЕЗ ПОВРЕЖДЕНИЯ ОСНОВНОГО СВОДА
+                    // Отдельные объекты-заглушки (если есть отдельными мешами)
                     const isSeparateCapObject = (
                         uName.includes("DISC") ||
                         uName.includes("DISK") ||
                         uName.includes("CAP") ||
                         uName.includes("PLUG") ||
-                        uName.includes("COVER") ||
-                        uName.includes("SEAM") ||
-                        uName.includes("JOINT")
+                        uName.includes("COVER")
                     );
 
                     if (isSeparateCapObject && !uName.startsWith("TA-") && !uName.startsWith("TB-") && uName !== "TA" && uName !== "TB") {
@@ -846,7 +844,6 @@ with col_3d:
                         );
 
                         if (isTunnel) {
-                            // ОРИГИНАЛЬНАЯ ГЕОМЕТРИЯ: Никаких срезок и изменений полигонов!
                             tunnelMeshes.push(child);
                         } else {
                             child.material = new THREE.MeshStandardMaterial({
@@ -920,7 +917,7 @@ with col_3d:
                 }
             });
 
-            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (ПОДСВЕТКА СТРОГО ОДНОГО ВЫБРАННОГО)
+            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ
             finalSensors.forEach(item => {
                 const hasData = item.hasData;
                 const sensorName = item.sensorName;
@@ -931,7 +928,7 @@ with col_3d:
 
                     let sensorColor = 0xFFFFFF; // Белый по умолчанию
                     if (isSelected) {
-                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для одного выбранного
+                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для выбранного
                     } else if (!hasData) {
                         sensorColor = 0xFF0033; // Красный при отсутствии данных
                     }
@@ -1011,7 +1008,12 @@ with col_3d:
                 }
             });
 
-            // ИНТЕРПОЛЯЦИЯ СВОДА (ПОЛНОСТЬЮ ОРИГИНАЛЬНЫЙ СВОД)
+            // ОПРЕДЕЛЯЕМ ПРОДОЛЬНУЮ ОСЬ ТОННЕЛЯ ДЛЯ ОТСЕЧЕНИЯ ПЕРЕГОРОДОК
+            const overallBox = new THREE.Box3();
+            tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
+            const tunnelSize = overallBox.getSize(new THREE.Vector3());
+            const isZAxis = tunnelSize.z >= tunnelSize.x;
+
             const R_INFLUENCE = 48.0;
 
             tunnelMeshes.forEach(tMesh => {
@@ -1081,16 +1083,34 @@ with col_3d:
                 geom.attributes.color.needsUpdate = true;
                 
                 const isTransparent = payload.tunnelOpacity < 0.98;
-                tMesh.material = new THREE.MeshStandardMaterial({
+                
+                // МАТЕРИАЛ ТОННЕЛЯ СО СКРЫТИЕМ ТОЛЬКО ПОПЕРЕЧНЫХ ДИСКОВ (БЕЗ ДЕФОРМАЦИИ ГЕОМЕТРИИ)
+                const mat = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
-                    transparent: isTransparent,
+                    transparent: true,
                     opacity: payload.tunnelOpacity,
                     roughness: 0.18,
                     metalness: 0.02,
                     depthWrite: !isTransparent,
                     side: THREE.DoubleSide
                 });
+
+                // В шейдере отбрасываются только пиксели, нормаль которых смотрит вдоль тоннеля
+                mat.onBeforeCompile = (shader) => {
+                    shader.fragmentShader = shader.fragmentShader.replace(
+                        '#include <dithering_fragment>',
+                        `
+                        #include <dithering_fragment>
+                        // vNormal в Three.js содержит нормаль грани в view-space
+                        // Отбрасываем только поперечные диски-заглушки (Cap-полигоны вдоль оси тоннеля)
+                        vec3 n = normalize(vNormal);
+                        ${isZAxis ? 'if (abs(n.z) > 0.94) discard;' : 'if (abs(n.x) > 0.94) discard;'}
+                        `
+                    );
+                };
+
+                tMesh.material = mat;
                 tMesh.renderOrder = 0;
                 tMesh.material.needsUpdate = true;
             });
@@ -1129,14 +1149,10 @@ with col_3d:
             scene.add(portalsGroup);
 
             if (payload.showMeters) {
-                const overallBox = new THREE.Box3();
-                tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
-
                 if (!overallBox.isEmpty()) {
                     const size = overallBox.getSize(new THREE.Vector3());
                     const rulerGroup = new THREE.Group();
 
-                    const isZAxis = size.z >= size.x;
                     const lengthM = isZAxis ? size.z : size.x;
                     const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x;
                     const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
@@ -1300,7 +1316,6 @@ with col_3d:
             return null;
         }
 
-        // ВЫДЕЛЕНИЕ СТРОГО ОДНОГО СЕНСОРА ПРИ КЛИКЕ С ВЫВОДОМ НАЗВАНИЯ В ХУД
         window.addEventListener('click', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) {
@@ -1355,7 +1370,6 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
-        // ДВУХПРОХОДНЫЙ РЕНДЕР
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
