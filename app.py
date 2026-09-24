@@ -16,7 +16,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# ФИРМЕННЫЙ СТИЛЬ С ПРЯМЫМ ПЕРЕОПРЕДЕЛЕНИЕМ ВСЕХ ЭЛЕМЕНТОВ
+# Базовый фирменный стиль
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -97,63 +97,6 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* =========================================================================
-       ЖЕСТКИЙ ПЕРЕКРАС СЛАЙДЕРА (ПОЛЗУНОК + ТРЕК + ДЕЛЕНИЯ)
-       ========================================================================= */
-    /* 1. Ползунок */
-    div[data-testid="stSlider"] div[role="slider"] {
-        background-color: #00C8E6 !important;
-        border: 2px solid #00C8E6 !important;
-        box-shadow: 0 0 14px rgba(0, 200, 230, 0.8) !important;
-    }
-
-    /* 2. Заполненная часть полосы слайдера (до ползунка) */
-    div[data-testid="stSlider"] [data-baseweb="slider"] > div > div:first-child {
-        background: #00C8E6 !important;
-    }
-    div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="background"] {
-        background-color: #00C8E6 !important;
-    }
-
-    /* 3. Оставшаяся часть полосы */
-    div[data-testid="stSlider"] [data-baseweb="slider"] > div {
-        background: rgba(255, 255, 255, 0.15) !important;
-    }
-
-    /* 4. Защитный фильтр на случай глубоких эмоджи/SVG слоёв BaseWeb */
-    div[data-testid="stSlider"] [data-baseweb="slider"] {
-        filter: hue-rotate(185deg) saturate(3) !important;
-    }
-
-    /* =========================================================================
-       ЖЕСТКИЙ ПЕРЕКРАС ЧЕКБОКСОВ
-       ========================================================================= */
-    /* Оболочка чекбокса */
-    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
-        border-color: #00C8E6 !important;
-    }
-
-    /* Активный чекбокс (фон с галочкой) */
-    div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
-        background-color: #00C8E6 !important;
-        border-color: #00C8E6 !important;
-        box-shadow: 0 0 10px rgba(0, 200, 230, 0.5) !important;
-    }
-
-    /* Галочка внутри */
-    div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] svg path {
-        fill: #0A0E17 !important;
-        stroke: #0A0E17 !important;
-    }
-
-    /* Защитный поворот спектра для чекбоксов */
-    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
-        filter: hue-rotate(185deg) saturate(3) !important;
-    }
-
-    /* =========================================================================
-       КНОПКИ И БЕЙДЖИ
-       ========================================================================= */
     .destech-badge {
         font-family: 'Syne', sans-serif;
         font-size: 16px;
@@ -411,6 +354,32 @@ else:
 with col_nav:
     st.markdown("---")
     st.subheader("GÖRÜNÜM AYARLARI")
+    
+    # ТОЧЕЧНАЯ ИНЪЕКЦИЯ СТИЛЕЙ ДЛЯ GÖRÜNÜM AYARLARI (СЛАЙДЕР И ЧЕКБОКСЫ В ЦИАН)
+    st.markdown("""
+    <style>
+        /* 1. Ползунок и заполненная дорожка слайдера */
+        div[data-testid="stSlider"] [data-baseweb="slider"] {
+            filter: hue-rotate(185deg) saturate(3.5) brightness(1.1) !important;
+        }
+        div[data-testid="stSlider"] div[role="slider"] {
+            background-color: #00C8E6 !important;
+            border-color: #00C8E6 !important;
+            box-shadow: 0 0 12px #00C8E6 !important;
+        }
+        
+        /* 2. Чекбоксы: коробка и галочка */
+        div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+            filter: hue-rotate(185deg) saturate(3.5) brightness(1.1) !important;
+            border-color: #00C8E6 !important;
+        }
+        div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
+            background-color: #00C8E6 !important;
+            border-color: #00C8E6 !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
@@ -805,6 +774,7 @@ with col_3d:
             const texture = new THREE.CanvasTexture(canvas);
             const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
             const sprite = new THREE.Sprite(mat);
+            // 6.0 * 4 = 24.0, 3.0 * 4 = 12.0
             sprite.scale.set(24.0, 12.0, 1);
             return sprite;
         }
@@ -958,7 +928,6 @@ with col_3d:
                 }
             });
 
-            // ЭКСКЛЮЗИВНАЯ ПОДСВЕТКА СТРОГО ОДНОГО СЕНСОРА
             let alreadyHighlightedOne = false;
 
             finalSensors.forEach(item => {
