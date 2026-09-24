@@ -415,10 +415,11 @@ if not vals:
 else:
     real_min = float(min(vals))
     real_max = float(max(vals))
-    if abs(real_max - real_min) < 0.001:
-        clim = [round(real_min - 1.0, 1), round(real_max + 1.0, 1)]
+    # Принудительное расширение узкого диапазона для высокой контрастности шкалы
+    if abs(real_max - real_min) < 0.05:
+        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
     else:
-        clim = [round(real_min, 1), round(real_max, 1)]
+        clim = [round(real_min, 2), round(real_max, 2)]
 
 with col_nav:
     st.markdown("---")
@@ -436,7 +437,7 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
     
     st.write("**Skala Limitleri (Gerçek Min / Maks):**")
-    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.1f} | Maks: {clim[1]:+.1f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
@@ -676,35 +677,34 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
+        // ВЫСОКОКОНТРАСТНАЯ 8-СТУПЕНЧАТАЯ ТЕПЛОВИЗИОННАЯ ПАЛИТРА (TURBO/JET)
+        const temperatureStops = [
+            new THREE.Color("#050833"), // Ультрамарин / Холод
+            new THREE.Color("#0044FF"), // Синий
+            new THREE.Color("#00C8E6"), // Фирменный циан
+            new THREE.Color("#00FF66"), // Яркий зеленый
+            new THREE.Color("#B4FF00"), // Лайм
+            new THREE.Color("#FFDD00"), // Желтый
+            new THREE.Color("#FF5500"), // Оранжевый
+            new THREE.Color("#FF0022")  // Раскаленный красный
+        ];
+
         const hoopStops = [
-            new THREE.Color("#0022FF"),
-            new THREE.Color("#00E5FF"),
-            new THREE.Color("#00FF44"),
-            new THREE.Color("#FFE600"),
-            new THREE.Color("#FFAA00"),
-            new THREE.Color("#FF5500"),
+            new THREE.Color("#0011EE"),
+            new THREE.Color("#00D5FF"),
+            new THREE.Color("#00FF55"),
+            new THREE.Color("#FFEE00"),
+            new THREE.Color("#FF8800"),
             new THREE.Color("#FF0022")
         ];
 
         const axialStops = [
             new THREE.Color("#081D58"),
-            new THREE.Color("#253494"),
             new THREE.Color("#1D91C0"),
             new THREE.Color("#7FCDBB"),
-            new THREE.Color("#FFFFD9"),
             new THREE.Color("#FEB24C"),
             new THREE.Color("#F03B20"),
             new THREE.Color("#BD0026")
-        ];
-
-        // ВЫРАЗИТЕЛЬНАЯ ТЕПЛОВАЯ ПАЛИТРА
-        const tempStops = [
-            new THREE.Color("#0022FF"), // Насыщенный синий (холод)
-            new THREE.Color("#00C8E6"), // Фирменный циан
-            new THREE.Color("#00FF44"), // Чистый зеленый (норма)
-            new THREE.Color("#FFE600"), // Желтый
-            new THREE.Color("#FF5500"), // Оранжевый
-            new THREE.Color("#FF0022")  // Ярко-красный (нагрев)
         ];
 
         let currentStops = hoopStops;
@@ -712,13 +712,14 @@ with col_3d:
             currentStops = axialStops;
             legendTitle.innerText = "Boyuna [µm/m]";
         } else if (payload.comp === "temp") {
-            currentStops = tempStops;
+            currentStops = temperatureStops;
             legendTitle.innerText = "Sıcaklık [°C]";
         } else {
             currentStops = hoopStops;
             legendTitle.innerText = "Çevresel [µm/m]";
         }
 
+        // ПОЛНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ЦВЕТОВЫМИ СТОПАМИ (СВЕРХУ ВНИЗ: MAX -> MIN)
         function buildExactLegendGradient(stops) {
             const n = stops.length;
             const items = [];
@@ -733,22 +734,23 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
+        // ПЛАВНАЯ ЦВЕТОВАЯ ВЫБОРКА БЕЗ СЕРЫХ ПРОВАЛОВ
         function sampleColorRamp(stops, t) {
-            t = Math.max(0, Math.min(1, t));
+            t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
             const idx = Math.floor(scaled);
             const fract = scaled - idx;
             if (idx >= stops.length - 1) return stops[stops.length - 1].clone();
+            
             const c = new THREE.Color();
             c.lerpColors(stops[idx], stops[idx + 1], fract);
             return c;
         }
 
         function getColorForValue(val, clim) {
-            if (val === undefined || isNaN(val)) return new THREE.Color(0x141E2D);
+            if (val === undefined || isNaN(val)) return new THREE.Color(0x0e182a);
             const min = clim[0], max = clim[1];
             let t = (val - min) / ((max - min) || 1.0);
-            t = Math.max(0, Math.min(1, t));
             return sampleColorRamp(currentStops, t);
         }
 
@@ -1080,9 +1082,9 @@ with col_3d:
             if (validVals.length > 0) {
                 let dMin = Math.min(...validVals);
                 let dMax = Math.max(...validVals);
-                if (Math.abs(dMax - dMin) < 0.001) {
-                    dMin -= 1.0;
-                    dMax += 1.0;
+                if (Math.abs(dMax - dMin) < 0.05) {
+                    dMin -= 0.5;
+                    dMax += 0.5;
                 }
                 dynamicClim = [dMin, dMax];
             } else if (payload.clim) {
@@ -1093,9 +1095,9 @@ with col_3d:
             const finalMax = dynamicClim[1];
             const finalMid = (finalMin + finalMax) / 2.0;
 
-            lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(1);
-            lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
-            lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
+            lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(2);
+            lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(2);
+            lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(2);
 
             const interpolationSensors = [];
             interactiveSensors.forEach(sMesh => {
@@ -1113,9 +1115,9 @@ with col_3d:
             });
 
             // =========================================================================
-            // НАДЕЖНАЯ И КОНТРАСТНАЯ ИНТЕРПОЛЯЦИЯ (ЦВЕТА ГАРАНТИРОВАННО ОТОБРАЖАЮТСЯ)
+            // ТОЧНАЯ И КОНТРАСТНАЯ ИНТЕРПОЛЯЦИЯ ЗНАЧЕНИЙ (IDW С ЧЕТКИМ ГРАДИЕНТОМ)
             // =========================================================================
-            const R_INFLUENCE = 45.0; // Рабочий радиус, гарантирующий сплошное покрытие тоннеля
+            const R_INFLUENCE = 28.0; // Оптимальный радиус для четкого разграничения зон
 
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
@@ -1146,32 +1148,31 @@ with col_3d:
                         worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
 
                         let totalWeight = 0;
-                        let accumR = 0, accumG = 0, accumB = 0;
+                        let accumulatedVal = 0;
 
                         for (let j = 0; j < pool.length; j++) {
                             const s = pool[j];
                             const d = worldV.distanceTo(s.pos);
                             
                             if (d < R_INFLUENCE) {
-                                // Параболический весовой фильтр: четкий контраст у датчиков и плавный градиент между ними
-                                const normD = d / R_INFLUENCE;
-                                const w = Math.pow(1.0 - normD, 2.0) / (Math.pow(d, 1.2) + 0.2);
-
-                                const c = getColorForValue(s.val, dynamicClim);
-                                accumR += c.r * w;
-                                accumG += c.g * w;
-                                accumB += c.b * w;
+                                // Плавный кубический спад веса к границе радиуса влияния
+                                const q = 1.0 - (d / R_INFLUENCE);
+                                const w = (q * q * q) / (d + 0.3);
+                                accumulatedVal += s.val * w;
                                 totalWeight += w;
                             }
                         }
 
                         const idx = i * 3;
-                        if (totalWeight > 0.000001) {
-                            colors[idx] = accumR / totalWeight;
-                            colors[idx + 1] = accumG / totalWeight;
-                            colors[idx + 2] = accumB / totalWeight;
+                        if (totalWeight > 0.0001) {
+                            // Окрашиваем интерполированное физическое значение строго через палитру
+                            const interpolatedVal = accumulatedVal / totalWeight;
+                            const c = getColorForValue(interpolatedVal, dynamicClim);
+                            colors[idx] = c.r;
+                            colors[idx + 1] = c.g;
+                            colors[idx + 2] = c.b;
                         } else {
-                            // Если точка дальше R_INFLUENCE, окрашиваем в ближайший базовый цвет
+                            // Спокойный цвет стенки тоннеля вне зоны сенсоров
                             colors[idx] = 0.08;
                             colors[idx + 1] = 0.11;
                             colors[idx + 2] = 0.16;
@@ -1200,7 +1201,7 @@ with col_3d:
                     vertexColors: true,
                     transparent: isTransparent,
                     opacity: payload.tunnelOpacity,
-                    roughness: 0.18,
+                    roughness: 0.20,
                     metalness: 0.02,
                     depthWrite: !isTransparent,
                     side: THREE.FrontSide
