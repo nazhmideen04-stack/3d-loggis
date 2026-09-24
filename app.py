@@ -321,7 +321,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Расчет диапазона строго по фактическим минимумам и максимумам
+# Фактические экстремумы для шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -351,20 +351,12 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]:+.1f} | Maks: {clim[1]:+.1f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
-    
-    # Выпадающий список для ручного выбора
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
+    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=sensor_options)
 
-    selected_sensor = st.selectbox(
-        "Sensör Değerini İncele:",
-        options=sensor_options,
-        key="sensor_selector_box"
-    )
-
-    # Отображение значения в левой панели
     if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
         st.metric(
-            label=f"Seçilen Sensör: {selected_sensor}",
+            label=f"Seçilen: {selected_sensor}",
             value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
         )
 
@@ -546,14 +538,14 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
+                // 7-СТУПЕНЧАТАЯ ВЫСОКОКОНТРАСТНАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
                     new THREE.Color("#0022FF"), // 0.00: Глубокий синий
                     new THREE.Color("#00E5FF"), // 0.16: Циан
                     new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
                     new THREE.Color("#FFE600"), // 0.50: Желтый
-                    new THREE.Color("#FFAA00"), // 0.67: Янтарный
-                    new THREE.Color("#FF5500"), // 0.83: Оранжевый
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
+                    new THREE.Color("#FF5500"), // 0.83: Оранжево-красный
                     new THREE.Color("#FF0022")  // 1.00: Алый красный
                 ];
 
@@ -773,12 +765,16 @@ with col_3d:
                                     child.userData.isNoData = true;
                                     interactiveSensors.push(child);
 
+                                    // НЕПРОЗРАЧНЫЙ КРАСНЫЙ ДЛЯ ДАТЧИКОВ БЕЗ ДАННЫХ
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0xFF0033,
                                         emissive: 0xFF0000,
-                                        emissiveIntensity: 2.5,
-                                        roughness: 0.0,
+                                        emissiveIntensity: 2.2,
+                                        roughness: 0.1,
                                         metalness: 0.1,
+                                        transparent: false,
+                                        opacity: 1.0,
+                                        side: THREE.DoubleSide,
                                         depthTest: false,
                                         depthWrite: false
                                     }});
@@ -836,7 +832,7 @@ with col_3d:
                     lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
                     lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
 
-                    // НЕЙТРАЛЬНЫЙ БЕЛЫЙ ЦВЕТ ДАТЧИКОВ (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
+                    // НЕПРОЗРАЧНЫЕ БЕЛЫЕ СЕНСОРЫ СО ВСЕХ СТОРОН (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
                     interactiveSensors.forEach(child => {{
                         if (child.userData.isUsable) {{
                             const sensorId = child.userData.sensorName;
@@ -847,10 +843,13 @@ with col_3d:
                             child.material = new THREE.MeshStandardMaterial({{
                                 color: sensorColor,
                                 emissive: sensorColor,
-                                emissiveIntensity: isSelected ? 2.8 : 1.8,
-                                roughness: 0.1,
-                                metalness: 0.1,
-                                depthTest: false,
+                                emissiveIntensity: isSelected ? 2.6 : 1.5,
+                                roughness: 0.2,
+                                metalness: 0.0,
+                                transparent: false,          // Непрозрачный
+                                opacity: 1.0,                 // 100% плотный цвет
+                                side: THREE.DoubleSide,       // Виден со всех сторон поворота
+                                depthTest: false,             // Не тонет в геометрии тоннеля
                                 depthWrite: false
                             }});
                             child.renderOrder = 9999;
@@ -879,8 +878,8 @@ with col_3d:
                         }}
                     }});
 
-                    // ШИРОКАЯ И ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ
-                    const R_INFLUENCE = 45.0;
+                    // МАКСИМАЛЬНО ВЫРАЗИТЕЛЬНАЯ ИНТЕРПОЛЯЦИЯ СВОДА
+                    const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -921,8 +920,9 @@ with col_3d:
                                     
                                     if (d < R_INFLUENCE) {{
                                         const rNorm = d / R_INFLUENCE;
-                                        const wEnvelope = (1.0 - rNorm * rNorm);
-                                        const w = (wEnvelope * wEnvelope) / (d * d + 0.35);
+                                        // Экспоненциальное контрастное ядро: цвета выразительные и плотные
+                                        const wEnvelope = Math.pow(1.0 - Math.pow(rNorm, 1.3), 1.2);
+                                        const w = wEnvelope / (Math.pow(d, 1.8) + 0.15);
 
                                         const c = getColorForValue(s.val, dynamicClim);
                                         accumR += c.r * w;
@@ -954,8 +954,8 @@ with col_3d:
                             vertexColors: true,
                             transparent: isTransparent,
                             opacity: payload.tunnelOpacity,
-                            roughness: 0.25,
-                            metalness: 0.05,
+                            roughness: 0.18,
+                            metalness: 0.02,
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
@@ -1163,7 +1163,6 @@ with col_3d:
                     return null;
                 }}
 
-                // КЛИК В 3D: МГНОВЕННОЕ ВЫДЕЛЕНИЕ, ПОКАЗ В КАРТОЧКЕ И ПОДЛЕТ
                 window.addEventListener('click', function(e) {{
                     const sensorMesh = getIntersectedSensor(e);
                     if (sensorMesh) {{
@@ -1176,7 +1175,7 @@ with col_3d:
                                 const c = isSel ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
                                 m.material.color = c;
                                 m.material.emissive = c;
-                                m.material.emissiveIntensity = isSel ? 2.8 : 1.8;
+                                m.material.emissiveIntensity = isSel ? 2.6 : 1.5;
                             }}
                         }});
 
