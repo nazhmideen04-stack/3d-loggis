@@ -321,7 +321,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Реальный диапазон шкалы по фактическим экстремумам
+# Реальный диапазон шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -499,7 +499,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE TÜNEL ИНТЕРПОЛЯЦИЯСЫ ЖҮКТЕЛУДЕ...</div>
+                <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="selected-hud">
@@ -538,15 +538,14 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ВЫСОКОКОНТРАСТНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
-                    new THREE.Color("#0022FF"), // Глубокий синий
-                    new THREE.Color("#00E5FF"), // Циан
-                    new THREE.Color("#00FF44"), // Чистый зеленый
-                    new THREE.Color("#FFE600"), // Желтый
-                    new THREE.Color("#FFAA00"), // Янтарный
-                    new THREE.Color("#FF5500"), // Оранжевый
-                    new THREE.Color("#FF0022")  // Алый красный
+                    new THREE.Color("#0022FF"),
+                    new THREE.Color("#00E5FF"),
+                    new THREE.Color("#00FF44"),
+                    new THREE.Color("#FFE600"),
+                    new THREE.Color("#FFAA00"),
+                    new THREE.Color("#FF5500"),
+                    new THREE.Color("#FF0022")
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -571,16 +570,18 @@ with col_3d:
                 legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
                 legendTitle.innerText = payload.comp === "temp" ? "[°C]" : "[µm/m]";
 
+                // ДВЕ НЕЗАВИСИМЫЕ СЦЕНЫ: ДЛЯ ТОННЕЛЯ И ДЛЯ СЕНСОРОВ
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
+
+                const sensorScene = new THREE.Scene(); // Сенсоры рендерятся строго в отдельном слое
 
                 const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
                 const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-                renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.35;
+                renderer.autoClear = false; // Отключаем автоочистку для наложения второго слоя
                 container.appendChild(renderer.domElement);
 
                 const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -697,6 +698,8 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
+                    const rawSensors = [];
+
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -734,72 +737,7 @@ with col_3d:
                             );
 
                             if (isSensorObject) {{
-                                const sensorId = extractSensorId(name);
-                                child.userData.sensorName = sensorId;
-                                child.userData.isSensor = true;
-
-                                let resolvedSensorId = sensorId;
-                                if (payload.comp === "temp" && !sensorId.includes("-TP")) {{
-                                    const baseMatch = sensorId.match(/^(T[AB]-(?:CS|S)\d+-[LR](?:-M\d+)?)/i);
-                                    if (baseMatch) {{
-                                        const tpCandidate = baseMatch[1].replace(/-CS|-S/i, "-TP");
-                                        if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
-                                            resolvedSensorId = tpCandidate;
-                                        }}
-                                    }}
-                                }}
-
-                                const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
-                                const isCategory = isCategoryMatch(sensorId, payload.comp);
-
-                                if (hasData) {{
-                                    child.visible = true;
-                                    const rawVal = payload.activeCategoryValues[resolvedSensorId];
-                                    child.userData.val = rawVal;
-                                    child.userData.isUsable = true;
-                                    child.userData.isNoData = false;
-                                    interactiveSensors.push(child);
-
-                                    const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
-                                    const sensorColor = isSelected ? 0xFFD700 : 0xFFFFFF;
-
-                                    // 100% НЕПРОЗРАЧНЫЙ БЕЛЫЙ МАТЕРИАЛ ДАТЧИКА
-                                    child.material = new THREE.MeshBasicMaterial({{
-                                        color: sensorColor,
-                                        side: THREE.DoubleSide,
-                                        transparent: false,
-                                        opacity: 1.0,
-                                        blending: THREE.NoBlending,
-                                        depthTest: false,
-                                        depthWrite: false
-                                    }});
-                                    child.renderOrder = 99999;
-
-                                    if (isSelected) {{
-                                        selectedMeshRef = child;
-                                        updateHud(sensorId, rawVal);
-                                    }}
-                                }} else if (isCategory && payload.showNoDataRed) {{
-                                    child.visible = true;
-                                    child.userData.isUsable = false;
-                                    child.userData.isNoData = true;
-                                    interactiveSensors.push(child);
-
-                                    child.material = new THREE.MeshBasicMaterial({{
-                                        color: 0xFF0033,
-                                        side: THREE.DoubleSide,
-                                        transparent: false,
-                                        opacity: 1.0,
-                                        blending: THREE.NoBlending,
-                                        depthTest: false,
-                                        depthWrite: false
-                                    }});
-                                    child.renderOrder = 99999;
-                                }} else {{
-                                    child.visible = false;
-                                    child.userData.isUsable = false;
-                                    child.userData.isNoData = false;
-                                }}
+                                rawSensors.push(child);
                             }} else {{
                                 const isTunnel = (
                                     uName.includes("TUNNEL") || 
@@ -811,7 +749,6 @@ with col_3d:
                                 );
 
                                 if (isTunnel) {{
-                                    child.renderOrder = 0;
                                     tunnelMeshes.push(child);
                                 }} else {{
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -820,6 +757,72 @@ with col_3d:
                                     }});
                                 }}
                             }}
+                        }}
+                    }});
+
+                    // ПЕРЕНОСИМ ДАТЧИКИ В ОТДЕЛЬНУЮ СЦЕНУ БЕЗ ВЛИЯНИЯ ТОННЕЛЯ
+                    rawSensors.forEach(child => {{
+                        const name = child.name;
+                        const sensorId = extractSensorId(name);
+
+                        let resolvedSensorId = sensorId;
+                        if (payload.comp === "temp" && !sensorId.includes("-TP")) {{
+                            const baseMatch = sensorId.match(/^(T[AB]-(?:CS|S)\d+-[LR](?:-M\d+)?)/i);
+                            if (baseMatch) {{
+                                const tpCandidate = baseMatch[1].replace(/-CS|-S/i, "-TP");
+                                if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
+                                    resolvedSensorId = tpCandidate;
+                                }}
+                            }}
+                        }}
+
+                        const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
+                        const isCategory = isCategoryMatch(sensorId, payload.comp);
+
+                        if (hasData || (isCategory && payload.showNoDataRed)) {{
+                            child.userData.sensorName = sensorId;
+                            child.userData.val = hasData ? payload.activeCategoryValues[resolvedSensorId] : NaN;
+                            child.userData.isUsable = hasData;
+                            child.userData.isNoData = !hasData;
+
+                            const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
+                            const sensorColor = isSelected ? 0xFFD700 : (hasData ? 0xFFFFFF : 0xFF0033);
+
+                            // ЧИСТЫЙ НЕПРОЗРАЧНЫЙ БЕЛЫЙ МАТЕРИАЛ БЕЗ СМЕШИВАНИЯ
+                            child.material = new THREE.MeshBasicMaterial({{
+                                color: sensorColor,
+                                side: THREE.DoubleSide,
+                                transparent: false,
+                                opacity: 1.0,
+                                depthTest: true,
+                                depthWrite: true
+                            }});
+
+                            // Клонируем в отдельную независимую сцену датчиков
+                            const wPos = new THREE.Vector3();
+                            const wQuat = new THREE.Quaternion();
+                            const wScale = new THREE.Vector3();
+                            child.getWorldPosition(wPos);
+                            child.getWorldQuaternion(wQuat);
+                            child.getWorldScale(wScale);
+
+                            const detachedMesh = new THREE.Mesh(child.geometry.clone(), child.material);
+                            detachedMesh.position.copy(wPos);
+                            detachedMesh.quaternion.copy(wQuat);
+                            detachedMesh.scale.copy(wScale);
+                            detachedMesh.userData = child.userData;
+
+                            sensorScene.add(detachedMesh);
+                            interactiveSensors.push(detachedMesh);
+
+                            child.visible = false; // Прячем в основной сцене
+
+                            if (isSelected) {{
+                                selectedMeshRef = detachedMesh;
+                                updateHud(sensorId, detachedMesh.userData.val);
+                            }}
+                        }} else {{
+                            child.visible = false;
                         }}
                     }});
 
@@ -852,13 +855,11 @@ with col_3d:
                     const interpolationSensors = [];
                     interactiveSensors.forEach(sMesh => {{
                         if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {{
-                            const wPos = new THREE.Vector3();
-                            sMesh.getWorldPosition(wPos);
                             const uName = sMesh.userData.sensorName.toUpperCase();
                             const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
 
                             interpolationSensors.push({{
-                                pos: wPos,
+                                pos: sMesh.position.clone(),
                                 val: sMesh.userData.val,
                                 tun: tun,
                                 name: sMesh.userData.sensorName
@@ -866,7 +867,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ВЫРАЗИТЕЛЬНАЯ ИНТЕРПОЛЯЦИЯ СВОДА
+                    // ИНТЕРПОЛЯЦИЯ ТОННЕЛЕЙ
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -946,7 +947,6 @@ with col_3d:
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
-                        tMesh.renderOrder = 0;
                         tMesh.material.needsUpdate = true;
                     }});
 
@@ -1046,7 +1046,6 @@ with col_3d:
                         }}
                     }}
 
-                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1201,11 +1200,19 @@ with col_3d:
                     renderer.setSize(container.clientWidth, container.clientHeight);
                 }});
 
+                // ДВУХПРОХОДНЫЙ РЕНДЕР: СЕНСОРЫ РИСУЮТСЯ ПОВЕРХ ТОННЕЛЯ ВСЕГДА НЕПРОЗРАЧНЫМИ
                 function animate(time) {{
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
                     controls.update();
+
+                    // 1. Очищаем экран и рисуем сцену тоннеля
+                    renderer.clear();
                     renderer.render(scene, camera);
+
+                    // 2. Очищаем буфер глубины и рисуем белые сенсоры
+                    renderer.clearDepth();
+                    renderer.render(sensorScene, camera);
                 }}
                 requestAnimationFrame(animate);
             </script>
