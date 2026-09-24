@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -238,8 +238,8 @@ def ensure_playwright_installed():
 @st.cache_data(ttl=300)
 def fetch_loggis_data(target_date_str=None):
     """
-    Динамически открывает сайт через Playwright, собирает все доступные даты 
-    из выпадающего списка и парсит числовые значения для выбранного периода.
+    Динамически открывает LoggIS, выбирает ALL для получения всех дат, 
+    собирает список доступных временных меток и парсит данные для нужной даты.
     """
     dates_list = []
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
@@ -277,17 +277,14 @@ def fetch_loggis_data(target_date_str=None):
                 pass
             page.wait_for_timeout(1000)
 
-            # Выбираем ALL в первом селекторе, чтобы получить полный доступ к архиву дат сайта
+            # Выбираем ALL в первом комбобоксе для доступа к полной базе дат
             try:
                 page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except Exception:
-                try:
-                    page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
-                except Exception:
-                    pass
+                pass
             page.wait_for_timeout(1000)
 
-            # Динамически считываем ВСЕ доступные даты из второго комбобокса прямо со страницы
+            # Динамически считываем все доступные даты из второго комбобокса на странице
             try:
                 date_combo = page.get_by_role("combobox").nth(1)
                 options = date_combo.locator("option").all_inner_texts()
@@ -295,7 +292,7 @@ def fetch_loggis_data(target_date_str=None):
             except Exception:
                 pass
 
-            # Если пользователь выбрал конкретную дату — выбираем её в селекторе
+            # Если выбрана конкретная дата — устанавливаем её, иначе TABLE_ROW_DATE (актуальная)
             if target_date_str and target_date_str != "En Son (Güncel)":
                 try:
                     page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
@@ -404,8 +401,8 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Первичный запуск: собираем список всех дат из базы и данные по умолчанию
-with st.spinner("LoggIS verileri senkronize ediliyor..."):
+# Автоматически получаем список всех доступных дат и актуальные данные при старте
+with st.spinner("LoggIS zaman etiketleri senkronize ediliyor..."):
     available_dates, current_data = fetch_loggis_data(None)
 
 with col_nav:
@@ -419,7 +416,7 @@ with col_nav:
     st.markdown("---")
     st.subheader("⏱️ Zaman Seçimi")
     
-    # Формируем список: первый пункт — актуальные данные, далее все даты, считанные с сайта
+    # Динамически сформированный список: актуальные данные + все даты, найденные на сайте
     date_options = ["En Son (Güncel)"] + (available_dates if available_dates else [])
     selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_options)
 
@@ -427,7 +424,7 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-# Если выбрана конкретная дата, запрашиваем данные для неё с сайта
+# Загружаем данные для выбранного времени (текущие или конкретная историческая дата)
 if selected_date_choice != "En Son (Güncel)":
     with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
         _, current_data = fetch_loggis_data(selected_date_choice)
@@ -1219,31 +1216,16 @@ with col_3d:
                 geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 geom.attributes.color.needsUpdate = true;
 
-                const isTransparent = payload.tunnelOpacity < 0.98;
-
-                if (isTransparent) {
-                    const depthMaskMat = new THREE.MeshBasicMaterial({
-                        colorWrite: false,
-                        depthWrite: true,
-                        side: THREE.FrontSide
-                    });
-                    const depthMaskMesh = new THREE.Mesh(geom, depthMaskMat);
-                    depthMaskMesh.renderOrder = 0;
-                    tMesh.add(depthMaskMesh);
-                }
-
-                const visualMat = new THREE.MeshStandardMaterial({
+                tMesh.material = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
-                    transparent: isTransparent,
-                    opacity: payload.tunnelOpacity,
+                    transparent: false,
                     roughness: 0.20,
                     metalness: 0.02,
-                    depthWrite: !isTransparent,
+                    depthWrite: true,
                     side: THREE.FrontSide
                 });
 
-                tMesh.material = visualMat;
                 tMesh.renderOrder = 1;
                 tMesh.material.needsUpdate = true;
             });
@@ -1525,7 +1507,7 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
-        function animate(time) {
+        (function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
             controls.update();
@@ -1535,8 +1517,7 @@ with col_3d:
 
             renderer.clearDepth();
             renderer.render(sensorScene, camera);
-        }
-        requestAnimationFrame(animate);
+        })();
     </script>
 </body>
 </html>"""
