@@ -4,12 +4,11 @@ import sys
 import json
 import base64
 import subprocess
-from datetime import datetime
 import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -166,7 +165,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1rem !important;
@@ -184,14 +182,6 @@ st.markdown("""
             width: 100% !important;
             flex: 1 1 100% !important;
             min-width: 100% !important;
-        }
-
-        .header-box h1 {
-            font-size: 22px !important;
-        }
-
-        .header-box img {
-            width: 130px !important;
         }
     }
 </style>
@@ -235,21 +225,17 @@ def ensure_playwright_installed():
     except Exception:
         pass
 
+# =========================================================================
+# 1. ТЕКУЩИЕ ДАННЫЕ (Стабильный DOM парсер - не трогаем!)
+# =========================================================================
 @st.cache_data(ttl=300)
-def fetch_all_categories_data():
-    """
-    ПРОВЕРЕННАЯ И СТАБИЛЬНАЯ ФУНКЦИЯ (из твоего рабочего файла GİTHUB_3DMAX_2.txt).
-    Гарантированно забирает актуальные данные через MONTH_02 + TABLE_ROW_DATE.
-    """
+def fetch_current_data():
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
         browser_args = [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--window-size=1920,1080",
+            "--no-sandbox", "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
@@ -259,17 +245,11 @@ def fetch_all_categories_data():
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul",
-            locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            timezone_id="Europe/Istanbul", locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.route(
-            "**/*",
-            lambda route: route.abort()
-            if route.request.resource_type in ["image", "media"]
-            else route.continue_()
-        )
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
@@ -300,136 +280,155 @@ def fetch_all_categories_data():
                     try:
                         page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
                     except Exception:
-                        try:
-                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
-                        except Exception:
-                            pass
-
+                        pass
                 page.wait_for_timeout(3000)
 
                 val_map = {}
                 latest_date_str = ""
-
                 for _ in range(15):
                     try:
                         extracted = page.evaluate("""() => {
                             try {
                                 const table = document.querySelector('table');
                                 if (!table) return null;
-
                                 const trs = Array.from(table.querySelectorAll('tr'));
                                 let headerCells = [];
-
                                 for (const tr of trs) {
-                                    const cells = Array.from(
-                                        tr.querySelectorAll('th, td')
-                                    ).map(c => (c.innerText || '').trim());
-
-                                    if (cells.some(c =>
-                                        c.includes('TA-') || c.includes('TB-')
-                                    )) {
-                                        headerCells = cells;
-                                        break;
+                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
+                                        headerCells = cells; break;
                                     }
                                 }
-
                                 if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(
-                                        trs[0].querySelectorAll('th, td')
-                                    ).map(c => (c.innerText || '').trim());
+                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
                                 }
-
-                                const tbody =
-                                    table.querySelector('tbody') || table;
-
-                                const rows = Array.from(
-                                    tbody.querySelectorAll('tr')
-                                );
-
+                                const tbody = table.querySelector('tbody') || table;
+                                const rows = Array.from(tbody.querySelectorAll('tr'));
                                 let dataCells = [];
-
                                 for (const r of rows) {
-                                    const cells = Array.from(
-                                        r.querySelectorAll('td')
-                                    ).map(c => (c.innerText || '').trim());
-
-                                    if (
-                                        cells.length > 1 &&
-                                        (
-                                            cells[0].includes('/') ||
-                                            cells[0].includes(':') ||
-                                            cells[0].includes('-')
-                                        )
-                                    ) {
-                                        dataCells = cells;
-                                        break;
+                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
+                                        dataCells = cells; break;
                                     }
                                 }
-
-                                if (
-                                    headerCells.length === 0 ||
-                                    dataCells.length === 0
-                                ) return null;
-
-                                return {
-                                    headers: headerCells,
-                                    values: dataCells
-                                };
-                            } catch(e) {
-                                return null;
-                            }
+                                if (headerCells.length === 0 || dataCells.length === 0) return null;
+                                return { headers: headerCells, values: dataCells };
+                            } catch(e) { return null; }
                         }""")
-
-                        if (
-                            extracted and
-                            extracted.get("values") and
-                            extracted.get("headers")
-                        ):
+                        if extracted and extracted.get("values"):
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
-
-                            for h, v_str in zip(
-                                headers[1:], values[1:]
-                            ):
-                                if (
-                                    "TA-" in h or
-                                    "TB-" in h or
-                                    cat_cfg["tag"] in h
-                                ):
-                                    m = re.search(
-                                        r"(T[AB]-[A-Za-z0-9\-]+)",
-                                        h
-                                    )
-                                    s_name = (
-                                        m.group(1)
-                                        if m
-                                        else h.split()[0].strip()
-                                    )
-
+                            for h, v_str in zip(headers[1:], values[1:]):
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                    s_name = m.group(1) if m else h.split()[0].strip()
                                     v = clean_num(v_str)
-
                                     if not np.isnan(v):
                                         val_map[s_name] = v
-
                             if len(val_map) > 0:
                                 break
                     except Exception:
                         pass
-
                     page.wait_for_timeout(600)
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+        except Exception as e:
+            st.warning(f"Güncel veri alınırken hata oluştu: {e}")
+        finally:
+            browser.close()
+    return all_results
 
-                all_results[cat_key] = {
-                    "values": val_map,
-                    "date": latest_date_str
-                }
+# =========================================================================
+# 2. АРХИВНЫЕ ДАННЫЕ (Скачивание CSV по твоему сценарию Playwright)
+# =========================================================================
+@st.cache_data(ttl=3600)
+def fetch_historical_csv_data():
+    """Скачивает CSV для каждой категории, парсит всю таблицу и кэширует в Python"""
+    historical_db = {k: {} for k in CATEGORIES}
+    dates_list = []
+
+    with sync_playwright() as p:
+        browser_args = [
+            "--no-sandbox", "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+        ]
+        try:
+            browser = p.chromium.launch(headless=True, args=browser_args)
+        except Exception:
+            ensure_playwright_installed()
+            browser = p.chromium.launch(headless=True, args=browser_args)
+
+        # accept_downloads=True ОБЯЗАТЕЛЕН для скачивания на облаке
+        context = browser.new_context(
+            accept_downloads=True,
+            viewport={"width": 1920, "height": 1080},
+            timezone_id="Europe/Istanbul", locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+
+        try:
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
+
+            page.get_by_text("Types").click()
+            page.wait_for_timeout(1000)
+            
+            page.get_by_role("combobox").first.select_option("ALL")
+            page.wait_for_timeout(2000)
+
+            for cat_key, cat_cfg in CATEGORIES.items():
+                page.get_by_role("listbox").select_option(cat_cfg["name"])
+                page.wait_for_timeout(3000)
+
+                # ТВОЙ СЦЕНАРИЙ СКАЧИВАНИЯ: Двойной клик на CSV с ожиданием поп-апа
+                csv_btn = page.get_by_text("🠋CSV").first
+                csv_btn.click(timeout=5000)
+                page.wait_for_timeout(1000)
+
+                try:
+                    with page.expect_download(timeout=30000) as download_info:
+                        with page.expect_popup(timeout=15000) as page1_info:
+                            csv_btn.click()
+                        page1 = page1_info.value
+                        page1.close()
+
+                    download = download_info.value
+                    csv_path = download.path()
+
+                    if csv_path and os.path.exists(csv_path):
+                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                            lines = f.readlines()
+
+                        if len(lines) > 2:
+                            header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                            
+                            for line in lines[2:]:
+                                parts = [p.strip() for p in line.strip().split(';')]
+                                if len(parts) == len(header):
+                                    date_str = parts[0]
+                                    if cat_key == "hoop" and date_str not in dates_list:
+                                        dates_list.append(date_str)
+                                        
+                                    val_map = {}
+                                    for h, v_str in zip(header[1:], parts[1:]):
+                                        if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                            s_name = m.group(1) if m else h.split()[0].strip()
+                                            v = clean_num(v_str)
+                                            if not np.isnan(v):
+                                                val_map[s_name] = v
+                                                
+                                    historical_db[cat_key][date_str] = val_map
+                except Exception as e:
+                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
 
         except Exception as e:
-            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
+            st.warning(f"LoggIS bağlantı hatası: {e}")
         finally:
             browser.close()
 
-    return all_results
+    return dates_list, historical_db
 
 @st.cache_data
 def get_model_b64(path):
@@ -440,11 +439,15 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
-    all_data = fetch_all_categories_data()
-
 with col_nav:
     st.subheader("KONTROL PANELİ")
+    
+    # ПЕРЕКЛЮЧАТЕЛЬ РЕЖИМОВ
+    data_mode = st.radio(
+        "Veri Kaynağı Seçimi:",
+        options=["Canlı Veriler (Güncel)", "Geçmiş Veriler (CSV İndirme)"]
+    )
+
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
@@ -454,6 +457,33 @@ with col_nav:
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
+
+# ---------------------------------------------------------
+# ЛОГИКА ЗАГРУЗКИ В ЗАВИСИМОСТИ ОТ ВЫБРАННОГО РЕЖИМА
+# ---------------------------------------------------------
+if data_mode == "Canlı Veriler (Güncel)":
+    # 1. ТЕКУЩИЕ ДАННЫЕ (Стабильно)
+    with st.spinner("Güncel veriler alınıyor..."):
+        all_data = fetch_current_data()
+        selected_date_choice = "En Son (Güncel)"
+else:
+    # 2. ИСТОРИЧЕСКИЕ ДАННЫЕ (Скачивание CSV)
+    with st.spinner("Tarihsel CSV verileri indiriliyor (Bu işlem 15-30 sn sürebilir)..."):
+        dates_list, historical_db = fetch_historical_csv_data()
+    
+    if not dates_list:
+        st.warning("CSV'den tarih bilgisi okunamadı veya zaman aşımına uğradı. Lütfen sayfayı yenileyin.")
+        selected_date_choice = "Bulunamadı"
+        all_data = {k: {"values": {}, "date": ""} for k in CATEGORIES}
+    else:
+        # Инвертируем список дат, чтобы последние замеры были сверху
+        selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=dates_list[::-1])
+        all_data = {}
+        for cat in CATEGORIES:
+            all_data[cat] = {
+                "values": historical_db[cat].get(selected_date_choice, {}),
+                "date": selected_date_choice
+            }
 
 cat_cfg = CATEGORIES[selected_comp]
 cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
@@ -472,7 +502,6 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Точный расчёт диапазона clim с технологическим буфером для стопроцентного попадания в пиковые цвета легенды
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -488,15 +517,15 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜМ AYARLARI")
+    st.subheader("GÖRÜNÜM AYARLARI")
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    st.write("**En Son Veri Zamanı:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
+    st.write("**Aktif Periyot:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{cur_layer['date'] if cur_layer['date'] else selected_date_choice}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
@@ -746,7 +775,6 @@ with col_3d:
         // МНОГОТОНОВЫЕ ВЫРАЗИТЕЛЬНЫЕ СПЕКТРЫ ДЛЯ КАЖДОЙ КАТЕГОРИИ
         // =========================================================================
 
-        // 1. Çevresel gerinim (CS): Индиго -> Синий -> Циан -> Зеленый -> Желтый -> Оранжевый -> Красный
         const hoopStops = [
             new THREE.Color("#050833"),
             new THREE.Color("#0044FF"),
@@ -757,18 +785,16 @@ with col_3d:
             new THREE.Color("#FF0022")
         ];
 
-        // 2. Boyuna gerinim (S): МНОГОСЛОЙНЫЙ ГРАДИЕНТ (ГЛУБОКИЙ ИНДИГО -> ПУРПУР -> МАЛИНОВЫЙ -> КОРАЛЛОВЫЙ -> ЯНТАРНЫЙ)
         const axialStops = [
-            new THREE.Color("#080038"), // 0%: Глубокий ночной индиго (Минимум)
-            new THREE.Color("#2A0A5E"), // 16%: Королевский фиолетовый
-            new THREE.Color("#630F78"), // 33%: Глубокий пурпур
-            new THREE.Color("#9E1B7F"), // 50%: Насыщенная маджента
-            new THREE.Color("#D32B6E"), // 66%: Сочный малиново-рубиновый
-            new THREE.Color("#F55447"), // 83%: Горячий коралловый
-            new THREE.Color("#FF9500")  // 100%: Плотный янтарный огонь (Максимум, без белого!)
+            new THREE.Color("#080038"),
+            new THREE.Color("#2A0A5E"),
+            new THREE.Color("#630F78"),
+            new THREE.Color("#9E1B7F"),
+            new THREE.Color("#D32B6E"),
+            new THREE.Color("#F55447"),
+            new THREE.Color("#FF9500") 
         ];
 
-        // 3. Sıcaklık (TP): Классический термо-инфракрасный
         const temperatureStops = [
             new THREE.Color("#020024"),
             new THREE.Color("#0033FF"),
@@ -792,7 +818,6 @@ with col_3d:
             legendTitle.innerText = "Çevresel [µm/m]";
         }
 
-        // ТОЧНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ (СВЕРХУ ВНИЗ: MAX -> MIN)
         function buildExactLegendGradient(stops) {
             const n = stops.length;
             const items = [];
@@ -807,7 +832,6 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
-        // ОБЩАЯ ВЫБОРКА ЦВЕТА
         function sampleColorRamp(stops, t) {
             t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
@@ -827,7 +851,6 @@ with col_3d:
             return sampleColorRamp(currentStops, t);
         }
 
-        // Синхронизация числовых меток шкалы с Python-диапазоном
         const finalMin = payload.clim[0];
         const finalMax = payload.clim[1];
         const finalMid = (finalMin + finalMax) / 2.0;
