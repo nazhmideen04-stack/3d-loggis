@@ -321,7 +321,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Реальный диапазон шкалы по фактическим данным
+# Реальный диапазон шкалы по фактическим экстремумам
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -499,7 +499,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE TÜNEL ИНТЕРПОЛЯЦИЯСЫ ЖҮКТЕЛУДЕ...</div>
+                <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="selected-hud">
@@ -541,7 +541,7 @@ with col_3d:
                 // 7-СТУПЕНЧАТАЯ ВЫСОКОКОНТРАСТНАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
                     new THREE.Color("#0022FF"), // 0.00: Глубокий синий
-                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
+                    new THREE.Color("#00E5FF"), // 0.16: Циан
                     new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
                     new THREE.Color("#FFE600"), // 0.50: Желтый
                     new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
@@ -761,16 +761,17 @@ with col_3d:
                                     interactiveSensors.push(child);
 
                                     const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
+                                    
+                                    // ЧИСТЫЙ НЕПРОЗРАЧНЫЙ БЕЛЫЙ ЦВЕТ (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
                                     const sensorColor = isSelected ? 0xFFD700 : 0xFFFFFF;
 
-                                    // ЧИСТЫЙ НЕПРОЗРАЧНЫЙ БЕЛЫЙ ЦВЕТ МЕША ДАТЧИКА
                                     child.material = new THREE.MeshBasicMaterial({{
                                         color: sensorColor,
                                         side: THREE.DoubleSide,
                                         depthTest: false,
                                         depthWrite: false
                                     }});
-                                    child.renderOrder = 9999;
+                                    child.renderOrder = 99999; // ВСЕГДА ВЫШЕ СВОДА И ИНТЕРПОЛЯЦИИ
 
                                     if (isSelected) {{
                                         selectedMeshRef = child;
@@ -788,7 +789,7 @@ with col_3d:
                                         depthTest: false,
                                         depthWrite: false
                                     }});
-                                    child.renderOrder = 9999;
+                                    child.renderOrder = 99999;
                                 }} else {{
                                     child.visible = false;
                                     child.userData.isUsable = false;
@@ -805,6 +806,7 @@ with col_3d:
                                 );
 
                                 if (isTunnel) {{
+                                    child.renderOrder = 0; // Тоннель всегда в нижнем слое
                                     tunnelMeshes.push(child);
                                 }} else {{
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -939,6 +941,7 @@ with col_3d:
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
+                        tMesh.renderOrder = 0;
                         tMesh.material.needsUpdate = true;
                     }});
 
