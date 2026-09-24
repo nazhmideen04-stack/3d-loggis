@@ -476,9 +476,9 @@ with col_3d:
                     <div class="legend-bar-container">
                         <div id="legend-bar"></div>
                         <div class="legend-labels">
-                            <span>{clim[1]:+.1f}</span>
-                            <span>{round((clim[0] + clim[1]) / 2.0, 1):+.1f}</span>
-                            <span>{clim[0]:+.1f}</span>
+                            <span id="lbl-max"></span>
+                            <span id="lbl-mid"></span>
+                            <span id="lbl-min"></span>
                         </div>
                     </div>
                 </div>
@@ -493,16 +493,29 @@ with col_3d:
                 const loaderText = document.getElementById('loader');
                 const legendBar = document.getElementById('legend-bar');
                 const legendTitle = document.getElementById('legend-title');
+                const lblMax = document.getElementById('lbl-max');
+                const lblMid = document.getElementById('lbl-mid');
+                const lblMin = document.getElementById('lbl-min');
 
+                // ДИНАМИЧЕСКИЕ И ТОЧНЫЕ ЧИСЛА НА ШКАЛЕ ЛЕГЕНДЫ
+                const minVal = payload.clim[0];
+                const maxVal = payload.clim[1];
+                const midVal = (minVal + maxVal) / 2.0;
+
+                lblMax.innerText = (maxVal > 0 ? "+" : "") + maxVal.toFixed(1);
+                lblMid.innerText = (midVal > 0 ? "+" : "") + midVal.toFixed(1);
+                lblMin.innerText = (minVal > 0 ? "+" : "") + minVal.toFixed(1);
+
+                // ВЫРАЗИТЕЛЬНАЯ РАДУЖНАЯ ПАЛИТРА ДЛЯ ВСЕХ КАТЕГОРИЙ (ПОЛНОЕ СОВПАДЕНИЕ С МОДЕЛЬЮ)
                 if (payload.comp === "temp") {{
                     legendTitle.innerText = "[°C]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #33FF33, #00FFCC, #0066FF, #0011AA)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #22E600, #00E5FF, #0022FF)";
                 }} else if (payload.comp === "axial") {{
                     legendTitle.innerText = "[µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0044, #FF6600, #FFDD00, #00FF66, #00DDFF, #2255FF, #7700FF)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
                 }} else {{
                     legendTitle.innerText = "[µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0026FF)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
                 }}
 
                 const scene = new THREE.Scene();
@@ -547,35 +560,15 @@ with col_3d:
                 const raycaster = new THREE.Raycaster();
                 const mouse = new THREE.Vector2();
 
+                // 7 ЧЕТКИХ ОПОРНЫХ ЦВЕТОВ: БЕЗ БЕЛЫХ И ТЕМНЫХ ПРОВАЛОВ
                 const RAINBOW_STOPS = [
-                    new THREE.Color("#0011AA"),
-                    new THREE.Color("#0066FF"),
-                    new THREE.Color("#00FFCC"),
-                    new THREE.Color("#33FF33"),
-                    new THREE.Color("#FFFF00"),
-                    new THREE.Color("#FFAA00"),
-                    new THREE.Color("#FF5500"),
-                    new THREE.Color("#FF0000")
-                ];
-
-                const AXIAL_STOPS = [
-                    new THREE.Color("#7700FF"),
-                    new THREE.Color("#2255FF"),
-                    new THREE.Color("#00DDFF"),
-                    new THREE.Color("#00FF66"),
-                    new THREE.Color("#FFDD00"),
-                    new THREE.Color("#FF6600"),
-                    new THREE.Color("#FF0044")
-                ];
-
-                const HOOP_STOPS = [
-                    new THREE.Color("#0026FF"),
-                    new THREE.Color("#00E5FF"),
-                    new THREE.Color("#00FF44"),
-                    new THREE.Color("#FFE600"),
-                    new THREE.Color("#FFAA00"),
-                    new THREE.Color("#FF5500"),
-                    new THREE.Color("#FF0022")
+                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий (минимальные значения)
+                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
+                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
+                    new THREE.Color("#FFE600"), // 0.50: Желтый (середина шкалы)
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарный оранжевый
+                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжево-красный
+                    new THREE.Color("#FF0022")  // 1.00: Ярко-алый (максимальные значения)
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -589,19 +582,12 @@ with col_3d:
                     return c;
                 }}
 
-                function getColorForValue(val, clim, comp) {{
+                function getColorForValue(val, clim) {{
                     if (val === undefined || isNaN(val)) return new THREE.Color(0x334455);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
-
-                    if (comp === "hoop") {{
-                        return sampleColorRamp(HOOP_STOPS, t);
-                    }} else if (comp === "axial") {{
-                        return sampleColorRamp(AXIAL_STOPS, t);
-                    }} else {{
-                        return sampleColorRamp(RAINBOW_STOPS, t);
-                    }}
+                    return sampleColorRamp(RAINBOW_STOPS, t);
                 }}
 
                 function extractSensorId(name) {{
@@ -748,13 +734,13 @@ with col_3d:
                                     interactiveSensors.push(child);
 
                                     const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
-                                    const sensorColor = isSelected ? new THREE.Color(0xFFE600) : getColorForValue(rawVal, payload.clim, payload.comp);
+                                    const sensorColor = isSelected ? new THREE.Color(0xFFE600) : getColorForValue(rawVal, payload.clim);
 
-                                    // ВЫДЕЛЕНИЕ СЕНСОРОВ ПОВЕРХ ТОННЕЛЯ БЕЗ ДЕФОРМАЦИИ СЕТКИ
+                                    // ДАТЧИКИ ВСЕГДА ПОВЕРХ ТОННЕЛЯ И ЯРКО СВЕТЯТСЯ
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: sensorColor,
                                         emissive: isSelected ? new THREE.Color(0xFFE600) : sensorColor,
-                                        emissiveIntensity: isSelected ? 2.5 : 1.8,
+                                        emissiveIntensity: isSelected ? 2.6 : 1.8,
                                         roughness: 0.05,
                                         metalness: 0.1,
                                         depthTest: false,
@@ -825,7 +811,7 @@ with col_3d:
                         }}
                     }});
 
-                    // АДЕКВАТНАЯ ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ВСЕЙ ДЛИНЫ ТОННЕЛЕЙ
+                    // ШИРОКАЯ И ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ С ЧЕТКИМИ ГРАДИЕНТАМИ
                     const R_INFLUENCE = 45.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -870,7 +856,7 @@ with col_3d:
                                         const wEnvelope = (1.0 - rNorm * rNorm);
                                         const w = (wEnvelope * wEnvelope) / (d * d + 0.35);
 
-                                        const c = getColorForValue(s.val, payload.clim, payload.comp);
+                                        const c = getColorForValue(s.val, payload.clim);
                                         accumR += c.r * w;
                                         accumG += c.g * w;
                                         accumB += c.b * w;
@@ -1004,7 +990,7 @@ with col_3d:
                         }}
                     }}
 
-                    // НАВЕДЕНИЕ И ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (ПОБЛИЖЕ К ТОННЕЛЯМ)
+                    // НАВЕДЕНИЕ И ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1033,11 +1019,10 @@ with col_3d:
                             const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
                             controls.target.copy(center);
-                            // Камера приближена для крупного и выразительного обзора
                             camera.position.set(
-                                center.x - maxDim * 0.35,
-                                center.y + maxDim * 0.38,
-                                center.z + maxDim * 0.48
+                                center.x - maxDim * 0.40,
+                                center.y + maxDim * 0.45,
+                                center.z + maxDim * 0.55
                             );
                             controls.update();
                         }}
@@ -1055,7 +1040,7 @@ with col_3d:
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
+                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.5)).add(new THREE.Vector3(0, 1.8, 0));
 
                     if (!animate) {{
                         camera.position.copy(endCamPos);
