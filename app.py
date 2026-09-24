@@ -538,42 +538,45 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // --- 1. ПАЛИТРЫ ДЛЯ КАЖДОГО ТИПА СЕНСОРОВ ---
-                const hoopStops = [
-                    new THREE.Color("#001144"),
-                    new THREE.Color("#00E5FF"),
-                    new THREE.Color("#00FF44"),
-                    new THREE.Color("#FFE600")
+                // --- 1. ПРЕЖНИЕ СОЧНЫЕ ПАЛИТРЫ (TURBO / RAINBOW) ---
+                // Для деформаций: сочная 7-ступенчатая инженерная радуга
+                const strainStops = [
+                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
+                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
+                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
+                    new THREE.Color("#FFE600"), // 0.50: Желтый
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
+                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжевый
+                    new THREE.Color("#FF0022")  // 1.00: Алый красный
                 ];
 
-                const axialStops = [
-                    new THREE.Color("#00FF44"),
-                    new THREE.Color("#FFE600"),
-                    new THREE.Color("#FF8800"),
-                    new THREE.Color("#FF0033")
-                ];
-
+                // Для температуры: от синего через циан и желтый к красному
                 const tempStops = [
-                    new THREE.Color("#330066"),
-                    new THREE.Color("#00E5FF"),
-                    new THREE.Color("#FFFFFF"),
-                    new THREE.Color("#FF0033")
+                    new THREE.Color("#0011AA"),
+                    new THREE.Color("#0066FF"),
+                    new THREE.Color("#00FFCC"),
+                    new THREE.Color("#33FF33"),
+                    new THREE.Color("#FFFF00"),
+                    new THREE.Color("#FFAA00"),
+                    new THREE.Color("#FF5500"),
+                    new THREE.Color("#FF0000")
                 ];
 
-                // --- 2. СИНХРОНИЗАЦИЯ ЦВЕТОВ ЛЕГЕНДЫ И 3D ---
-                let currentStops = hoopStops;
-                if (payload.comp === "axial") {{
-                    currentStops = axialStops;
-                    legendTitle.innerText = "Boyuna [µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0033, #FF8800, #FFE600, #00FF44)";
-                }} else if (payload.comp === "temp") {{
+                // --- 2. ПОЛНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ И ЦВЕТОВ НА СВОДЕ ---
+                let currentStops = strainStops;
+
+                if (payload.comp === "temp") {{
                     currentStops = tempStops;
                     legendTitle.innerText = "Sıcaklık [°C]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0033, #FFFFFF, #00E5FF, #330066)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #33FF33, #00FFCC, #0066FF, #0011AA)";
+                }} else if (payload.comp === "axial") {{
+                    currentStops = strainStops;
+                    legendTitle.innerText = "Boyuna [µm/m]";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
                 }} else {{
-                    currentStops = hoopStops;
+                    currentStops = strainStops;
                     legendTitle.innerText = "Çevresel [µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FFE600, #00FF44, #00E5FF, #001144)";
+                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
                 }}
 
                 function sampleColorRamp(stops, t) {{
@@ -595,7 +598,7 @@ with col_3d:
                     return sampleColorRamp(currentStops, t);
                 }}
 
-                // ДВЕ НЕЗАВИСИМЫЕ СЦЕНЫ ДЛЯ 100% НЕПРОЗРАЧНЫХ БЕЛЫХ ДАТЧИКОВ
+                // ДВЕ НЕЗАВИСИМЫЕ СЦЕНЫ: ДАТЧИКИ ВСЕГДА БЕЛЫЕ И НЕ ТОНУТ В ТОННЕЛЕ
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
@@ -785,7 +788,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ПЕРЕНОСИМ ДАТЧИКИ В ОТДЕЛЬНЫЙ СЛОЙ (БЕЛЫЕ, НЕПРОЗРАЧНЫЕ)
+                    // ПЕРЕНОСИМ ДАТЧИКИ В ОТДЕЛЬНЫЙ НЕЗАВИСИМЫЙ СЛОЙ (ЧИСТЫЙ БЕЛЫЙ ЦВЕТ)
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
@@ -970,6 +973,7 @@ with col_3d:
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
+                        tMesh.renderOrder = 0;
                         tMesh.material.needsUpdate = true;
                     }});
 
@@ -1122,7 +1126,8 @@ with col_3d:
                 }}
 
                 function flyCameraTo(targetMesh, animate = true) {{
-                    const targetPos = targetMesh.position.clone();
+                    const targetPos = new THREE.Vector3();
+                    targetMesh.getWorldPosition(targetPos);
 
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
@@ -1161,7 +1166,7 @@ with col_3d:
                     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
                     raycaster.setFromCamera(mouse, camera);
-                    const intersects = raycaster.intersectObjects(interactiveSensors, false);
+                    const intersects = raycaster.intersectObjects(interactiveSensors, true);
 
                     if (intersects.length > 0) {{
                         let obj = intersects[0].object;
@@ -1223,6 +1228,7 @@ with col_3d:
                     renderer.setSize(container.clientWidth, container.clientHeight);
                 }});
 
+                // ДВУХПРОХОДНЫЙ РЕНДЕР: ДАТЧИКИ РИСУЮТСЯ НЕЗАВИСИМО ПОВЕРХ ТОННЕЛЯ
                 function animate(time) {{
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
