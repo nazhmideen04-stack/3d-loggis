@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -30,6 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
+# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -77,6 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -99,12 +101,20 @@ st.markdown("""
         background-color: #00C8E6 !important;
     }
 
+    div[data-testid="stRadio"] div[role="radiogroup"] > label {
+        margin-bottom: 12px !important;
+        cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+
     div[data-baseweb="select"] {
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
     }
 
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -114,6 +124,15 @@ st.markdown("""
     div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+        border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] svg path {
+        fill: #0A0E17 !important;
+        stroke: #0A0E17 !important;
     }
 
     .destech-badge {
@@ -147,6 +166,7 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1rem !important;
@@ -188,7 +208,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & DİNAMİK ZAMAN SENKRONİZASYONU</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & DİNAMİK ZAMAN SEÇİMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -216,8 +236,8 @@ def ensure_playwright_installed():
         pass
 
 @st.cache_data(ttl=300)
-def fetch_available_dates_and_data(target_date_str=None):
-    """Динамически извлекает все доступные даты из селектора LoggIS и парсит значения."""
+def fetch_loggis_data(target_date_str=None):
+    """Динамически извлекает список дат со страницы LoggIS и парсит данные для указанной даты."""
     dates_list = []
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
@@ -260,10 +280,10 @@ def fetch_available_dates_and_data(target_date_str=None):
                 pass
             page.wait_for_timeout(800)
 
-            # Извлекаем все доступные даты из выпадающего списка LoggIS со страницы
+            # Получаем актуальный список дат из селектора LoggIS
             try:
-                date_select_locator = page.get_by_role("combobox").nth(1)
-                options = date_select_locator.locator("option").all_inner_texts()
+                date_select = page.get_by_role("combobox").nth(1)
+                options = date_select.locator("option").all_inner_texts()
                 dates_list = [opt.strip() for opt in options if opt.strip() and opt.strip() != "TABLE_ROW_DATE"]
             except Exception:
                 pass
@@ -376,9 +396,9 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Первичный опрос для сбора доступных дат
-with st.spinner("LoggIS zaman etiketleri senkronize ediliyor..."):
-    extracted_dates, current_data = fetch_available_dates_and_data(None)
+# Первичный запрос для сбора доступных дат и свежих данных
+with st.spinner("LoggIS zaman etiketleri ve güncel veriler yükleniyor..."):
+    extracted_dates, current_data = fetch_loggis_data(None)
 
 with col_nav:
     st.subheader("KONTROL & ZAMAN")
@@ -389,30 +409,29 @@ with col_nav:
     )
 
     st.markdown("---")
-    st.subheader("📅 LoggIS Tarih Seçimi")
+    st.subheader("📅 Veri Dönemi")
     
-    # Динамический список дат из системы
-    date_choices = ["En Son (Güncel)"] + (extracted_dates if extracted_dates else [])
-    selected_date_choice = st.selectbox("İncelemek İstediğiniz Tarih:", options=date_choices)
+    date_options = ["En Son (Güncel)"] + (extracted_dates if extracted_dates else [])
+    selected_date_choice = st.selectbox("İncelemek İstediğiniz Tarih:", options=date_options)
 
     enable_comparison = st.checkbox("📊 Dönemsel Değişim (Δ) Hesapla", value=False)
     selected_base_choice = "En Son (Güncel)"
     if enable_comparison:
-        selected_base_choice = st.selectbox("Baz Alınacak Tarih:", options=date_choices, index=0)
+        selected_base_choice = st.selectbox("Baz Alınacak Tarih:", options=date_options, index=0)
 
     if st.button("🔄 Verileri Güncelle"):
         st.cache_data.clear()
         st.rerun()
 
-# Загрузка данных выбранной даты, если она отличается от дефолтной
+# Загрузка данных для выбранного периода
 if selected_date_choice != "En Son (Güncel)":
     with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
-        _, current_data = fetch_available_dates_and_data(selected_date_choice)
+        _, current_data = fetch_loggis_data(selected_date_choice)
 
-# Загрузка базовой даты для сравнения
+# Загрузка базы для сравнения
 if enable_comparison and selected_base_choice != selected_date_choice:
     with st.spinner(f"Karşılaştırma verisi alınıyor ({selected_base_choice})..."):
-        _, base_data = fetch_available_dates_and_data(selected_base_choice)
+        _, base_data = fetch_loggis_data(selected_base_choice)
 else:
     base_data = current_data
 
@@ -449,6 +468,7 @@ for s_name, val in raw_v_map.items():
         else:
             active_delta_values[s_name] = 0.0
 
+# Точный расчёт диапазона clim с технологическим буфером
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -464,7 +484,7 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜМ AYARLARI")
+    st.subheader("GÖRÜNÜM AYARLARI")
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
