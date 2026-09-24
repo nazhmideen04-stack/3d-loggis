@@ -409,7 +409,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Точный расчёт диапазона clim для шкалы
+# Точный расчёт диапазона clim с технологическим буфером для стопроцентного попадания в пиковые цвета легенды
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -420,7 +420,8 @@ else:
     if diff < 0.001:
         clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
     else:
-        clim = [round(real_min, 2), round(real_max, 2)]
+        buf = diff * 0.02
+        clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
 
 with col_nav:
     st.markdown("---")
@@ -694,27 +695,26 @@ with col_3d:
         ];
 
         // 2. Boyuna gerinim (S): МНОГОСЛОЙНЫЙ ГРАДИЕНТ (ГЛУБОКИЙ ИНДИГО -> ПУРПУР -> МАЛИНОВЫЙ -> КОРАЛЛОВЫЙ -> ЯНТАРНЫЙ)
-        // Полностью исключен белый цвет, добавлены контрастные спектральные аспекты
         const axialStops = [
             new THREE.Color("#080038"), // 0%: Глубокий ночной индиго (Минимум)
             new THREE.Color("#2A0A5E"), // 16%: Королевский фиолетовый
             new THREE.Color("#630F78"), // 33%: Глубокий пурпур
             new THREE.Color("#9E1B7F"), // 50%: Насыщенная маджента
             new THREE.Color("#D32B6E"), // 66%: Сочный малиново-рубиновый
-            new THREE.Color("#F55447"), // 83%: Горячий коралловый (акцентная контрастная граница)
+            new THREE.Color("#F55447"), // 83%: Горячий коралловый
             new THREE.Color("#FF9500")  // 100%: Плотный янтарный огонь (Максимум, без белого!)
         ];
 
         // 3. Sıcaklık (TP): Классический термо-инфракрасный
         const temperatureStops = [
-            new THREE.Color("#020024"), // Ледяной ультрамарин (Минимум)
+            new THREE.Color("#020024"),
             new THREE.Color("#0033FF"),
             new THREE.Color("#00D8FF"),
             new THREE.Color("#00FF44"),
             new THREE.Color("#B4FF00"),
             new THREE.Color("#FFDD00"),
             new THREE.Color("#FF4400"),
-            new THREE.Color("#D50000")  // Огненно-алый (Максимум)
+            new THREE.Color("#D50000")
         ];
 
         let currentStops = hoopStops;
@@ -729,7 +729,7 @@ with col_3d:
             legendTitle.innerText = "Çevresel [µm/m]";
         }
 
-        // ТОЧНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ
+        // ТОЧНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ (СВЕРХУ ВНИЗ: MAX -> MIN)
         function buildExactLegendGradient(stops) {
             const n = stops.length;
             const items = [];
@@ -1116,7 +1116,7 @@ with col_3d:
             // =========================================================================
             // РАСШИРЕННАЯ ИНТЕРПОЛЯЦИЯ С ПОЛНЫМ НАЛОЖЕНИЕМ ДИАПАЗОНОВ (R = 60.0m)
             // =========================================================================
-            const R_SENSOR = 60.0; // Расширенный радиус для сплошного бесшовного наложения
+            const R_SENSOR = 60.0; 
 
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
@@ -1149,14 +1149,11 @@ with col_3d:
                         let totalWeight = 0;
                         let accumulatedVal = 0;
 
-                        // Проверяем попадание в расширенный диапазон каждого сенсора
                         for (let j = 0; j < pool.length; j++) {
                             const s = pool[j];
                             const d = worldV.distanceTo(s.pos);
                             
-                            // Сенсор влияет в пределах расширенного диапазона 60м
                             if (d < R_SENSOR) {
-                                // Плавный весовой спад Шепарда для естественного наложения и сведения к среднему
                                 const normD = d / R_SENSOR;
                                 const w = Math.pow(1.0 - normD, 1.3) / (Math.pow(d, 0.85) + 0.1);
                                 accumulatedVal += s.val * w;
@@ -1166,14 +1163,12 @@ with col_3d:
 
                         const idx = i * 3;
                         if (totalWeight > 0.00001) {
-                            // В месте пересечения диапазонов получаем строго средневзвешенное значение
                             const interpolatedVal = accumulatedVal / totalWeight;
                             const c = getColorForValue(interpolatedVal, payload.clim);
                             colors[idx] = c.r;
                             colors[idx + 1] = c.g;
                             colors[idx + 2] = c.b;
                         } else {
-                            // Вне диапазона сенсоров — нейтральный цвет тоннеля
                             colors[idx] = 0.08;
                             colors[idx + 1] = 0.11;
                             colors[idx + 2] = 0.16;
@@ -1475,7 +1470,7 @@ with col_3d:
                     tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek для клика)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 }
             } else {
