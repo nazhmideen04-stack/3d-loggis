@@ -92,7 +92,7 @@ AVAILABLE_DATES = [
     "24.09.2025 19:00", "24.09.2025 20:00", "24.09.2025 21:00", "24.09.2025 22:00", "24.09.2025 23:00"
 ]
 
-# Фирменный стиль DESTECH с мобильной адаптацией[cite: 1]
+# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -259,12 +259,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-LOGO_B64 = ""[cite: 1]
-if os.path.exists(LOGO_PATH):[cite: 1]
-    with open(LOGO_PATH, "rb") as f:[cite: 1]
-        LOGO_B64 = base64.b64encode(f.read()).decode()[cite: 1]
+LOGO_B64 = ""
+if os.path.exists(LOGO_PATH):
+    with open(LOGO_PATH, "rb") as f:
+        LOGO_B64 = base64.b64encode(f.read()).decode()
 
-LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 180px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'[cite: 1]
+LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 180px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
 
 st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
@@ -276,71 +276,71 @@ st.markdown(f"""
         {LOGO_TAG}
     </div>
 </div>
-""", unsafe_allow_html=True)[cite: 1]
+""", unsafe_allow_html=True)
 
 CATEGORIES = {
     "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
     "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
     "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
-}[cite: 1]
+}
 
-def clean_num(s):[cite: 1]
-    if not s:[cite: 1]
-        return np.nan[cite: 1]
-    s = str(s).replace(",", ".").replace(" ", "").strip()[cite: 1]
-    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)[cite: 1]
-    return float(m.group()) if m else np.nan[cite: 1]
+def clean_num(s):
+    if not s:
+        return np.nan
+    s = str(s).replace(",", ".").replace(" ", "").strip()
+    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
+    return float(m.group()) if m else np.nan
 
-def ensure_playwright_installed():[cite: 1]
-    try:[cite: 1]
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)[cite: 1]
-    except Exception:[cite: 1]
-        pass[cite: 1]
+def ensure_playwright_installed():
+    try:
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+    except Exception:
+        pass
 
 @st.cache_data(ttl=300)
-def fetch_all_categories_data(target_date_str=None):
+def fetch_loggis_data(target_date_str=None):
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
-    with sync_playwright() as p:[cite: 1]
+    with sync_playwright() as p:
         browser_args = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--window-size=1920,1080",
-        ][cite: 1]
-        try:[cite: 1]
-            browser = p.chromium.launch(headless=True, args=browser_args)[cite: 1]
-        except Exception:[cite: 1]
-            ensure_playwright_installed()[cite: 1]
-            browser = p.chromium.launch(headless=True, args=browser_args)[cite: 1]
+        ]
+        try:
+            browser = p.chromium.launch(headless=True, args=browser_args)
+        except Exception:
+            ensure_playwright_installed()
+            browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )[cite: 1]
-        page = context.new_page()[cite: 1]
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())[cite: 1]
+        )
+        page = context.new_page()
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
-        try:[cite: 1]
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")[cite: 1]
-            page.wait_for_timeout(3500)[cite: 1]
+        try:
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
 
-            try:[cite: 1]
-                page.get_by_text("Types").click(timeout=8000)[cite: 1]
-            except Exception:[cite: 1]
-                pass[cite: 1]
-            page.wait_for_timeout(1000)[cite: 1]
+            try:
+                page.get_by_text("Types").click(timeout=8000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1000)
 
-            try:[cite: 1]
-                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)[cite: 1]
-            except Exception:[cite: 1]
-                pass[cite: 1]
-            page.wait_for_timeout(800)[cite: 1]
+            try:
+                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            except Exception:
+                pass
+            page.wait_for_timeout(800)
 
-            # Отдельная команда времени (выбор конкретного набора данных из списка)
+            # Команда времени: если выбрана историческая дата, выбираем её в селекторе
             if target_date_str and target_date_str != "En Son (Güncel)":
                 try:
                     page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
@@ -350,31 +350,31 @@ def fetch_all_categories_data(target_date_str=None):
                     except Exception:
                         pass
             else:
-                try:[cite: 1]
-                    page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)[cite: 1]
-                except Exception:[cite: 1]
-                    pass[cite: 1]
-            page.wait_for_timeout(1000)[cite: 1]
+                try:
+                    page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+                except Exception:
+                    pass
+            page.wait_for_timeout(1000)
 
-            for cat_key, cat_cfg in CATEGORIES.items():[cite: 1]
-                try:[cite: 1]
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)[cite: 1]
-                except Exception:[cite: 1]
-                    try:[cite: 1]
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)[cite: 1]
-                    except Exception:[cite: 1]
-                        try:[cite: 1]
-                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)[cite: 1]
-                        except Exception:[cite: 1]
-                            pass[cite: 1]
+            for cat_key, cat_cfg in CATEGORIES.items():
+                try:
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                except Exception:
+                    try:
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                    except Exception:
+                        try:
+                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
+                        except Exception:
+                            pass
 
-                page.wait_for_timeout(3000)[cite: 1]
+                page.wait_for_timeout(3000)
 
-                val_map = {}[cite: 1]
-                latest_date_str = ""[cite: 1]
+                val_map = {}
+                latest_date_str = ""
 
-                for _ in range(15):[cite: 1]
-                    try:[cite: 1]
+                for _ in range(15):
+                    try:
                         extracted = page.evaluate("""() => {
                             try {
                                 const table = document.querySelector('table');
@@ -409,147 +409,143 @@ def fetch_all_categories_data(target_date_str=None):
                             } catch(e) {
                                 return null;
                             }
-                        }""")[cite: 1]
+                        }""")
 
-                        if extracted and extracted.get("values") and extracted.get("headers"):[cite: 1]
-                            headers = extracted["headers"][cite: 1]
-                            values = extracted["values"][cite: 1]
-                            latest_date_str = values[0][cite: 1]
+                        if extracted and extracted.get("values") and extracted.get("headers"):
+                            headers = extracted["headers"]
+                            values = extracted["values"]
+                            latest_date_str = values[0]
 
-                            for h, v_str in zip(headers[1:], values[1:]):[cite: 1]
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:[cite: 1]
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)[cite: 1]
-                                    s_name = m.group(1) if m else h.split()[0].strip()[cite: 1]
-                                    v = clean_num(v_str)[cite: 1]
-                                    if not np.isnan(v):[cite: 1]
-                                        val_map[s_name] = v[cite: 1]
+                            for h, v_str in zip(headers[1:], values[1:]):
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                    s_name = m.group(1) if m else h.split()[0].strip()
+                                    v = clean_num(v_str)
+                                    if not np.isnan(v):
+                                        val_map[s_name] = v
 
-                            if len(val_map) > 0:[cite: 1]
-                                break[cite: 1]
-                    except Exception:[cite: 1]
-                        pass[cite: 1]
+                            if len(val_map) > 0:
+                                break
+                    except Exception:
+                        pass
 
-                    page.wait_for_timeout(600)[cite: 1]
+                    page.wait_for_timeout(600)
 
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}[cite: 1]
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
-        except Exception as e:[cite: 1]
-            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")[cite: 1]
-        finally:[cite: 1]
-            browser.close()[cite: 1]
+        except Exception as e:
+            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
+        finally:
+            browser.close()
 
-    return all_results[cite: 1]
+    return all_results
 
 @st.cache_data
-def get_model_b64(path):[cite: 1]
-    if not os.path.exists(path):[cite: 1]
-        return None[cite: 1]
-    with open(path, "rb") as f:[cite: 1]
-        return base64.b64encode(f.read()).decode()[cite: 1]
+def get_model_b64(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
-col_nav, col_3d = st.columns([1, 4])[cite: 1]
+col_nav, col_3d = st.columns([1, 4])
 
-with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):[cite: 1]
-    current_data = fetch_all_categories_data(None)[cite: 1]
-
-with col_nav:[cite: 1]
-    st.subheader("KONTROL PANELİ")[cite: 1]
+with col_nav:
+    st.subheader("KONTROL PANELİ")
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
-    )[cite: 1]
+    )
 
     st.markdown("---")
     st.subheader("⏱️ Geçmiş Zaman Seçimi")
     
-    # Отдельная команда времени (список доступных наборов)
-    date_choices = ["En Son (Güncel)"] + AVAILABLE_DATES
-    selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_choices)
+    # Отдельная команда времени в виде выбора даты из списка
+    date_options = ["En Son (Güncel)"] + AVAILABLE_DATES
+    selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_options)
 
-    if selected_date_choice != "En Son (Güncel)":
-        with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
-            current_data = fetch_all_categories_data(selected_date_choice)
+    if st.button("Verileri Yenile"):
+        st.cache_data.clear()
+        st.rerun()
 
-    if st.button("Verileri Yenile"):[cite: 1]
-        st.cache_data.clear()[cite: 1]
-        st.rerun()[cite: 1]
+# Получение данных в зависимости от выбранного времени
+with st.spinner("LoggIS verileri işleniyor..."):
+    current_data = fetch_loggis_data(None if selected_date_choice == "En Son (Güncel)" else selected_date_choice)
 
-cat_cfg = CATEGORIES[selected_comp][cite: 1]
-cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})[cite: 1]
-raw_v_map = cur_layer["values"][cite: 1]
+cat_cfg = CATEGORIES[selected_comp]
+cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
+raw_v_map = cur_layer["values"]
 
-active_category_values = {}[cite: 1]
-for s_name, val in raw_v_map.items():[cite: 1]
-    if val is None or np.isnan(val):[cite: 1]
-        continue[cite: 1]
-    u_name = s_name.upper()[cite: 1]
-    if selected_comp == "hoop" and "-CS" in u_name:[cite: 1]
-        active_category_values[s_name] = float(val)[cite: 1]
-    elif selected_comp == "axial":[cite: 1]
-        if ("-S" in u_name) and ("-CS" not in u_name):[cite: 1]
-            active_category_values[s_name] = float(val)[cite: 1]
-    elif selected_comp == "temp" and "-TP" in u_name:[cite: 1]
-        active_category_values[s_name] = float(val)[cite: 1]
+active_category_values = {}
+for s_name, val in raw_v_map.items():
+    if val is None or np.isnan(val):
+        continue
+    u_name = s_name.upper()
+    if selected_comp == "hoop" and "-CS" in u_name:
+        active_category_values[s_name] = float(val)
+    elif selected_comp == "axial":
+        if ("-S" in u_name) and ("-CS" not in u_name):
+            active_category_values[s_name] = float(val)
+    elif selected_comp == "temp" and "-TP" in u_name:
+        active_category_values[s_name] = float(val)
 
-vals = [float(v) for v in active_category_values.values() if not np.isnan(v)][cite: 1]
-if not vals:[cite: 1]
-    clim = [-1.0, 1.0][cite: 1]
+# Точный расчёт диапазона clim с технологическим буфером
+vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
+if not vals:
+    clim = [-1.0, 1.0]
 else:
-    real_min = float(min(vals))[cite: 1]
-    real_max = float(max(vals))[cite: 1]
-    diff = abs(real_max - real_min)[cite: 1]
-    if diff < 0.001:[cite: 1]
-        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)][cite: 1]
-    elif diff < 0.1:[cite: 1]
-        clim = [round(real_min - (diff * 0.15), 2), round(real_max + (diff * 0.15), 2)][cite: 1]
+    real_min = float(min(vals))
+    real_max = float(max(vals))
+    diff = abs(real_max - real_min)
+    if diff < 0.001:
+        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
     else:
         buf = diff * 0.02
-        clim = [round(real_min - buf, 2), round(real_max + buf, 2)][cite: 1]
+        clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
 
-with col_nav:[cite: 1]
-    st.markdown("---")[cite: 1]
-    st.subheader("GÖRÜNÜM AYARLARI")[cite: 1]
+with col_nav:
+    st.markdown("---")
+    st.subheader("GÖRÜNÜМ AYARLARI")
 
-    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0[cite: 1]
-    show_meters = st.checkbox("Metre Cetveli Göster", value=True)[cite: 1]
-    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)[cite: 1]
+    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
+    show_meters = st.checkbox("Metre Cetveli Göster", value=True)
+    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
-    st.markdown("---")[cite: 1]
-    st.write("**Aktif Periyot:**")[cite: 1]
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{selected_date_choice}</span>", unsafe_allow_html=True)[cite: 1]
+    st.markdown("---")
+    st.write("**Aktif Periyot:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{selected_date_choice}</span>", unsafe_allow_html=True)
     
-    st.write("**Aktif Sensör Sayısı:**")[cite: 1]
-    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)[cite: 1]
+    st.write("**Aktif Sensör Sayısı:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
     
-    st.write("**Skala Limitleri (Gerçek Min / Maks):**")[cite: 1]
-    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)[cite: 1]
+    st.write("**Skala Limitleri (Gerçek Min / Maks):**")
+    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
-# --- 3B THREE.JS ОБЛАСТЬ ---[cite: 1]
-with col_3d:[cite: 1]
-    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))[cite: 1]
+# --- 3B THREE.JS ОБЛАСТЬ ---
+with col_3d:
+    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
     
-    sel_col1, sel_col2 = st.columns([3, 1])[cite: 1]
-    with sel_col1:[cite: 1]
+    sel_col1, sel_col2 = st.columns([3, 1])
+    with sel_col1:
         selected_sensor = st.selectbox(
-            "Sensör Değerini İncele:",[cite: 1]
+            "Sensör Değerini İncele:", 
             options=sensor_options,
-            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"[cite: 1]
-        )[cite: 1]
-    with sel_col2:[cite: 1]
-        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:[cite: 1]
+            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
+        )
+    with sel_col2:
+        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
             st.metric(
-                label=f"Seçilen Sensör Değeri",[cite: 1]
+                label=f"Seçilen Sensör Değeri",
                 value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
-            )[cite: 1]
-        else:[cite: 1]
-            st.metric(label="Sensör Değeri", value="--")[cite: 1]
+            )
+        else:
+            st.metric(label="Sensör Değeri", value="--")
 
-    model_b64 = get_model_b64(MODEL_PATH)[cite: 1]
+    model_b64 = get_model_b64(MODEL_PATH)
     
-    if not model_b64:[cite: 1]
-        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")[cite: 1]
-    else:[cite: 1]
+    if not model_b64:
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
+    else:
         payload_data = {
             "activeCategoryValues": active_category_values,
             "selectedSensor": selected_sensor,
@@ -559,8 +555,8 @@ with col_3d:[cite: 1]
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red
-        }[cite: 1]
-        json_payload = json.dumps(payload_data)[cite: 1]
+        }
+        json_payload = json.dumps(payload_data)
 
         raw_template = """<!DOCTYPE html>
 <html>
@@ -764,7 +760,7 @@ with col_3d:[cite: 1]
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // УНИКАЛЬНЫЕ СПЕКТРЫ ДЛЯ КАЖДОГО ТИПА (СВЕРХУ ВНИЗ В ЛЕГЕНДЕ: MAX -> MIN)
+        // СТАБИЛЬНЫЕ СПЕКТРЫ ДЛЯ КАЖДОГО ТИПА (СВЕРХУ ВНИЗ В ЛЕГЕНДЕ: MAX -> MIN)
         // =========================================================================
         const hoopStops = [
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
@@ -951,7 +947,6 @@ with col_3d:[cite: 1]
                 if (isSelected) { selectedMeshRef = detached; updateHud(item.sensorName, item.val); }
             });
 
-            // Стабильная интерполяция с полным перекрытием (R = 60m) и непрозрачной моделью (без артефактов)
             const R_SENSOR = 60.0;
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry; if (!geom.attributes.position) return;
