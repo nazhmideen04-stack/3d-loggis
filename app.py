@@ -538,7 +538,6 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const strainStops = [
                     new THREE.Color("#0022FF"), // Глубокий синий
                     new THREE.Color("#00E5FF"), // Неоновый циан
@@ -656,7 +655,6 @@ with col_3d:
                     return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
                 }}
 
-                // ПОСТРОЕНИЕ ТАБЛИЦЫ НОРМАЛИЗОВАННЫХ ДАННЫХ
                 const normalizedDataMap = {{}};
                 for (const rawKey in payload.activeCategoryValues) {{
                     const nKey = normalizeKey(rawKey);
@@ -666,27 +664,21 @@ with col_3d:
                     }};
                 }}
 
-                // ПРЕОБРАЗОВАНИЕ ИМЕНИ ДАТЧИКА В ЦЕЛЕВОЙ ТИП
                 function mapSensorNameToCurrentCategory(sensorId, comp) {{
                     let s = sensorId.toUpperCase();
                     if (comp === "temp") {{
-                        // Если открыта температура, любой CS или S трансформируется в TP
                         return s.replace("-CS", "-TP").replace("-S", "-TP");
                     }} else if (comp === "hoop") {{
-                        // Если открыт CS, трансформируем TP или S в CS
                         return s.replace("-TP", "-CS").replace("-S", "-CS");
                     }} else if (comp === "axial") {{
-                        // Если открыт S, трансформируем TP или CS в S
                         return s.replace("-TP", "-S").replace("-CS", "-S");
                     }}
                     return s;
                 }}
 
-                // СВЕРКА ДАННЫХ СТРОГО ПО ЦЕЛЕВОМУ НАЗВАНИЮ КАТЕГОРИИ
                 function findSensorDataForCategory(sensorId, comp) {{
                     const targetName = mapSensorNameToCurrentCategory(sensorId, comp);
 
-                    // 1. Прямой поиск целевого названия в таблице данных
                     if (payload.activeCategoryValues.hasOwnProperty(targetName)) {{
                         const v = payload.activeCategoryValues[targetName];
                         if (v !== undefined && v !== null && !isNaN(v)) {{
@@ -694,7 +686,6 @@ with col_3d:
                         }}
                     }}
 
-                    // 2. Поиск по нормализованному ключу
                     const nTarget = normalizeKey(targetName);
                     if (normalizedDataMap.hasOwnProperty(nTarget)) {{
                         const item = normalizedDataMap[nTarget];
@@ -703,7 +694,6 @@ with col_3d:
                         }}
                     }}
 
-                    // 3. Проверка прямого исходного имени (если оно уже соответствовало)
                     if (payload.activeCategoryValues.hasOwnProperty(sensorId)) {{
                         const v = payload.activeCategoryValues[sensorId];
                         if (v !== undefined && v !== null && !isNaN(v)) {{
@@ -712,6 +702,26 @@ with col_3d:
                     }}
 
                     return {{ found: false, key: targetName, val: NaN }};
+                }}
+
+                // ОПРЕДЕЛЕНИЕ ГОРИЗОНТАЛЬНОЙ (ПРОДОЛЬНОЙ) ОРИЕНТАЦИИ МЕША
+                function isLongitudinalMesh(mesh) {{
+                    const name = mesh.name.toUpperCase();
+                    // 1. По имени: если в имени явно указан продольный датчик (S)
+                    if (name.includes("-S") && !name.includes("-CS")) return true;
+                    if (name.includes("LONG") || name.includes("AXIAL") || name.includes("HORIZ")) return true;
+
+                    // 2. По геометрии: вытянут ли меш вдоль тоннеля (ось Z)?
+                    if (mesh.geometry) {{
+                        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+                        const b = mesh.geometry.boundingBox;
+                        const szZ = Math.abs(b.max.z - b.min.z);
+                        const szY = Math.abs(b.max.y - b.min.y);
+                        const szX = Math.abs(b.max.x - b.min.x);
+                        // Если длина вдоль тоннеля существенно больше высоты - это горизонтальный датчик S
+                        if (szZ > szY * 1.5 && szZ > 0.4) return true;
+                    }}
+                    return false;
                 }}
 
                 function createPortalMarker(text) {{
@@ -852,15 +862,30 @@ with col_3d:
                         }}
                     }});
 
-                    // ГРУППИРОВКА ОБЪЕКТОВ ПО УНИКАЛЬНОЙ ПОЗИЦИИ И ЦЕЛЕВОМУ ИМЕНИ
-                    // Исключает дублирование нескольких мешей (CS + TP) в одной и той же точке
                     const positionClusters = [];
 
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
-                        
-                        // Получаем статус строго для текущей активной категории
+                        const uName = name.toUpperCase();
+
+                        // СТРОГОЕ ИСКЛЮЧЕНИЕ ГОРИЗОНТАЛЬНЫХ СЕНСОРОВ ИЗ РЕЖИМА CS:
+                        // У CS могут быть ТОЛЬКО окружные (вертикальные/дуговые) датчики!
+                        if (payload.comp === "hoop") {{
+                            if (isLongitudinalMesh(child) || (uName.includes("-S") && !uName.includes("-CS"))) {{
+                                child.visible = false;
+                                return;
+                            }}
+                        }}
+
+                        // В режиме Axial (S) берем только продольные/горизонтальные
+                        if (payload.comp === "axial") {{
+                            if (uName.includes("-CS") && !uName.includes("-S")) {{
+                                child.visible = false;
+                                return;
+                            }}
+                        }}
+
                         const dataInfo = findSensorDataForCategory(sensorId, payload.comp);
                         const targetCategoryName = dataInfo.key;
                         const hasData = dataInfo.found;
@@ -869,10 +894,9 @@ with col_3d:
                         const wPos = new THREE.Vector3();
                         child.getWorldPosition(wPos);
 
-                        // Проверяем наличие точки в кластерах
                         let cluster = null;
                         for (let c of positionClusters) {{
-                            if (c.pos.distanceTo(wPos) < 0.25) {{
+                            if (c.pos.distanceTo(wPos) < 0.20) {{
                                 cluster = c;
                                 break;
                             }}
@@ -888,8 +912,6 @@ with col_3d:
                             }};
                             positionClusters.push(cluster);
                         }} else {{
-                            // Если в этой же точке найден меш, у которого ЕСТЬ данные для целевой категории,
-                            // он имеет наивысший приоритет и заменяет нерабочий аналог!
                             if (!cluster.hasData && hasData) {{
                                 cluster.mesh = child;
                                 cluster.sensorName = targetCategoryName;
@@ -898,26 +920,22 @@ with col_3d:
                             }}
                         }}
 
-                        child.visible = false; // Скрываем оригиналы в модели
+                        child.visible = false;
                     }});
 
-                    // СОЗДАЕМ ОКОНЧАТЕЛЬНЫЕ МАРКЕРЫ СЕНСОРОВ В ОТДЕЛЬНОМ НЕЗАВИСИМОМ СЛОЕ
                     positionClusters.forEach(c => {{
                         const hasData = c.hasData;
                         const sensorName = c.sensorName;
                         const val = c.val;
 
-                        // Показываем:
-                        // 1. Все рабочие сенсоры (БЕЛЫЕ)
-                        // 2. Если включен чекбокс — нерабочие сенсоры текущего типа (КРАСНЫЕ)
                         if (hasData || payload.showNoDataRed) {{
                             const isSelected = (sensorName === payload.selectedSensor);
 
-                            let sensorColor = 0xFFFFFF; // Рабочий сенсор всегда белый
+                            let sensorColor = 0xFFFFFF; // Белый по умолчанию
                             if (isSelected) {{
                                 sensorColor = 0xFFD700; // Золотой при выборе
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033; // Красный ТОЛЬКО если данных для текущего типа действительно нет
+                                sensorColor = 0xFF0033; // Красный только при отсутствии данных
                             }}
 
                             const sensorMat = new THREE.MeshBasicMaterial({{
@@ -954,7 +972,6 @@ with col_3d:
                         }}
                     }});
 
-                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -995,7 +1012,6 @@ with col_3d:
                         }}
                     }});
 
-                    // ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -1228,7 +1244,8 @@ with col_3d:
                 }}
 
                 function flyCameraTo(targetMesh, animate = true) {{
-                    const targetPos = targetMesh.position.clone();
+                    const targetPos = new THREE.Vector3();
+                    targetMesh.getWorldPosition(targetPos);
 
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
@@ -1329,7 +1346,6 @@ with col_3d:
                     renderer.setSize(container.clientWidth, container.clientHeight);
                 }});
 
-                // ДВУХПРОХОДНЫЙ РЕНДЕР
                 function animate(time) {{
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
