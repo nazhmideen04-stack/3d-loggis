@@ -226,13 +226,11 @@ def fetch_all_categories_data():
                         except Exception:
                             pass
 
-                # Даем таблице время перестроиться в DOM
                 page.wait_for_timeout(3000)
 
                 val_map = {}
                 latest_date_str = ""
 
-                # Безопасный опрос таблицы с защитой от сбоя фрейма
                 for _ in range(15):
                     try:
                         extracted = page.evaluate("""() => {
@@ -266,7 +264,7 @@ def fetch_all_categories_data():
 
                                 if (headerCells.length === 0 || dataCells.length === 0) return null;
                                 return { headers: headerCells, values: dataCells };
-                            } catch (e) {
+                            } catch(e) {
                                 return null;
                             }
                         }""")
@@ -287,7 +285,6 @@ def fetch_all_categories_data():
                             if len(val_map) > 0:
                                 break
                     except Exception:
-                        # Если контекст страницы был временно сброшен AJAX-обновлением, повторяем без падения
                         pass
 
                     page.wait_for_timeout(600)
@@ -300,6 +297,7 @@ def fetch_all_categories_data():
             browser.close()
 
     return all_results
+
 @st.cache_data
 def get_model_b64(path):
     if not os.path.exists(path):
@@ -384,7 +382,7 @@ with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
     if not model_b64:
-        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükлейiniz.")
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
         payload_data = {
             "activeCategoryValues": active_category_values,
@@ -398,264 +396,981 @@ with col_3d:
         }
         json_payload = json.dumps(payload_data)
 
-        # HTML/JS Шаблон с безопасной маской прозрачности вместо удаления полигонов
-        threejs_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body {{ margin: 0; padding: 0; overflow: hidden; background-color: #0A0E17; font-family: 'Chakra Petch', sans-serif; }}
-                #canvas-container {{ width: 100vw; height: 100vh; position: relative; }}
-                #sensor-tooltip {{ position: absolute; display: none; background: rgba(14, 24, 42, 0.95); border: 1px solid #00C8E6; color: #FFFFFF; padding: 8px 14px; border-radius: 6px; font-size: 14px; pointer-events: none; z-index: 100; box-shadow: 0 6px 18px rgba(0, 200, 230, 0.35); }}
-                #loader {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #00C8E6; font-size: 18px; font-weight: 700; letter-spacing: 1px; z-index: 10; }}
-            </style>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-        </head>
-        <body>
-            <div id="canvas-container">
-                <div id="loader">3B MODEL VE VERİLER YÜKLENİYOR...</div>
-                <div id="sensor-tooltip"></div>
+        raw_template = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0A0E17;
+            font-family: 'Chakra Petch', sans-serif;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #sensor-tooltip {
+            position: absolute;
+            display: none;
+            background: rgba(14, 24, 42, 0.95);
+            border: 1px solid #00C8E6;
+            color: #FFFFFF;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 100;
+            box-shadow: 0 6px 18px rgba(0, 200, 230, 0.35);
+        }
+        #selected-hud {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            display: none;
+            background: rgba(10, 14, 23, 0.92);
+            border: 1px solid #00C8E6;
+            padding: 12px 18px;
+            border-radius: 8px;
+            z-index: 95;
+            box-shadow: 0 4px 20px rgba(0, 200, 230, 0.3);
+        }
+        #selected-hud .hud-title {
+            font-size: 12px;
+            color: #8397AD;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        #selected-hud .hud-name {
+            font-size: 18px;
+            color: #FFFFFF;
+            font-weight: 700;
+            margin: 2px 0 6px 0;
+        }
+        #selected-hud .hud-val {
+            font-size: 22px;
+            color: #00E5FF;
+            font-weight: 700;
+        }
+        #loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00C8E6;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+        #color-legend {
+            position: absolute;
+            top: 24px;
+            right: 28px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(10, 14, 23, 0.92);
+            padding: 14px 16px;
+            border: 1px solid rgba(0, 200, 230, 0.55);
+            box-shadow: 0 0 18px rgba(0, 200, 230, 0.25);
+            border-radius: 6px;
+            z-index: 90;
+            user-select: none;
+        }
+        #legend-title {
+            color: #00E5FF;
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-transform: none !important;
+            letter-spacing: 0.5px;
+        }
+        .legend-bar-container {
+            display: flex;
+            align-items: stretch;
+            height: 240px;
+        }
+        #legend-bar {
+            width: 20px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            margin-right: 10px;
+        }
+        .legend-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            color: #FFFFFF;
+            font-size: 12px;
+            font-weight: 700;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+</head>
+<body>
+    <div id="canvas-container">
+        <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
+        <div id="sensor-tooltip"></div>
+        
+        <div id="selected-hud">
+            <div class="hud-title">Seçilen Sensör</div>
+            <div id="hud-sensor-name" class="hud-name">--</div>
+            <div id="hud-sensor-val" class="hud-val">--</div>
+        </div>
+
+        <div id="color-legend">
+            <div id="legend-title"></div>
+            <div class="legend-bar-container">
+                <div id="legend-bar"></div>
+                <div class="legend-labels">
+                    <span id="lbl-max">--</span>
+                    <span id="lbl-mid">--</span>
+                    <span id="lbl-min">--</span>
+                </div>
             </div>
+        </div>
+    </div>
 
-            <script>
-                const payload = {json_payload};
-                const modelB64 = "{model_b64}";
+    <script>
+        const payload = __INJECT_PAYLOAD__;
+        const modelB64 = "__INJECT_MODEL__";
+        
+        const container = document.getElementById('canvas-container');
+        const tooltip = document.getElementById('sensor-tooltip');
+        const loaderText = document.getElementById('loader');
+        const legendBar = document.getElementById('legend-bar');
+        const legendTitle = document.getElementById('legend-title');
+        const lblMax = document.getElementById('lbl-max');
+        const lblMid = document.getElementById('lbl-mid');
+        const lblMin = document.getElementById('lbl-min');
+
+        const selectedHud = document.getElementById('selected-hud');
+        const hudName = document.getElementById('hud-sensor-name');
+        const hudVal = document.getElementById('hud-sensor-val');
+
+        // 1. ПАЛИТРА ДЛЯ ÇEVRESEL GERİNİM (CS) - Турбо Радуга
+        const hoopStops = [
+            new THREE.Color("#0022FF"), // Глубокий синий (мин)
+            new THREE.Color("#00E5FF"), // Циан
+            new THREE.Color("#00FF44"), // Зеленый
+            new THREE.Color("#FFE600"), // Желтый
+            new THREE.Color("#FFAA00"), // Янтарный
+            new THREE.Color("#FF5500"), // Оранжевый
+            new THREE.Color("#FF0022")  // Алый красный (макс)
+        ];
+
+        // 2. ПАЛИТРА ДЛЯ BOYUNA GERİNİM (S) - Осевая деформация
+        const axialStops = [
+            new THREE.Color("#081D58"),
+            new THREE.Color("#253494"),
+            new THREE.Color("#1D91C0"),
+            new THREE.Color("#7FCDBB"),
+            new THREE.Color("#FFFFD9"),
+            new THREE.Color("#FEB24C"),
+            new THREE.Color("#F03B20"),
+            new THREE.Color("#BD0026")
+        ];
+
+        // 3. ПАЛИТРА ДЛЯ SICAKLIK (TP) - Термографическая шкала
+        const tempStops = [
+            new THREE.Color("#000004"),
+            new THREE.Color("#2C105C"),
+            new THREE.Color("#711F81"),
+            new THREE.Color("#B5367A"),
+            new THREE.Color("#F1605D"),
+            new THREE.Color("#FEA066"),
+            new THREE.Color("#FEDA8B"),
+            new THREE.Color("#FCFDBF")
+        ];
+
+        let currentStops = hoopStops;
+        if (payload.comp === "axial") {
+            currentStops = axialStops;
+            legendTitle.innerText = "Boyuna [µm/m]";
+        } else if (payload.comp === "temp") {
+            currentStops = tempStops;
+            legendTitle.innerText = "Sıcaklık [°C]";
+        } else {
+            currentStops = hoopStops;
+            legendTitle.innerText = "Çevresel [µm/m]";
+        }
+
+        function buildExactLegendGradient(stops) {
+            const n = stops.length;
+            const items = [];
+            for (let i = 0; i < n; i++) {
+                const colorObj = stops[n - 1 - i];
+                const hex = '#' + colorObj.getHexString();
+                const percent = ((i / (n - 1)) * 100).toFixed(1);
+                items.push(hex + ' ' + percent + '%');
+            }
+            return 'linear-gradient(to bottom, ' + items.join(', ') + ')';
+        }
+
+        legendBar.style.background = buildExactLegendGradient(currentStops);
+
+        function sampleColorRamp(stops, t) {
+            t = Math.max(0, Math.min(1, t));
+            const scaled = t * (stops.length - 1);
+            const idx = Math.floor(scaled);
+            const fract = scaled - idx;
+            if (idx >= stops.length - 1) return stops[stops.length - 1].clone();
+            const c = new THREE.Color();
+            c.lerpColors(stops[idx], stops[idx + 1], fract);
+            return c;
+        }
+
+        function getColorForValue(val, clim) {
+            if (val === undefined || isNaN(val)) return new THREE.Color(0x334455);
+            const min = clim[0], max = clim[1];
+            let t = (val - min) / ((max - min) || 1.0);
+            t = Math.max(0, Math.min(1, t));
+            return sampleColorRamp(currentStops, t);
+        }
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0A0E17);
+
+        const sensorScene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.autoClear = false;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 0.5;
+        controls.maxDistance = 2500;
+
+        controls.addEventListener('change', () => {
+            const camState = {
+                pos: [camera.position.x, camera.position.y, camera.position.z],
+                target: [controls.target.x, controls.target.y, controls.target.z]
+            };
+            sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+        });
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
+        scene.add(ambientLight);
+
+        const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6);
+        dirLight1.position.set(60, 100, 80);
+        scene.add(dirLight1);
+
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight2.position.set(-60, -40, -80);
+        scene.add(dirLight2);
+
+        const interactiveSensors = [];
+        const tunnelMeshes = [];
+        
+        const raycaster = new THREE.Raycaster();
+        raycaster.params.Line = { threshold: 1.0 };
+        raycaster.params.Points = { threshold: 1.0 };
+        
+        const mouse = new THREE.Vector2();
+
+        function extractSensorId(name) {
+            const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
+            return m ? m[0] : name;
+        }
+
+        function normalizeKey(str) {
+            return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        }
+
+        function getCanonicalSensorId(name) {
+            const m = name.match(/(T[AB])-([A-Za-z]+)0*(\d+)-([A-Za-z0-9]+)/i);
+            if (m) {
+                return (m[1] + '-' + m[2] + parseInt(m[3], 10) + '-' + m[4]).toUpperCase();
+            }
+            return name.toUpperCase();
+        }
+
+        const normalizedDataMap = {};
+        for (const rawKey in payload.activeCategoryValues) {
+            const val = payload.activeCategoryValues[rawKey];
+            normalizedDataMap[rawKey.toUpperCase()] = { canonicalKey: rawKey, val: val };
+            normalizedDataMap[normalizeKey(rawKey)] = { canonicalKey: rawKey, val: val };
+            normalizedDataMap[getCanonicalSensorId(rawKey)] = { canonicalKey: rawKey, val: val };
+        }
+
+        function checkSensorData(sensorId, comp) {
+            const uId = sensorId.toUpperCase();
+            const nId = normalizeKey(sensorId);
+            const cId = getCanonicalSensorId(sensorId);
+
+            if (normalizedDataMap[uId]) return { found: true, key: normalizedDataMap[uId].canonicalKey, val: normalizedDataMap[uId].val };
+            if (normalizedDataMap[cId]) return { found: true, key: normalizedDataMap[cId].canonicalKey, val: normalizedDataMap[cId].val };
+            if (normalizedDataMap[nId]) return { found: true, key: normalizedDataMap[nId].canonicalKey, val: normalizedDataMap[nId].val };
+
+            if (comp === "temp" && !uId.includes("-TP")) {
+                const tpVariant = uId.replace("-CS", "-TP").replace("-S", "-TP");
+                const cTpVariant = getCanonicalSensorId(tpVariant);
+                if (normalizedDataMap[tpVariant]) return { found: true, key: normalizedDataMap[tpVariant].canonicalKey, val: normalizedDataMap[tpVariant].val };
+                if (normalizedDataMap[cTpVariant]) return { found: true, key: normalizedDataMap[cTpVariant].canonicalKey, val: normalizedDataMap[cTpVariant].val };
+            }
+
+            return { found: false, key: sensorId, val: NaN };
+        }
+
+        function createPortalMarker(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
+            ctx.strokeStyle = '#00C8E6';
+            ctx.lineWidth = 14;
+            ctx.strokeRect(10, 10, 492, 236);
+            ctx.fillRect(10, 10, 492, 236);
+
+            ctx.font = '900 135px Syne, Chakra Petch, sans-serif';
+            ctx.fillStyle = '#00E5FF';
+            ctx.shadowColor = '#00C8E6';
+            ctx.shadowBlur = 18;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 256, 128);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(6.0, 3.0, 1);
+            return sprite;
+        }
+
+        function createRulerLabel(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'rgba(10, 14, 23, 0.9)';
+            ctx.strokeStyle = 'rgba(0, 229, 255, 0.85)';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(6, 6, 244, 116);
+            ctx.fillRect(6, 6, 244, 116);
+
+            ctx.font = '700 48px Chakra Petch, sans-serif';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 128, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(2.4, 1.2, 1);
+            return sprite;
+        }
+
+        const binaryStr = atob(modelB64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        let selectedMeshRef = null;
+
+        const gltfLoader = new THREE.GLTFLoader();
+        gltfLoader.parse(bytes.buffer, '', function(gltf) {
+            const model = gltf.scene;
+            scene.add(model);
+            model.updateMatrixWorld(true);
+            loaderText.style.display = 'none';
+
+            const rawSensors = [];
+
+            model.traverse(function(child) {
+                if (child.isLine || child.isLineSegments) {
+                    child.visible = false;
+                    return;
+                }
+
+                if (child.isMesh) {
+                    const name = child.name;
+                    const uName = name.toUpperCase();
+
+                    if (uName.includes("BOX001")) {
+                        child.visible = false;
+                        return;
+                    }
+
+                    // БЕЗОПАСНОЕ СКРЫТИЕ ОТДЕЛЬНЫХ ПЕРЕГОРОДОК БЕЗ ПОВРЕЖДЕНИЯ ОСНОВНОГО СВОДА
+                    const isSeparateCapObject = (
+                        uName.includes("DISC") ||
+                        uName.includes("DISK") ||
+                        uName.includes("CAP") ||
+                        uName.includes("PLUG") ||
+                        uName.includes("COVER") ||
+                        uName.includes("SEAM") ||
+                        uName.includes("JOINT")
+                    );
+
+                    if (isSeparateCapObject && !uName.startsWith("TA-") && !uName.startsWith("TB-") && uName !== "TA" && uName !== "TB") {
+                        child.visible = false;
+                        return;
+                    }
+
+                    const isSensorObject = (
+                        uName.startsWith("TA-") || 
+                        uName.startsWith("TB-") || 
+                        uName.includes("-CS") || 
+                        uName.includes("-S") || 
+                        uName.includes("-TP")
+                    );
+
+                    if (isSensorObject) {
+                        rawSensors.push(child);
+                    } else {
+                        const isTunnel = (
+                            uName.includes("TUNNEL") || 
+                            uName.includes("TÜNEL") || 
+                            uName === "TA" || 
+                            uName === "TB" || 
+                            uName.startsWith("TA_") || 
+                            uName.startsWith("TB_")
+                        );
+
+                        if (isTunnel) {
+                            // ОРИГИНАЛЬНАЯ ГЕОМЕТРИЯ: Никаких срезок и изменений полигонов!
+                            tunnelMeshes.push(child);
+                        } else {
+                            child.material = new THREE.MeshStandardMaterial({
+                                color: 0x141E2D,
+                                roughness: 0.8
+                            });
+                        }
+                    }
+                }
+            });
+
+            // 1. СТРОГИЙ ОТБОР СЕНСОРОВ ПО КАТЕГОРИИ
+            const targetMeshes = [];
+
+            rawSensors.forEach(child => {
+                child.visible = false;
+
+                const name = child.name;
+                const uName = name.toUpperCase();
+                const sensorId = extractSensorId(name);
+
+                let isCategory = false;
+                if (payload.comp === "hoop") {
+                    if (uName.includes("-CS")) isCategory = true;
+                } else if (payload.comp === "axial") {
+                    if (uName.includes("-S") && !uName.includes("-CS")) isCategory = true;
+                } else if (payload.comp === "temp") {
+                    if (uName.includes("-TP")) isCategory = true;
+                    else if (checkSensorData(sensorId, "temp").found) isCategory = true;
+                }
+
+                if (!isCategory) return;
+
+                const dataInfo = checkSensorData(sensorId, payload.comp);
+                const hasData = dataInfo.found;
+                const sensorName = dataInfo.key;
+                const val = dataInfo.val;
+
+                const wPos = new THREE.Vector3();
+                child.getWorldPosition(wPos);
+
+                targetMeshes.push({
+                    mesh: child,
+                    pos: wPos,
+                    sensorName: sensorName,
+                    hasData: hasData,
+                    val: val
+                });
+            });
+
+            // 2. ДЕДУПЛИКАЦИЯ
+            const finalSensors = [];
+            targetMeshes.forEach(item => {
+                let duplicate = null;
+                for (let f of finalSensors) {
+                    if (f.pos.distanceTo(item.pos) < 0.12 && getCanonicalSensorId(f.sensorName) === getCanonicalSensorId(item.sensorName)) {
+                        duplicate = f;
+                        break;
+                    }
+                }
+
+                if (!duplicate) {
+                    finalSensors.push(item);
+                } else {
+                    if (!duplicate.hasData && item.hasData) {
+                        duplicate.hasData = true;
+                        duplicate.val = item.val;
+                        duplicate.sensorName = item.sensorName;
+                        duplicate.mesh = item.mesh;
+                    }
+                }
+            });
+
+            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (ПОДСВЕТКА СТРОГО ОДНОГО ВЫБРАННОГО)
+            finalSensors.forEach(item => {
+                const hasData = item.hasData;
+                const sensorName = item.sensorName;
+                const val = item.val;
+
+                if (hasData || payload.showNoDataRed) {
+                    const isSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && sensorName === payload.selectedSensor);
+
+                    let sensorColor = 0xFFFFFF; // Белый по умолчанию
+                    if (isSelected) {
+                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для одного выбранного
+                    } else if (!hasData) {
+                        sensorColor = 0xFF0033; // Красный при отсутствии данных
+                    }
+
+                    const sensorMat = new THREE.MeshBasicMaterial({
+                        color: sensorColor,
+                        side: THREE.DoubleSide,
+                        transparent: false,
+                        opacity: 1.0,
+                        depthTest: true,
+                        depthWrite: true
+                    });
+
+                    const wQuat = new THREE.Quaternion();
+                    const wScale = new THREE.Vector3();
+                    item.mesh.getWorldQuaternion(wQuat);
+                    item.mesh.getWorldScale(wScale);
+
+                    const detachedMesh = new THREE.Mesh(item.mesh.geometry.clone(), sensorMat);
+                    detachedMesh.position.copy(item.pos);
+                    detachedMesh.quaternion.copy(wQuat);
+                    detachedMesh.scale.copy(wScale);
+
+                    detachedMesh.userData.sensorName = sensorName;
+                    detachedMesh.userData.val = hasData ? val : NaN;
+                    detachedMesh.userData.isUsable = hasData;
+                    detachedMesh.userData.isNoData = !hasData;
+
+                    sensorScene.add(detachedMesh);
+                    interactiveSensors.push(detachedMesh);
+
+                    if (isSelected) {
+                        selectedMeshRef = detachedMesh;
+                        updateHud(sensorName, val, hasData);
+                    }
+                }
+            });
+
+            // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
+            const validVals = interactiveSensors
+                .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
+                .map(s => s.userData.val);
+
+            let dynamicClim = [0.0, 1.0];
+            if (validVals.length > 0) {
+                let dMin = Math.min(...validVals);
+                let dMax = Math.max(...validVals);
+                if (Math.abs(dMax - dMin) < 0.001) {
+                    dMin -= 1.0;
+                    dMax += 1.0;
+                }
+                dynamicClim = [dMin, dMax];
+            } else if (payload.clim) {
+                dynamicClim = payload.clim;
+            }
+
+            const finalMin = dynamicClim[0];
+            const finalMax = dynamicClim[1];
+            const finalMid = (finalMin + finalMax) / 2.0;
+
+            lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(1);
+            lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
+            lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
+
+            const interpolationSensors = [];
+            interactiveSensors.forEach(sMesh => {
+                if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {
+                    const uName = sMesh.userData.sensorName.toUpperCase();
+                    const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
+
+                    interpolationSensors.push({
+                        pos: sMesh.position.clone(),
+                        val: sMesh.userData.val,
+                        tun: tun,
+                        name: sMesh.userData.sensorName
+                    });
+                }
+            });
+
+            // ИНТЕРПОЛЯЦИЯ СВОДА (ПОЛНОСТЬЮ ОРИГИНАЛЬНЫЙ СВОД)
+            const R_INFLUENCE = 48.0;
+
+            tunnelMeshes.forEach(tMesh => {
+                const geom = tMesh.geometry;
+                if (!geom || !geom.attributes || !geom.attributes.position) return;
+
+                const posAttr = geom.attributes.position;
+                const colors = new Float32Array(posAttr.count * 3);
+                const localV = new THREE.Vector3();
+                const worldV = new THREE.Vector3();
+
+                const uName = tMesh.name.toUpperCase();
+                const isTB = uName.includes("TB");
+                const activeTun = isTB ? "TB" : "TA";
                 
-                const container = document.getElementById('canvas-container');
-                const tooltip = document.getElementById('sensor-tooltip');
-                const loaderText = document.getElementById('loader');
+                let pool = interpolationSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
+                if (pool.length < 2) pool = interpolationSensors;
 
-                // ПАЛИТРА ДЛЯ ИНТЕРПОЛЯЦИИ (Радуга Turbo)
-                const strainStops = [
-                    new THREE.Color("#0022FF"), new THREE.Color("#00E5FF"), new THREE.Color("#00FF44"),
-                    new THREE.Color("#FFE600"), new THREE.Color("#FFAA00"), new THREE.Color("#FF5500"), new THREE.Color("#FF0022")
-                ];
+                tMesh.updateMatrixWorld(true);
 
-                function getColorForValue(val, clim) {{
-                    if (val === undefined || isNaN(val)) return new THREE.Color(0x334455);
-                    const min = clim[0], max = clim[1];
-                    let t = (val - min) / ((max - min) || 1.0);
-                    t = Math.max(0, Math.min(1, t));
-                    const scaled = t * (strainStops.length - 1);
-                    const idx = Math.floor(scaled);
-                    const fract = scaled - idx;
-                    if (idx >= strainStops.length - 1) return strainStops[strainStops.length - 1].clone();
-                    const c = new THREE.Color();
-                    c.lerpColors(strainStops[idx], strainStops[idx + 1], fract);
-                    return c;
-                }}
+                if (pool.length === 0) {
+                    for (let i = 0; i < posAttr.count; i++) {
+                        const idx = i * 3;
+                        colors[idx] = 0.082;
+                        colors[idx + 1] = 0.110;
+                        colors[idx + 2] = 0.157;
+                    }
+                } else {
+                    for (let i = 0; i < posAttr.count; i++) {
+                        localV.fromBufferAttribute(posAttr, i);
+                        worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
 
-                const scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x0A0E17);
+                        let totalWeight = 0;
+                        let accumR = 0, accumG = 0, accumB = 0;
 
-                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
-                const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
-                renderer.setSize(container.clientWidth, container.clientHeight);
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-                container.appendChild(renderer.domElement);
+                        for (let j = 0; j < pool.length; j++) {
+                            const s = pool[j];
+                            const d = worldV.distanceTo(s.pos);
+                            
+                            if (d < R_INFLUENCE) {
+                                const rNorm = d / R_INFLUENCE;
+                                const wEnvelope = Math.pow(1.0 - Math.pow(rNorm, 1.3), 1.2);
+                                const w = wEnvelope / (Math.pow(d, 1.8) + 0.15);
 
-                const controls = new THREE.OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true; controls.dampingFactor = 0.05;
-                controls.minDistance = 0.5; controls.maxDistance = 2500;
+                                const c = getColorForValue(s.val, dynamicClim);
+                                accumR += c.r * w;
+                                accumG += c.g * w;
+                                accumB += c.b * w;
+                                totalWeight += w;
+                            }
+                        }
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
-                scene.add(ambientLight);
-                const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
+                        const idx = i * 3;
+                        if (totalWeight > 0.000001) {
+                            colors[idx] = accumR / totalWeight;
+                            colors[idx + 1] = accumG / totalWeight;
+                            colors[idx + 2] = accumB / totalWeight;
+                        } else {
+                            colors[idx] = 0.082;
+                            colors[idx + 1] = 0.110;
+                            colors[idx + 2] = 0.157;
+                        }
+                    }
+                }
 
-                const tunnelMeshes = [];
-                const binaryStr = atob(modelB64);
-                const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) {{ bytes[i] = binaryStr.charCodeAt(i); }}
+                geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geom.attributes.color.needsUpdate = true;
+                
+                const isTransparent = payload.tunnelOpacity < 0.98;
+                tMesh.material = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    vertexColors: true,
+                    transparent: isTransparent,
+                    opacity: payload.tunnelOpacity,
+                    roughness: 0.18,
+                    metalness: 0.02,
+                    depthWrite: !isTransparent,
+                    side: THREE.DoubleSide
+                });
+                tMesh.renderOrder = 0;
+                tMesh.material.needsUpdate = true;
+            });
 
-                const gltfLoader = new THREE.GLTFLoader();
-                gltfLoader.parse(bytes.buffer, '', function(gltf) {{
-                    const model = gltf.scene;
-                    scene.add(model);
-                    model.updateMatrixWorld(true);
-                    loaderText.style.display = 'none';
+            const boxTA = new THREE.Box3();
+            const boxTB = new THREE.Box3();
+            let hasTA = false, hasTB = false;
 
-                    // РАСЧЕТ ИНТЕРПОЛЯЦИИ СВОДА
-                    const interpolationSensors = [];
-                    for (const rawKey in payload.activeCategoryValues) {{
-                        const val = payload.activeCategoryValues[rawKey];
-                        const uName = rawKey.toUpperCase();
-                        const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
-                        
-                        // Ищем объект датчика в модели, чтобы получить его мировые координаты
-                        model.traverse(function(child) {{
-                            if (child.isMesh && child.name.toUpperCase() === uName) {{
-                                const wPos = new THREE.Vector3();
-                                child.getWorldPosition(wPos);
-                                interpolationSensors.push({{ pos: wPos, val: val, tun: tun }});
-                                
-                                // ЦВЕТ САМОГО ДАТЧИКА (БЕЛЫЙ ИЛИ КРАСНЫЙ ЕГО БОЛЬШЕ НЕТ)
-                                child.material = new THREE.MeshBasicMaterial({{ color: 0xFFFFFF, side: THREE.DoubleSide }});
-                                child.visible = true;
-                            }}
-                        }});
-                    }}
+            tunnelMeshes.forEach(tm => {
+                const u = tm.name.toUpperCase();
+                if (u.includes("TB")) {
+                    boxTB.expandByObject(tm);
+                    hasTB = true;
+                } else if (u.includes("TA")) {
+                    boxTA.expandByObject(tm);
+                    hasTA = true;
+                }
+            });
 
-                    // ИНТЕРПОЛЯЦИЯ СВОДА ТОННЕЛЯ
-                    const R_INFLUENCE = 48.0;
+            const portalsGroup = new THREE.Group();
 
-                    model.traverse(function(child) {{
-                        if (child.isMesh) {{
-                            const uName = child.name.toUpperCase();
-                            const isTunnel = (uName.includes("TUNNEL") || uName.includes("TÜNEL") || uName === "TA" || uName === "TB" || uName.startsWith("TA_") || uName.startsWith("TB_"));
+            if (hasTA) {
+                const cA = boxTA.getCenter(new THREE.Vector3());
+                const spriteTA = createPortalMarker("TA");
+                spriteTA.position.set(cA.x, boxTA.max.y + 3.2, boxTA.min.z - 2.0);
+                portalsGroup.add(spriteTA);
+            }
 
-                            if (isTunnel) {{
-                                tunnelMeshes.push(child);
-                                const geom = child.geometry;
-                                if (!geom || !geom.attributes || !geom.attributes.position) return;
+            if (hasTB) {
+                const cB = boxTB.getCenter(new THREE.Vector3());
+                const spriteTB = createPortalMarker("TB");
+                spriteTB.position.set(cB.x, boxTB.max.y + 3.2, boxTB.min.z - 2.0);
+                portalsGroup.add(spriteTB);
+            }
 
-                                const posAttr = geom.attributes.position;
-                                const colors = new Float32Array(posAttr.count * 3);
-                                const localV = new THREE.Vector3();
-                                const worldV = new THREE.Vector3();
+            scene.add(portalsGroup);
 
-                                const isTB = uName.includes("TB");
-                                const activeTun = isTB ? "TB" : "TA";
-                                let pool = interpolationSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
-                                if (pool.length === 0) pool = interpolationSensors; // Fallback
+            if (payload.showMeters) {
+                const overallBox = new THREE.Box3();
+                tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
 
-                                child.updateMatrixWorld(true);
+                if (!overallBox.isEmpty()) {
+                    const size = overallBox.getSize(new THREE.Vector3());
+                    const rulerGroup = new THREE.Group();
 
-                                if (pool.length > 0) {{
-                                    for (let i = 0; i < posAttr.count; i++) {{
-                                        localV.fromBufferAttribute(posAttr, i);
-                                        worldV.copy(localV).applyMatrix4(child.matrixWorld);
+                    const isZAxis = size.z >= size.x;
+                    const lengthM = isZAxis ? size.z : size.x;
+                    const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x;
+                    const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
 
-                                        let totalWeight = 0;
-                                        let accumR = 0, accumG = 0, accumB = 0;
+                    const step = 10.0;
+                    const stepsCount = Math.floor(lengthM / step);
+                    const totalDistanceM = stepsCount * step;
 
-                                        for (let j = 0; j < pool.length; j++) {{
-                                            const s = pool[j];
-                                            const d = worldV.distanceTo(s.pos);
-                                            
-                                            if (d < R_INFLUENCE) {{
-                                                const rNorm = d / R_INFLUENCE;
-                                                const wEnvelope = Math.pow(1.0 - Math.pow(rNorm, 1.3), 1.2);
-                                                const w = wEnvelope / (Math.pow(d, 1.8) + 0.15);
+                    const yRuler = overallBox.min.y - 0.2;
+                    const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
 
-                                                const c = getColorForValue(s.val, payload.clim);
-                                                accumR += c.r * w;
-                                                accumG += c.g * w;
-                                                accumB += c.b * w;
-                                                totalWeight += w;
-                                            }}
-                                        }}
+                    const linePoints = [];
+                    if (isZAxis) {
+                        linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord));
+                        linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord));
+                    } else {
+                        linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos));
+                        linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos));
+                    }
 
-                                        const idx = i * 3;
-                                        if (totalWeight > 0.000001) {{
-                                            colors[idx] = accumR / totalWeight;
-                                            colors[idx + 1] = accumG / totalWeight;
-                                            colors[idx + 2] = accumB / totalWeight;
-                                        }} else {{
-                                            // Базовый цвет тоннеля
-                                            colors[idx] = 0.082; colors[idx + 1] = 0.110; colors[idx + 2] = 0.157;
-                                        }}
-                                    }}
-                                    geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                                    geom.attributes.color.needsUpdate = true;
-                                }}
+                    const axisGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+                    const axisMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 });
+                    rulerGroup.add(new THREE.Line(axisGeom, axisMat));
 
-                                // БЕЗОПАСНАЯ МАСКА ПРОЗРАЧНОСТИ: Скрывает текстуру внутри цилиндра
-                                const shaderMat = new THREE.MeshStandardMaterial({{
-                                    vertexColors: true,
-                                    transparent: payload.tunnelOpacity < 0.98,
-                                    opacity: payload.tunnelOpacity,
-                                    roughness: 0.18, metalness: 0.02,
-                                    side: THREE.DoubleSide
-                                }});
+                    for (let i = 0; i <= stepsCount; i++) {
+                        const currentPos = startCoord + i * step;
+                        const reversedDistance = (totalDistanceM - (i * step)).toFixed(0);
+                        const distanceText = reversedDistance + " m";
 
-                                // Инжектируем логику маскировки в шейдер
-                                shaderMat.onBeforeCompile = (shader) => {{
-                                    shader.uniforms.maskRadius = {{ value: 1.95 }}; // Радиус внутренней пустоты
-                                    shader.uniforms.maskCenter = {{ value: new THREE.Vector3(0, 0, 0) }}; // Центр тоннеля (упрощение)
-                                    shader.uniforms.maskAxis = {{ value: new THREE.Vector3(0, 0, 1) }}; // Ось тоннеля (упрощение)
+                        const tickPoints = [];
+                        if (isZAxis) {
+                            tickPoints.push(new THREE.Vector3(lateralPos - 0.8, yRuler, currentPos));
+                            tickPoints.push(new THREE.Vector3(lateralPos + 0.8, yRuler, currentPos));
+                        } else {
+                            tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos - 0.8));
+                            tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos + 0.8));
+                        }
 
-                                    shader.fragmentShader = `
-                                        uniform float maskRadius;
-                                        uniform vec3 maskCenter;
-                                        uniform vec3 maskAxis;
-                                        varying vec3 vWorldPosition;
-                                        ${{shader.fragmentShader}}
-                                    `.replace(
-                                        '#include <dithering_fragment>',
-                                        `
-                                        #include <dithering_fragment>
-                                        
-                                        // Расчет расстояния от точки до оси цилиндра
-                                        vec3 p = vWorldPosition - maskCenter;
-                                        float d = length(p - dot(p, maskAxis) * maskAxis);
-                                        
-                                        // Скрываем пиксели, если они находятся внутри цилиндра
-                                        if (d < maskRadius) discard;
-                                        `
-                                    );
-                                    
-                                    // Нужно получить мировые координаты в фрагментном шейдере
-                                    shader.vertexShader = shader.vertexShader.replace(
-                                        '#include <clipping_planes_pars_vertex>',
-                                        `
-                                        #include <clipping_planes_pars_vertex>
-                                        varying vec3 vWorldPosition;
-                                        `
-                                    ).replace(
-                                        '#include <worldpos_vertex>',
-                                        `
-                                        #include <worldpos_vertex>
-                                        vWorldPosition = (modelMatrix * vec3(position, 1.0)).xyz;
-                                        `
-                                    );
-                                }};
+                        const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
+                        rulerGroup.add(new THREE.Line(tickGeom, axisMat));
 
-                                child.material = shaderMat;
-                                child.material.needsUpdate = true;
-                            }}
-                        }}
-                    }});
+                        const label = createRulerLabel(distanceText);
+                        if (isZAxis) {
+                            label.position.set(lateralPos + 2.4, yRuler + 0.4, currentPos);
+                        } else {
+                            label.position.set(currentPos, yRuler + 0.4, lateralPos + 2.4);
+                        }
+                        rulerGroup.add(label);
+                    }
 
-                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КАК БЫЛО РАНЬШЕ)
-                    const savedStateStr = sessionStorage.getItem('threejs_camera_state');
-                    if (savedStateStr) {{
-                        try {{
-                            const st = JSON.parse(savedStateStr);
-                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
-                            controls.target.set(st.target[0], st.target[1], st.target[2]);
-                            controls.update();
-                        }} catch(e) {{ sessionStorage.removeItem('threejs_camera_state'); }}
-                    }} else {{
-                        const tunnelBox = new THREE.Box3();
-                        if (tunnelMeshes.length > 0) {{
-                            tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
-                        }} else {{ tunnelBox.setFromObject(model); }}
-                        const center = tunnelBox.getCenter(new THREE.Vector3());
-                        controls.target.copy(center);
-                        camera.position.set(center.x - 30, center.y + 25, center.z + 40);
+                    scene.add(rulerGroup);
+                }
+            }
+
+            // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
+            const lastSelected = sessionStorage.getItem('threejs_last_selected');
+            const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
+
+            if (selectedMeshRef && isNewSensorSelected) {
+                sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
+                flyCameraTo(selectedMeshRef, true);
+            } else {
+                const savedStateStr = sessionStorage.getItem('threejs_camera_state');
+                if (savedStateStr) {
+                    try {
+                        const st = JSON.parse(savedStateStr);
+                        camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
+                        controls.target.set(st.target[0], st.target[1], st.target[2]);
                         controls.update();
-                    }}
+                    } catch(e) {}
+                } else {
+                    const tunnelBox = new THREE.Box3();
+                    if (tunnelMeshes.length > 0) {
+                        tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
+                    } else {
+                        tunnelBox.setFromObject(model);
+                    }
 
-                }}, undefined, function(err) {{ loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); }});
+                    const center = tunnelBox.getCenter(new THREE.Vector3());
+                    const size = tunnelBox.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
-                window.addEventListener('resize', function() {{
-                    camera.aspect = container.clientWidth / container.clientHeight;
-                    camera.updateProjectionMatrix();
-                    renderer.setSize(container.clientWidth, container.clientHeight);
-                }});
-
-                function animate() {{
-                    requestAnimationFrame(animate);
+                    controls.target.copy(center);
+                    camera.position.set(
+                        center.x - maxDim * 0.40,
+                        center.y + maxDim * 0.45,
+                        center.z + maxDim * 0.55
+                    );
                     controls.update();
-                    renderer.render(scene, camera);
-                }}
-                animate();
-            </script>
-        </body>
-        </html>
-        """
+                }
+            }
 
-        st.components.v1.html(threejs_html, height=760, scrolling=False)
+        }, undefined, function(err) {
+            loaderText.innerHTML = "Model yüklenirken hata oluştu!";
+            console.error(err);
+        });
+
+        // ПЛАШКА ВЫБРАННОГО ДАТЧИКА: ПОКАЗЫВАЕТ И ДЛЯ РАБОЧИХ, И ДЛЯ НЕРАБОЧИХ
+        function updateHud(name, val, isUsable) {
+            selectedHud.style.display = 'block';
+            hudName.innerText = name;
+            if (isUsable && val !== undefined && !isNaN(val)) {
+                const valTxt = (val > 0 ? "+" + val.toFixed(2) : val.toFixed(2)) + " " + payload.unit;
+                hudVal.innerText = valTxt;
+                hudVal.style.color = "#00E5FF";
+            } else {
+                hudVal.innerText = "Veri Yok / Belirsiz";
+                hudVal.style.color = "#FF0033";
+            }
+        }
+
+        function flyCameraTo(targetMesh, animate = true) {
+            const targetPos = targetMesh.position.clone();
+
+            const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
+            if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
+
+            const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
+
+            if (!animate) {
+                camera.position.copy(endCamPos);
+                controls.target.copy(targetPos);
+                controls.update();
+                return;
+            }
+
+            new TWEEN.Tween(controls.target)
+                .to(targetPos, 1400)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .start();
+
+            new TWEEN.Tween(camera.position)
+                .to(endCamPos, 1400)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .onUpdate(() => controls.update())
+                .onComplete(() => {
+                    const camState = {
+                        pos: [camera.position.x, camera.position.y, camera.position.z],
+                        target: [controls.target.x, controls.target.y, controls.target.z]
+                    };
+                    sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+                })
+                .start();
+        }
+
+        function getIntersectedSensor(e) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(interactiveSensors, true);
+
+            if (intersects.length > 0) {
+                let obj = intersects[0].object;
+                while (obj && !obj.userData.sensorName && obj.parent) {
+                    obj = obj.parent;
+                }
+                return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null;
+            }
+            return null;
+        }
+
+        // ВЫДЕЛЕНИЕ СТРОГО ОДНОГО СЕНСОРА ПРИ КЛИКЕ С ВЫВОДОМ НАЗВАНИЯ В ХУД
+        window.addEventListener('click', function(e) {
+            const sensorMesh = getIntersectedSensor(e);
+            if (sensorMesh) {
+                const sensorName = sensorMesh.userData.sensorName;
+                const sensorVal = sensorMesh.userData.val;
+                const isUsable = sensorMesh.userData.isUsable;
+                
+                interactiveSensors.forEach(m => {
+                    if (m === sensorMesh) {
+                        m.material.color.setHex(0xFFD700); // Только выбранный окрасится в желтый
+                    } else if (m.userData.isUsable) {
+                        m.material.color.setHex(0xFFFFFF); // Все остальные рабочие - белые
+                    } else {
+                        m.material.color.setHex(0xFF0033); // Нерабочие - красные
+                    }
+                });
+
+                flyCameraTo(sensorMesh, true);
+                updateHud(sensorName, sensorVal, isUsable);
+            }
+        });
+
+        window.addEventListener('mousemove', function(e) {
+            const sensorMesh = getIntersectedSensor(e);
+            if (sensorMesh) {
+                const name = sensorMesh.userData.sensorName;
+                const val = sensorMesh.userData.val;
+                const isUsable = sensorMesh.userData.isUsable;
+                const isNoData = sensorMesh.userData.isNoData;
+
+                tooltip.style.display = 'block';
+                tooltip.style.left = (e.clientX + 14) + 'px';
+                tooltip.style.top = (e.clientY + 14) + 'px';
+                
+                if (isUsable) {
+                    const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
+                    renderer.domElement.style.cursor = 'pointer';
+                } else if (isNoData) {
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
+                    renderer.domElement.style.cursor = 'pointer';
+                }
+            } else {
+                tooltip.style.display = 'none';
+                renderer.domElement.style.cursor = 'default';
+            }
+        });
+
+        window.addEventListener('resize', function() {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // ДВУХПРОХОДНЫЙ РЕНДЕР
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+            controls.update();
+
+            renderer.clear();
+            renderer.render(scene, camera);
+
+            renderer.clearDepth();
+            renderer.render(sensorScene, camera);
+        }
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>"""
+
+        final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
+        st.components.v1.html(final_html, height=760, scrolling=False)
