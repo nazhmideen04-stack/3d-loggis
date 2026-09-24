@@ -707,14 +707,14 @@ with col_3d:
 
         // 3. Sıcaklık (TP): Классический термо-инфракрасный
         const temperatureStops = [
-            new THREE.Color("#020024"),
+            new THREE.Color("#020024"), // Ледяной ультрамарин (Минимум)
             new THREE.Color("#0033FF"),
             new THREE.Color("#00D8FF"),
             new THREE.Color("#00FF44"),
             new THREE.Color("#B4FF00"),
             new THREE.Color("#FFDD00"),
             new THREE.Color("#FF4400"),
-            new THREE.Color("#D50000")
+            new THREE.Color("#D50000")  // Огненно-алый (Максимум)
         ];
 
         let currentStops = hoopStops;
@@ -1114,9 +1114,9 @@ with col_3d:
             });
 
             // =========================================================================
-            // ТОЧНАЯ ИНТЕРПОЛЯЦИЯ С ДИАПАЗОНОМ ДЛЯ КАЖДОГО СЕНСОРА И СВЕДЕНИЕМ К СРЕДНЕМУ
+            // РАСШИРЕННАЯ ИНТЕРПОЛЯЦИЯ С ПОЛНЫМ НАЛОЖЕНИЕМ ДИАПАЗОНОВ (R = 60.0m)
             // =========================================================================
-            const R_SENSOR = 32.0;
+            const R_SENSOR = 60.0; // Расширенный радиус для сплошного бесшовного наложения
 
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
@@ -1149,16 +1149,16 @@ with col_3d:
                         let totalWeight = 0;
                         let accumulatedVal = 0;
 
-                        // Проверяем попадание в диапазон каждого сенсора
+                        // Проверяем попадание в расширенный диапазон каждого сенсора
                         for (let j = 0; j < pool.length; j++) {
                             const s = pool[j];
                             const d = worldV.distanceTo(s.pos);
                             
-                            // Сенсор влияет только в пределах своего диапазона R_SENSOR
+                            // Сенсор влияет в пределах расширенного диапазона 60м
                             if (d < R_SENSOR) {
-                                // Модифицированный вес Шепарда: плавное сведение к среднему в месте пересечения
-                                const q = (R_SENSOR - d) / (R_SENSOR * Math.max(d, 0.2));
-                                const w = q * q;
+                                // Плавный весовой спад Шепарда для естественного наложения и сведения к среднему
+                                const normD = d / R_SENSOR;
+                                const w = Math.pow(1.0 - normD, 1.3) / (Math.pow(d, 0.85) + 0.1);
                                 accumulatedVal += s.val * w;
                                 totalWeight += w;
                             }
@@ -1475,7 +1475,7 @@ with col_3d:
                     tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek для клика)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 }
             } else {
