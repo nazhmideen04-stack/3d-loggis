@@ -239,10 +239,7 @@ def ensure_playwright_installed():
 def fetch_all_categories_data():
     """
     ОСНОВНОЙ / ТЕКУЩИЙ РЕЖИМ.
-
-    Эта функция намеренно оставлена максимально близкой к исходному файлу:
-    MONTH_02 + TABLE_ROW_DATE и первая строка таблицы LoggIS.
-    Не смешиваем текущие данные с историческим режимом.
+    Намеренно оставлен без изменений: MONTH_02 + TABLE_ROW_DATE[cite: 3].
     """
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
@@ -285,7 +282,6 @@ def fetch_all_categories_data():
                 pass
             page.wait_for_timeout(1000)
 
-            # НЕ МЕНЯТЬ: это исходный режим текущих данных.
             page.get_by_role("combobox").first.select_option(
                 "MONTH_02", timeout=5000
             )
@@ -423,7 +419,6 @@ def fetch_all_categories_data():
 
                             if len(val_map) > 0:
                                 break
-
                     except Exception:
                         pass
 
@@ -443,40 +438,25 @@ def fetch_all_categories_data():
 
 
 def _normalize_history_date(value):
-    """Приводит дату к YYYY-MM-DD для сравнения с st.date_input."""
     if value is None:
         return ""
-
     s = str(value).strip()
-
-    # ISO: 2026-09-24 / 2026-09-24 12:30...
     m = re.search(r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})", s)
     if m:
         return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
-
-    # Европейская запись: 24/09/2026 или 24.09.2026
     m = re.search(r"(\d{1,2})[./-](\d{1,2})[./-](20\d{2})", s)
     if m:
         return f"{int(m.group(3)):04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
-
     return ""
 
 
 @st.cache_data(ttl=300)
 def fetch_historical_data(target_date):
     """
-    ИСТОРИЧЕСКИЙ РЕЖИМ.
-
-    Текущий режим выше НЕ трогаем.
-    Здесь отдельно открываем LoggIS, переключаем период на ALL,
-    оставляем TABLE_ROW_DATE, собираем все видимые строки таблицы
-    и выбираем строку, соответствующую target_date.
-
-    Если LoggIS не показывает старые строки после ALL, функция
-    не подменяет их текущими данными и возвращает пустой результат.
+    ИСТОРИЧЕСКИЙ РЕЖИМ (по вашему второму скрипту Playwright):
+    Использует ALL в первом комбобоксе и TABLE_ROW_DATE во втором[cite: 3].
     """
     result = {k: {"values": {}, "date": ""} for k in CATEGORIES}
-
     target_iso = str(target_date)
 
     with sync_playwright() as p:
@@ -520,25 +500,17 @@ def fetch_historical_data(target_date):
 
             page.wait_for_timeout(1000)
 
-            # Только исторический режим использует ALL.
-            # Если ALL отсутствует в конкретной версии LoggIS,
-            # не падаем и не подменяем результат текущими данными.
+            # Выбор ALL и TABLE_ROW_DATE по вашему скрипту
             try:
-                page.get_by_role("combobox").first.select_option(
-                    "ALL", timeout=5000
-                )
+                page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except Exception:
-                result["_error"] = {
-                    "message": "В LoggIS не найден вариант ALL."
-                }
+                result["_error"] = {"message": "LoggIS içinde ALL seçeneği bulunamadı."}
                 return result
 
             page.wait_for_timeout(1200)
 
             try:
-                page.get_by_role("combobox").nth(1).select_option(
-                    "TABLE_ROW_DATE", timeout=5000
-                )
+                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
             except Exception:
                 pass
 
@@ -563,7 +535,6 @@ def fetch_historical_data(target_date):
                             pass
 
                 page.wait_for_timeout(2500)
-
                 extracted = None
 
                 for _ in range(20):
@@ -574,7 +545,6 @@ def fetch_historical_data(target_date):
                                 if (!table) return null;
 
                                 const trs = Array.from(table.querySelectorAll('tr'));
-
                                 let headerCells = [];
                                 for (const tr of trs) {
                                     const cells = Array.from(
@@ -597,7 +567,6 @@ def fetch_historical_data(target_date):
 
                                 const body = table.querySelector('tbody') || table;
                                 const rows = Array.from(body.querySelectorAll('tr'));
-
                                 const dataRows = [];
 
                                 for (const r of rows) {
@@ -607,7 +576,6 @@ def fetch_historical_data(target_date):
 
                                     if (cells.length > 1) {
                                         const first = cells[0] || '';
-
                                         if (
                                             first.includes('/') ||
                                             first.includes('.') ||
@@ -635,7 +603,6 @@ def fetch_historical_data(target_date):
 
                         if extracted and extracted.get("rows"):
                             break
-
                     except Exception:
                         pass
 
@@ -646,16 +613,12 @@ def fetch_historical_data(target_date):
 
                 headers = extracted["headers"]
                 rows = extracted["rows"]
-
-                # Ищем именно выбранную дату, не первую строку.
                 target_row = None
 
                 for row in rows:
                     if not row:
                         continue
-
                     row_iso = _normalize_history_date(row[0])
-
                     if row_iso == target_iso:
                         target_row = row
                         break
@@ -664,27 +627,11 @@ def fetch_historical_data(target_date):
                     continue
 
                 val_map = {}
-
-                for h, v_str in zip(
-                    headers[1:], target_row[1:]
-                ):
-                    if (
-                        "TA-" in h or
-                        "TB-" in h or
-                        cat_cfg["tag"] in h
-                    ):
-                        m = re.search(
-                            r"(T[AB]-[A-Za-z0-9\-]+)",
-                            h
-                        )
-                        s_name = (
-                            m.group(1)
-                            if m
-                            else h.split()[0].strip()
-                        )
-
+                for h, v_str in zip(headers[1:], target_row[1:]):
+                    if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                        s_name = m.group(1) if m else h.split()[0].strip()
                         v = clean_num(v_str)
-
                         if not np.isnan(v):
                             val_map[s_name] = v
 
@@ -711,12 +658,6 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# -------------------------------------------------------------------------
-# VERİ MODU
-# -------------------------------------------------------------------------
-# Varsayılan olarak mevcut veriler kullanılır.
-# Bu bölüm mevcut veri fonksiyonunu değiştirmez.
-# -------------------------------------------------------------------------
 with col_nav:
     st.subheader("KONTROL PANELİ")
 
@@ -736,21 +677,10 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-# -------------------------------------------------------------------------
-# GÜNCEL VERİLER
-# -------------------------------------------------------------------------
-# Burada orijinal fetch_all_categories_data() çalışır.
-# MONTH_02 + TABLE_ROW_DATE aynen korunmuştur.
-# -------------------------------------------------------------------------
 if data_mode == "Güncel Veriler":
     with st.spinner("Tüm güncel sensör verileri LoggIS üzerinden alınıyor..."):
         all_data = fetch_all_categories_data()
-
     history_status = ""
-
-# -------------------------------------------------------------------------
-# ESKİ VERİLER
-# -------------------------------------------------------------------------
 else:
     st.markdown("### Eski veritabanından veri seç")
 
@@ -766,8 +696,6 @@ else:
         type="primary"
     )
 
-    # Tarih seçildiğinde veya butona basıldığında geçmiş veriyi al.
-    # Buton, kullanıcının açıkça eski veriyi yüklemesini sağlar.
     history_key = selected_history_date.strftime("%Y-%m-%d")
 
     if load_old_data:
@@ -788,8 +716,6 @@ else:
     if history_status:
         st.error(history_status)
 
-    # Eski veri bulunamadığında güncel veriye FALLBACK YOK.
-    # Böylece eski veri yerine yanlışlıkla güncel veri gösterilmez.
     found_any_history = any(
         bool(all_data.get(k, {}).get("values"))
         for k in CATEGORIES
@@ -818,7 +744,6 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Точный расчёт диапазона clim с технологическим буфером для стопроцентного попадания в пиковые цвета легенды
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
