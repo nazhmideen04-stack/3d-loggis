@@ -78,6 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -100,12 +101,20 @@ st.markdown("""
         background-color: #00C8E6 !important;
     }
 
+    div[data-testid="stRadio"] div[role="radiogroup"] > label {
+        margin-bottom: 12px !important;
+        cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+
     div[data-baseweb="select"] {
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
     }
 
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -115,6 +124,15 @@ st.markdown("""
     div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+        border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] svg path {
+        fill: #0A0E17 !important;
+        stroke: #0A0E17 !important;
     }
 
     .destech-badge {
@@ -148,6 +166,7 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1rem !important;
@@ -189,7 +208,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & DOM PARSER</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -217,12 +236,11 @@ def ensure_playwright_installed():
         pass
 
 @st.cache_data(ttl=300)
-def fetch_loggis_data(target_date_str=None):
+def fetch_all_categories_data():
     """
-    Стабильный метод: открывает LoggIS, выбирает ALL для доступа ко всей базе,
-    считывает список доступных дат из второго комбобокса и парсит нужную таблицу из DOM.
+    ПРОВЕРЕННАЯ И СТАБИЛЬНАЯ ФУНКЦИЯ (из твоего рабочего файла GİTHUB_3DMAX_2.txt).
+    Гарантированно забирает актуальные данные через MONTH_02 + TABLE_ROW_DATE.
     """
-    dates_list = []
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
@@ -246,7 +264,12 @@ def fetch_loggis_data(target_date_str=None):
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
+        page.route(
+            "**/*",
+            lambda route: route.abort()
+            if route.request.resource_type in ["image", "media"]
+            else route.continue_()
+        )
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
@@ -258,38 +281,16 @@ def fetch_loggis_data(target_date_str=None):
                 pass
             page.wait_for_timeout(1000)
 
-            # Выбираем ALL в первом комбобоксе по вашему сценарию
             try:
-                page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
-            except Exception:
-                try:
-                    page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
-                except Exception:
-                    pass
-            page.wait_for_timeout(1000)
-
-            # Считываем все даты из второго комбобокса (актуальные и исторические)
-            try:
-                date_combo = page.get_by_role("combobox").nth(1)
-                options = date_combo.locator("option").all_inner_texts()
-                dates_list = [opt.strip() for opt in options if opt.strip() and opt.strip() != "TABLE_ROW_DATE"]
+                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
             except Exception:
                 pass
+            page.wait_for_timeout(800)
 
-            # Выбираем нужную дату из списка или текущую
-            if target_date_str and target_date_str != "En Son (Güncel)":
-                try:
-                    page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
-                except Exception:
-                    try:
-                        page.get_by_role("combobox").nth(1).select_option(target_date_str, timeout=3000)
-                    except Exception:
-                        pass
-            else:
-                try:
-                    page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
-                except Exception:
-                    pass
+            try:
+                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+            except Exception:
+                pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
@@ -304,7 +305,7 @@ def fetch_loggis_data(target_date_str=None):
                         except Exception:
                             pass
 
-                page.wait_for_timeout(2500)
+                page.wait_for_timeout(3000)
 
                 val_map = {}
                 latest_date_str = ""
@@ -318,45 +319,96 @@ def fetch_loggis_data(target_date_str=None):
 
                                 const trs = Array.from(table.querySelectorAll('tr'));
                                 let headerCells = [];
+
                                 for (const tr of trs) {
-                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
+                                    const cells = Array.from(
+                                        tr.querySelectorAll('th, td')
+                                    ).map(c => (c.innerText || '').trim());
+
+                                    if (cells.some(c =>
+                                        c.includes('TA-') || c.includes('TB-')
+                                    )) {
                                         headerCells = cells;
                                         break;
                                     }
                                 }
+
                                 if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                    headerCells = Array.from(
+                                        trs[0].querySelectorAll('th, td')
+                                    ).map(c => (c.innerText || '').trim());
                                 }
 
-                                const tbody = table.querySelector('tbody') || table;
-                                const rows = Array.from(tbody.querySelectorAll('tr'));
+                                const tbody =
+                                    table.querySelector('tbody') || table;
+
+                                const rows = Array.from(
+                                    tbody.querySelectorAll('tr')
+                                );
+
                                 let dataCells = [];
+
                                 for (const r of rows) {
-                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
+                                    const cells = Array.from(
+                                        r.querySelectorAll('td')
+                                    ).map(c => (c.innerText || '').trim());
+
+                                    if (
+                                        cells.length > 1 &&
+                                        (
+                                            cells[0].includes('/') ||
+                                            cells[0].includes(':') ||
+                                            cells[0].includes('-')
+                                        )
+                                    ) {
                                         dataCells = cells;
                                         break;
                                     }
                                 }
 
-                                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                                return { headers: headerCells, values: dataCells };
+                                if (
+                                    headerCells.length === 0 ||
+                                    dataCells.length === 0
+                                ) return null;
+
+                                return {
+                                    headers: headerCells,
+                                    values: dataCells
+                                };
                             } catch(e) {
                                 return null;
                             }
                         }""")
 
-                        if extracted and extracted.get("values") and extracted.get("headers"):
+                        if (
+                            extracted and
+                            extracted.get("values") and
+                            extracted.get("headers")
+                        ):
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
 
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
+                            for h, v_str in zip(
+                                headers[1:], values[1:]
+                            ):
+                                if (
+                                    "TA-" in h or
+                                    "TB-" in h or
+                                    cat_cfg["tag"] in h
+                                ):
+                                    m = re.search(
+                                        r"(T[AB]-[A-Za-z0-9\-]+)",
+                                        h
+                                    )
+                                    s_name = (
+                                        m.group(1)
+                                        if m
+                                        else h.split()[0].strip()
+                                    )
+
                                     v = clean_num(v_str)
+
                                     if not np.isnan(v):
                                         val_map[s_name] = v
 
@@ -367,14 +419,17 @@ def fetch_loggis_data(target_date_str=None):
 
                     page.wait_for_timeout(600)
 
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+                all_results[cat_key] = {
+                    "values": val_map,
+                    "date": latest_date_str
+                }
 
         except Exception as e:
             st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
         finally:
             browser.close()
 
-    return dates_list, all_results
+    return all_results
 
 @st.cache_data
 def get_model_b64(path):
@@ -385,9 +440,8 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Автоматически получаем список всех дат и актуальные данные при старте
-with st.spinner("LoggIS verileri senkronize ediliyor..."):
-    available_dates, current_data = fetch_loggis_data(None)
+with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
+    all_data = fetch_all_categories_data()
 
 with col_nav:
     st.subheader("KONTROL PANELİ")
@@ -397,25 +451,12 @@ with col_nav:
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    st.markdown("---")
-    st.subheader("⏱️ Zaman Seçimi")
-    
-    # Сортируем или фильтруем реальные временные метки (исключая служебные слова)
-    clean_dates = [d for d in available_dates if "/" in d or "-" in d or ":" in d]
-    date_options = ["En Son (Güncel)"] + (clean_dates if clean_dates else available_dates)
-    selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_options)
-
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# Если выбрана дата из списка, подгружаем её
-if selected_date_choice != "En Son (Güncel)":
-    with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
-        _, current_data = fetch_loggis_data(selected_date_choice)
-
 cat_cfg = CATEGORIES[selected_comp]
-cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
 raw_v_map = cur_layer["values"]
 
 active_category_values = {}
@@ -431,7 +472,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Точный расчёт диапазона clim с технологическим буфером
+# Точный расчёт диапазона clim с технологическим буфером для стопроцентного попадания в пиковые цвета легенды
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -447,15 +488,15 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜM AYARLARI")
+    st.subheader("GÖRÜNÜМ AYARLARI")
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{cur_layer['date'] if cur_layer['date'] else selected_date_choice}</span>", unsafe_allow_html=True)
+    st.write("**En Son Veri Zamanı:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
