@@ -30,7 +30,6 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -163,6 +162,26 @@ st.markdown("""
         border-color: #00C8E6 !important;
         color: #FFFFFF !important;
     }
+
+    @media (max-width: 820px) {
+        .main .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            padding-top: 1.5rem !important;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: column-reverse !important;
+            gap: 1.2rem !important;
+        }
+
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -177,7 +196,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & VERİ ARŞİVİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -204,12 +223,134 @@ def ensure_playwright_installed():
     except Exception:
         pass
 
-@st.cache_data(ttl=1800)
-def fetch_full_csv_database():
-    """
-    Скачивает и кэширует 100% данных (актуальные + архив) за 1 раз.
-    Извлекает все доступные таймстампы напрямую из файлов.
-    """
+# =========================================================================
+# 1. ТЕКУЩИЕ ДАННЫЕ (Быстрый DOM парсер с защитой обновления таблицы)
+# =========================================================================
+@st.cache_data(ttl=300)
+def fetch_current_data():
+    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
+
+    with sync_playwright() as p:
+        browser_args = [
+            "--no-sandbox", "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+        ]
+        try:
+            browser = p.chromium.launch(headless=True, args=browser_args)
+        except Exception:
+            ensure_playwright_installed()
+            browser = p.chromium.launch(headless=True, args=browser_args)
+
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            timezone_id="Europe/Istanbul", locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+
+        try:
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
+
+            try:
+                page.get_by_text("Types").click(timeout=8000)
+            except: pass
+            page.wait_for_timeout(1000)
+
+            try:
+                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            except: pass
+            page.wait_for_timeout(800)
+
+            try:
+                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+            except: pass
+            page.wait_for_timeout(1000)
+
+            for cat_key, cat_cfg in CATEGORIES.items():
+                target_tag = cat_cfg["tag"]
+                
+                # Выбор категории
+                try:
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=3000)
+                except:
+                    try:
+                        page.get_by_role("listbox").select_option(cat_cfg["name"].replace("Othoradial", "Orthoradial"), timeout=3000)
+                    except: pass
+                
+                # ЗАЩИТА: Ждём пока таблица реально обновится под новую категорию!
+                try:
+                    page.wait_for_function(
+                        f"() => Array.from(document.querySelectorAll('th, td')).some(el => el.innerText.includes('{target_tag}'))",
+                        timeout=15000
+                    )
+                except Exception:
+                    page.wait_for_timeout(3000) # Если не дождались - просто спим 3 секунды
+
+                val_map = {}
+                latest_date_str = ""
+                
+                for _ in range(10):
+                    try:
+                        extracted = page.evaluate(f"""() => {{
+                            try {{
+                                const table = document.querySelector('table');
+                                if (!table) return null;
+                                const trs = Array.from(table.querySelectorAll('tr'));
+                                let headerCells = [];
+                                for (const tr of trs) {{
+                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                    // Обязательно проверяем наличие нужного тега в заголовке!
+                                    if (cells.some(c => c.includes('{target_tag}'))) {{
+                                        headerCells = cells; break;
+                                    }}
+                                }}
+                                if (headerCells.length === 0) return null; // Таблица еще не обновилась
+                                
+                                const tbody = table.querySelector('tbody') || table;
+                                const rows = Array.from(tbody.querySelectorAll('tr'));
+                                let dataCells = [];
+                                for (const r of rows) {{
+                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{{4}}/.test(cells[0]))) {{
+                                        dataCells = cells; // Всегда перезаписываем, чтобы получить последнюю строку
+                                    }}
+                                }}
+                                if (dataCells.length === 0) return null;
+                                return {{ headers: headerCells, values: dataCells }};
+                            }} catch(e) {{ return null; }}
+                        }}""")
+                        
+                        if extracted and extracted.get("values"):
+                            headers = extracted["headers"]
+                            values = extracted["values"]
+                            latest_date_str = values[0]
+                            for h, v_str in zip(headers[1:], values[1:]):
+                                if "TA-" in h or "TB-" in h or target_tag in h:
+                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                    s_name = m.group(1) if m else h.split()[0].strip()
+                                    v = clean_num(v_str)
+                                    if not np.isnan(v):
+                                        val_map[s_name] = v
+                            if len(val_map) > 0:
+                                break
+                    except:
+                        pass
+                    page.wait_for_timeout(800)
+                
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+        except Exception as e:
+            st.warning(f"Güncel veri alınırken hata: {e}")
+        finally:
+            browser.close()
+            
+    return all_results
+
+# =========================================================================
+# 2. АРХИВНЫЕ ДАННЫЕ (Загрузка CSV с ожиданием интерфейса)
+# =========================================================================
+@st.cache_data(ttl=3600)
+def fetch_historical_csv_data():
     historical_db = {k: {} for k in CATEGORIES}
     dates_set = set()
 
@@ -220,7 +361,7 @@ def fetch_full_csv_database():
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
-        except Exception:
+        except:
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
 
@@ -241,36 +382,44 @@ def fetch_full_csv_database():
             except: pass
             page.wait_for_timeout(1000)
 
-            # Выбор ALL для скачивания полной базы
             try:
                 page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except: pass
             page.wait_for_timeout(2000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
+                target_tag = cat_cfg["tag"]
+                
                 try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=4000)
                 except:
                     try:
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
+                        page.get_by_role("listbox").select_option(cat_cfg["name"].replace("Othoradial", "Orthoradial"), timeout=4000)
                     except: pass
                 
-                page.wait_for_timeout(4000)
+                # ЗАЩИТА: Ждём обновления таблицы перед скачиванием
+                try:
+                    page.wait_for_function(
+                        f"() => Array.from(document.querySelectorAll('th, td')).some(el => el.innerText.includes('{target_tag}'))",
+                        timeout=15000
+                    )
+                except Exception:
+                    page.wait_for_timeout(4000)
 
                 csv_path = None
                 csv_btn = page.locator("text=CSV").first
+                
                 try:
-                    csv_btn.wait_for(state="visible", timeout=20000)
-                except Exception:
-                    pass
+                    csv_btn.wait_for(state="visible", timeout=15000)
+                except: pass
 
                 try:
                     csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(2000)
+                    page.wait_for_timeout(1500)
 
                     with page.expect_download(timeout=30000) as d_info:
                         try:
-                            with page.expect_popup(timeout=5000) as p_info:
+                            with page.expect_popup(timeout=8000) as p_info:
                                 csv_btn.click(force=True)
                             p_info.value.close()
                         except:
@@ -296,7 +445,7 @@ def fetch_full_csv_database():
                                 
                                 val_map = {}
                                 for h, v_str in zip(header[1:], parts[1:]):
-                                    if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                    if "TA-" in h or "TB-" in h or target_tag in h:
                                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                         s_name = m.group(1) if m else h.split()[0].strip()
                                         v = clean_num(v_str)
@@ -310,7 +459,6 @@ def fetch_full_csv_database():
         finally:
             browser.close()
 
-    # Сортируем все даты (от самых свежих к самым старым)
     sorted_dates = sorted(list(dates_set), reverse=True)
     return sorted_dates, historical_db
 
@@ -323,89 +471,95 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# ОДИН ЗАПРОС ПРИ СТАРТЕ - скачиваем всё и кэшируем
-with st.spinner("LoggIS veritabanı indiriliyor ve senkronize ediliyor (15-30 saniye sürebilir)..."):
-    all_dates, full_db = fetch_full_csv_database()
-
-# Структурируем даты для удобного выбора (Год-Месяц-День -> Часы)
-date_tree = {}
-if all_dates:
-    for d_str in all_dates:
-        if " " in d_str:
-            d_part, t_part = d_str.split(" ", 1)
-            d_part = d_part.replace("/", "-")
-            if d_part not in date_tree:
-                date_tree[d_part] = []
-            date_tree[d_part].append(t_part)
-
-    # Сортировка структуры
-    for k in date_tree:
-        date_tree[k] = sorted(date_tree[k], reverse=True)
-
 with col_nav:
     st.subheader("KONTROL PANELİ")
     
-    # 1. Выбор категории
+    data_mode = st.radio(
+        "Veri Modu Seçimi:",
+        options=["🔴 Canlı (Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
+    )
+
     selected_comp = st.radio(
         "Görüntülenecek Bileşen (Kategori):",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    st.markdown("---")
-    st.subheader("⏱️ Zaman Seçimi")
-    
-    # 2. Переключатель режима: Текущие или Архивные
-    data_mode = st.radio(
-        "Veri Modu Seçimi:",
-        options=["🔴 Canlı (Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
-    )
-
-    target_timestamp = None
-    if not all_dates:
-        st.error("Veri tabanında kayıt bulunamadı.")
-    else:
-        if data_mode == "🔴 Canlı (Güncel) Veriler":
-            # Автоматически берем самую свежую дату из CSV
-            latest_d = sorted(list(date_tree.keys()), reverse=True)[0]
-            latest_t = date_tree[latest_d][0]
-            target_timestamp = f"{latest_d.replace('-', '/')} {latest_t}"
-            st.success(f"En son ölçüm yükleniyor: **{target_timestamp}**")
-        else:
-            # Удобные выпадающие списки (Дата отдельно, Время отдельно)
-            col_d, col_t = st.columns(2)
-            with col_d:
-                unique_dates = sorted(list(date_tree.keys()), reverse=True)
-                sel_date = st.selectbox("📅 Tarih Seç:", options=unique_dates)
-            with col_t:
-                sel_time = st.selectbox("⏱️ Saat Seç:", options=date_tree[sel_date])
-            
-            if sel_date and sel_time:
-                target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
-
     if st.button("🔄 Ekranı Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# Извлекаем значения для выбранной даты и категории
+# ---------------------------------------------------------
+# ЛОГИКА ЗАГРУЗКИ В ЗАВИСИМОСТИ ОТ РЕЖИМА
+# ---------------------------------------------------------
+target_timestamp = None
 active_category_values = {}
 cat_cfg = CATEGORIES[selected_comp]
 
-if target_timestamp and full_db.get(selected_comp):
-    raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-    for s_name, val in raw_v_map.items():
-        if val is None or np.isnan(val):
-            continue
-        u_name = s_name.upper()
-        if selected_comp == "hoop" and "-CS" in u_name:
-            active_category_values[s_name] = float(val)
-        elif selected_comp == "axial":
-            if ("-S" in u_name) and ("-CS" not in u_name):
+if data_mode == "🔴 Canlı (Güncel) Veriler":
+    with st.spinner("Güncel veriler alınıyor..."):
+        all_data = fetch_current_data()
+        cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
+        raw_v_map = cur_layer["values"]
+        target_timestamp = cur_layer["date"] if cur_layer["date"] else "En Son (Güncel)"
+        
+        for s_name, val in raw_v_map.items():
+            if val is None or np.isnan(val): continue
+            u_name = s_name.upper()
+            if selected_comp == "hoop" and "-CS" in u_name:
                 active_category_values[s_name] = float(val)
-        elif selected_comp == "temp" and "-TP" in u_name:
-            active_category_values[s_name] = float(val)
+            elif selected_comp == "axial":
+                if ("-S" in u_name) and ("-CS" not in u_name):
+                    active_category_values[s_name] = float(val)
+            elif selected_comp == "temp" and "-TP" in u_name:
+                active_category_values[s_name] = float(val)
 
-# Расчет лимитов СТРОГО по текущим данным
+else:
+    with st.spinner("Tarihsel CSV veritabanı indiriliyor (Bu işlem 15-30 sn sürebilir)..."):
+        all_dates, full_db = fetch_historical_csv_data()
+    
+    if not all_dates:
+        st.error("Veri bulunamadı. Lütfen 'Ekranı Yenile' butonuna basınız.")
+    else:
+        st.markdown("---")
+        st.subheader("⏱️ Zaman Seçimi")
+        
+        # Разделяем даты и время для удобства выбора
+        date_tree = {}
+        for d_str in all_dates:
+            if " " in d_str:
+                d_part, t_part = d_str.split(" ", 1)
+                d_part = d_part.replace("/", "-")
+                if d_part not in date_tree:
+                    date_tree[d_part] = []
+                date_tree[d_part].append(t_part)
+        for k in date_tree:
+            date_tree[k] = sorted(date_tree[k], reverse=True)
+            
+        unique_dates = sorted(list(date_tree.keys()), reverse=True)
+        
+        col_d, col_t = st.columns(2)
+        with col_d:
+            sel_date = st.selectbox("📅 Tarih Seç:", options=unique_dates)
+        with col_t:
+            sel_time = st.selectbox("⏱️ Saat Seç:", options=date_tree[sel_date])
+        
+        if sel_date and sel_time:
+            target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
+            
+            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+            for s_name, val in raw_v_map.items():
+                if val is None or np.isnan(val): continue
+                u_name = s_name.upper()
+                if selected_comp == "hoop" and "-CS" in u_name:
+                    active_category_values[s_name] = float(val)
+                elif selected_comp == "axial":
+                    if ("-S" in u_name) and ("-CS" not in u_name):
+                        active_category_values[s_name] = float(val)
+                elif selected_comp == "temp" and "-TP" in u_name:
+                    active_category_values[s_name] = float(val)
+
+# Точный расчет без отступов (лимиты полностью соответствуют данным)
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -479,123 +633,21 @@ with col_3d:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        * {
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background-color: #0A0E17;
-            font-family: 'Chakra Petch', sans-serif;
-            touch-action: none;
-        }
-        #canvas-container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-        }
-        #sensor-tooltip {
-            position: absolute;
-            display: none;
-            background: rgba(14, 24, 42, 0.95);
-            border: 1px solid #00C8E6;
-            color: #FFFFFF;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 13px;
-            pointer-events: none;
-            z-index: 100;
-            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.35);
-        }
-        #selected-hud {
-            position: absolute;
-            top: 14px;
-            left: 14px;
-            display: none;
-            background: rgba(10, 14, 23, 0.92);
-            border: 1px solid #00C8E6;
-            padding: 8px 14px;
-            border-radius: 8px;
-            z-index: 95;
-            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3);
-            max-width: 220px;
-        }
-        #selected-hud .hud-title {
-            font-size: 11px;
-            color: #8397AD;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-        }
-        #selected-hud .hud-name {
-            font-size: 15px;
-            color: #FFFFFF;
-            font-weight: 700;
-            margin: 1px 0 3px 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        #selected-hud .hud-val {
-            font-size: 18px;
-            color: #00E5FF;
-            font-weight: 700;
-        }
-        #loader {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #00C8E6;
-            font-size: 16px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            text-align: center;
-            width: 80%;
-        }
-        #color-legend {
-            position: absolute;
-            top: 14px;
-            right: 14px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: rgba(10, 14, 23, 0.92);
-            padding: 10px 12px;
-            border: 1px solid rgba(0, 200, 230, 0.55);
-            box-shadow: 0 0 16px rgba(0, 200, 230, 0.25);
-            border-radius: 6px;
-            z-index: 90;
-            user-select: none;
-        }
-        #legend-title {
-            color: #00E5FF;
-            font-size: 12px;
-            font-weight: 700;
-            margin-bottom: 6px;
-            text-transform: none !important;
-            letter-spacing: 0.5px;
-        }
-        .legend-bar-container {
-            display: flex;
-            align-items: stretch;
-            height: 180px;
-        }
-        #legend-bar {
-            width: 16px;
-            border-radius: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.35);
-            margin-right: 8px;
-        }
-        .legend-labels {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            color: #FFFFFF;
-            font-size: 11px;
-            font-weight: 700;
-        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #0A0E17; font-family: 'Chakra Petch', sans-serif; touch-action: none; }
+        #canvas-container { width: 100vw; height: 100vh; position: relative; }
+        #sensor-tooltip { position: absolute; display: none; background: rgba(14, 24, 42, 0.95); border: 1px solid #00C8E6; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-size: 13px; pointer-events: none; z-index: 100; box-shadow: 0 4px 16px rgba(0, 200, 230, 0.35); }
+        #selected-hud { position: absolute; top: 14px; left: 14px; display: none; background: rgba(10, 14, 23, 0.92); border: 1px solid #00C8E6; padding: 8px 14px; border-radius: 8px; z-index: 95; box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3); max-width: 220px; }
+        #selected-hud .hud-title { font-size: 11px; color: #8397AD; text-transform: uppercase; letter-spacing: 0.8px; }
+        #selected-hud .hud-name { font-size: 15px; color: #FFFFFF; font-weight: 700; margin: 1px 0 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #selected-hud .hud-val { font-size: 18px; color: #00E5FF; font-weight: 700; }
+        #loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #00C8E6; font-size: 16px; font-weight: 700; letter-spacing: 1px; text-align: center; width: 80%; }
+        #color-legend { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; align-items: center; background: rgba(10, 14, 23, 0.92); padding: 10px 12px; border: 1px solid rgba(0, 200, 230, 0.55); box-shadow: 0 0 16px rgba(0, 200, 230, 0.25); border-radius: 6px; z-index: 90; user-select: none; }
+        #legend-title { color: #00E5FF; font-size: 12px; font-weight: 700; margin-bottom: 6px; text-transform: none !important; letter-spacing: 0.5px; }
+        .legend-bar-container { display: flex; align-items: stretch; height: 180px; }
+        #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
+        .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
+        @media (max-width: 600px) { #color-legend { padding: 6px 8px; top: 10px; right: 10px; } .legend-bar-container { height: 130px; } #legend-bar { width: 12px; } #legend-title { font-size: 10px; } .legend-labels { font-size: 9px; } #selected-hud { top: 10px; left: 10px; padding: 6px 10px; } #selected-hud .hud-name { font-size: 13px; } #selected-hud .hud-val { font-size: 15px; } }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -644,12 +696,10 @@ with col_3d:
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
             new THREE.Color("#00FF66"), new THREE.Color("#FFEE00"), new THREE.Color("#FF7700"), new THREE.Color("#FF0022")
         ];
-
         const axialStops = [
             new THREE.Color("#080038"), new THREE.Color("#2A0A5E"), new THREE.Color("#630F78"),
             new THREE.Color("#9E1B7F"), new THREE.Color("#D32B6E"), new THREE.Color("#F55447"), new THREE.Color("#FF9500") 
         ];
-
         const temperatureStops = [
             new THREE.Color("#020024"), new THREE.Color("#0033FF"), new THREE.Color("#00D8FF"),
             new THREE.Color("#00FF44"), new THREE.Color("#B4FF00"), new THREE.Color("#FFDD00"),
@@ -657,25 +707,15 @@ with col_3d:
         ];
 
         let currentStops = hoopStops;
-        if (payload.comp === "axial") {
-            currentStops = axialStops;
-            legendTitle.innerText = "Boyuna [µm/m]";
-        } else if (payload.comp === "temp") {
-            currentStops = temperatureStops;
-            legendTitle.innerText = "Sıcaklık [°C]";
-        } else {
-            currentStops = hoopStops;
-            legendTitle.innerText = "Çevresel [µm/m]";
-        }
+        if (payload.comp === "axial") { currentStops = axialStops; legendTitle.innerText = "Boyuna [µm/m]"; }
+        else if (payload.comp === "temp") { currentStops = temperatureStops; legendTitle.innerText = "Sıcaklık [°C]"; }
+        else { currentStops = hoopStops; legendTitle.innerText = "Çevresel [µm/m]"; }
 
         function buildExactLegendGradient(stops) {
-            const n = stops.length;
-            const items = [];
+            const n = stops.length; const items = [];
             for (let i = 0; i < n; i++) {
                 const colorObj = stops[n - 1 - i];
-                const hex = '#' + colorObj.getHexString();
-                const percent = ((i / (n - 1)) * 100).toFixed(1);
-                items.push(hex + ' ' + percent + '%');
+                items.push('#' + colorObj.getHexString() + ' ' + ((i / (n - 1)) * 100).toFixed(1) + '%');
             }
             return 'linear-gradient(to bottom, ' + items.join(', ') + ')';
         }
@@ -701,23 +741,18 @@ with col_3d:
         lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(2);
         lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(2);
 
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0A0E17);
-
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
         const sensorScene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.autoClear = false;
-        container.appendChild(renderer.domElement);
+        renderer.autoClear = false; container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.minDistance = 0.5;
-        controls.maxDistance = 2500;
+        controls.enableDamping = true; controls.dampingFactor = 0.05;
+        controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
         controls.addEventListener('change', () => {
@@ -933,7 +968,6 @@ with col_3d:
                 }
             }
 
-            // ИСПРАВЛЕНИЕ АВТОЦЕНТРИРОВАНИЯ
             const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -955,25 +989,21 @@ with col_3d:
                     } catch(e) {}
                 }
                 
-                // Если камеры не было в кэше (первый запуск) — принудительно центрируем!
+                // ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ ПРИ СТАРТЕ: Принудительный расчет BoundingBox
                 if (!stateRestored) {
-                    const tunnelBox = new THREE.Box3(); 
-                    if (tunnelMeshes.length > 0) {
-                        tunnelMeshes.forEach(tm => {
-                            if(tm.geometry) tm.geometry.computeBoundingBox();
-                            tunnelBox.expandByObject(tm);
-                        });
-                    } else { 
-                        model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
-                        tunnelBox.setFromObject(model); 
-                    }
-                    
+                    model.traverse(c => {
+                        if (c.isMesh && c.geometry) {
+                            c.geometry.computeBoundingBox();
+                            c.geometry.computeBoundingSphere();
+                        }
+                    });
+                    const tunnelBox = new THREE.Box3().setFromObject(model);
                     if (!tunnelBox.isEmpty()) {
                         const center = tunnelBox.getCenter(new THREE.Vector3()); 
                         const size = tunnelBox.getSize(new THREE.Vector3()); 
                         const maxDim = Math.max(size.x, size.y, size.z, 20.0);
                         controls.target.copy(center); 
-                        camera.position.set(center.x - maxDim * 0.5, center.y + maxDim * 0.6, center.z + maxDim * 0.8); 
+                        camera.position.set(center.x - maxDim * 0.4, center.y + maxDim * 0.6, center.z + maxDim * 0.8); 
                         controls.update();
                     }
                 }
@@ -1025,7 +1055,7 @@ with col_3d:
                 tooltip.style.display = 'block'; tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY + 14) + 'px';
                 if (isUsable) {
                     const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Ölçüm: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
                     tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
