@@ -4,7 +4,7 @@ import sys
 import json
 import base64
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
@@ -29,6 +29,68 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
+
+# Полный список доступных в системе дат для выбора
+AVAILABLE_DATES = [
+    "08.09.2025 17:00", "08.09.2025 18:00", "08.09.2025 20:00", "08.09.2025 21:00", "08.09.2025 22:00", "08.09.2025 23:00",
+    "09.09.2025 00:00", "09.09.2025 01:00", "09.09.2025 02:00", "09.09.2025 03:00", "09.09.2025 04:00", "09.09.2025 05:00",
+    "09.09.2025 14:00", "09.09.2025 15:00", "09.09.2025 16:00", "09.09.2025 17:00", "09.09.2025 18:00", "09.09.2025 19:00",
+    "09.09.2025 20:00", "09.09.2025 21:00", "09.09.2025 22:00", "09.09.2025 23:00", "10.09.2025 00:00", "10.09.2025 01:00",
+    "10.09.2025 02:00", "10.09.2025 03:00", "10.09.2025 04:00", "10.09.2025 05:00", "10.09.2025 06:00", "10.09.2025 07:00",
+    "10.09.2025 08:00", "10.09.2025 09:00", "10.09.2025 10:00", "10.09.2025 11:00", "10.09.2025 12:00", "10.09.2025 13:00",
+    "10.09.2025 14:00", "10.09.2025 15:00", "10.09.2025 16:00", "10.09.2025 17:00", "10.09.2025 18:00", "10.09.2025 19:00",
+    "10.09.2025 20:00", "10.09.2025 21:00", "10.09.2025 22:00", "10.09.2025 23:00", "11.09.2025 00:00", "11.09.2025 01:00",
+    "11.09.2025 02:00", "11.09.2025 03:00", "11.09.2025 04:00", "11.09.2025 05:00", "11.09.2025 06:00", "11.09.2025 07:00",
+    "11.09.2025 08:00", "11.09.2025 09:00", "11.09.2025 10:00", "11.09.2025 11:00", "11.09.2025 12:00", "11.09.2025 13:00",
+    "11.09.2025 14:00", "11.09.2025 15:00", "11.09.2025 16:00", "11.09.2025 17:00", "11.09.2025 18:00", "11.09.2025 19:00",
+    "11.09.2025 20:00", "11.09.2025 21:00", "11.09.2025 22:00", "11.09.2025 23:00", "12.09.2025 00:00", "12.09.2025 01:00",
+    "12.09.2025 02:00", "12.09.2025 03:00", "12.09.2025 11:00", "12.09.2025 12:00", "12.09.2025 13:00", "12.09.2025 14:00",
+    "12.09.2025 15:00", "12.09.2025 16:00", "13.09.2025 06:00", "13.09.2025 07:00", "13.09.2025 08:00", "13.09.2025 09:00",
+    "13.09.2025 10:00", "13.09.2025 11:00", "13.09.2025 12:00", "13.09.2025 13:00", "13.09.2025 14:00", "13.09.2025 15:00",
+    "14.09.2025 05:00", "14.09.2025 06:00", "14.09.2025 07:00", "14.09.2025 08:00", "14.09.2025 09:00", "14.09.2025 10:00",
+    "14.09.2025 11:00", "14.09.2025 12:00", "14.09.2025 13:00", "14.09.2025 14:00", "14.09.2025 15:00", "14.09.2025 16:00",
+    "14.09.2025 17:00", "14.09.2025 18:00", "14.09.2025 19:00", "14.09.2025 20:00", "14.09.2025 21:00", "14.09.2025 22:00",
+    "14.09.2025 23:00", "15.09.2025 00:00", "15.09.2025 01:00", "15.09.2025 02:00", "15.09.2025 03:00", "15.09.2025 04:00",
+    "15.09.2025 05:00", "15.09.2025 06:00", "15.09.2025 07:00", "15.09.2025 08:00", "15.09.2025 09:00", "15.09.2025 10:00",
+    "15.09.2025 11:00", "15.09.2025 12:00", "15.09.2025 13:00", "15.09.2025 14:00", "15.09.2025 15:00", "15.09.2025 16:00",
+    "15.09.2025 17:00", "15.09.2025 18:00", "15.09.2025 19:00", "15.09.2025 20:00", "15.09.2025 21:00", "15.09.2025 22:00",
+    "15.09.2025 23:00", "16.09.2025 00:00", "16.09.2025 01:00", "16.09.2025 02:00", "16.09.2025 03:00", "16.09.2025 04:00",
+    "16.09.2025 05:00", "16.09.2025 06:00", "16.09.2025 07:00", "16.09.2025 08:00", "16.09.2025 09:00", "16.09.2025 10:00",
+    "16.09.2025 11:00", "16.09.2025 12:00", "16.09.2025 13:00", "16.09.2025 14:00", "16.09.2025 15:00", "16.09.2025 16:00",
+    "16.09.2025 17:00", "16.09.2025 18:00", "16.09.2025 19:00", "16.09.2025 20:00", "16.09.2025 21:00", "16.09.2025 22:00",
+    "16.09.2025 23:00", "17.09.2025 00:00", "17.09.2025 01:00", "17.09.2025 02:00", "17.09.2025 03:00", "17.09.2025 04:00",
+    "17.09.2025 05:00", "17.09.2025 06:00", "17.09.2025 07:00", "17.09.2025 08:00", "17.09.2025 09:00", "17.09.2025 10:00",
+    "17.09.2025 13:00", "17.09.2025 14:00", "17.09.2025 15:00", "17.09.2025 16:00", "17.09.2025 17:00", "17.09.2025 18:00",
+    "17.09.2025 19:00", "17.09.2025 20:00", "17.09.2025 21:00", "17.09.2025 22:00", "17.09.2025 23:00", "18.09.2025 00:00",
+    "18.09.2025 01:00", "18.09.2025 02:00", "18.09.2025 03:00", "18.09.2025 04:00", "18.09.2025 05:00", "18.09.2025 06:00",
+    "18.09.2025 07:00", "18.09.2025 08:00", "18.09.2025 09:00", "18.09.2025 10:00", "18.09.2025 11:00", "18.09.2025 12:00",
+    "18.09.2025 13:00", "18.09.2025 14:00", "18.09.2025 15:00", "18.09.2025 16:00", "18.09.2025 17:00", "18.09.2025 18:00",
+    "18.09.2025 19:00", "18.09.2025 20:00", "18.09.2025 21:00", "18.09.2025 22:00", "18.09.2025 23:00", "19.09.2025 00:00",
+    "19.09.2025 01:00", "19.09.2025 02:00", "19.09.2025 03:00", "19.09.2025 04:00", "19.09.2025 05:00", "19.09.2025 06:00",
+    "19.09.2025 07:00", "19.09.2025 08:00", "19.09.2025 09:00", "19.09.2025 10:00", "19.09.2025 11:00", "19.09.2025 12:00",
+    "19.09.2025 13:00", "19.09.2025 14:00", "19.09.2025 15:00", "19.09.2025 16:00", "19.09.2025 17:00", "19.09.2025 18:00",
+    "19.09.2025 19:00", "19.09.2025 20:00", "19.09.2025 21:00", "19.09.2025 22:00", "19.09.2025 23:00", "20.09.2025 00:00",
+    "20.09.2025 01:00", "20.09.2025 02:00", "20.09.2025 03:00", "20.09.2025 04:00", "20.09.2025 05:00", "20.09.2025 06:00",
+    "20.09.2025 07:00", "20.09.2025 08:00", "20.09.2025 09:00", "20.09.2025 10:00", "20.09.2025 11:00", "20.09.2025 12:00",
+    "20.09.2025 13:00", "20.09.2025 14:00", "20.09.2025 15:00", "20.09.2025 16:00", "20.09.2025 17:00", "20.09.2025 18:00",
+    "20.09.2025 19:00", "20.09.2025 20:00", "20.09.2025 21:00", "20.09.2025 22:00", "20.09.2025 23:00", "21.09.2025 00:00",
+    "21.09.2025 01:00", "21.09.2025 02:00", "21.09.2025 03:00", "21.09.2025 04:00", "21.09.2025 05:00", "21.09.2025 06:00",
+    "21.09.2025 07:00", "21.09.2025 08:00", "21.09.2025 09:00", "21.09.2025 10:00", "21.09.2025 11:00", "21.09.2025 12:00",
+    "21.09.2025 13:00", "21.09.2025 14:00", "21.09.2025 15:00", "21.09.2025 16:00", "21.09.2025 17:00", "21.09.2025 18:00",
+    "21.09.2025 19:00", "21.09.2025 20:00", "21.09.2025 21:00", "21.09.2025 22:00", "21.09.2025 23:00", "22.09.2025 00:00",
+    "22.09.2025 01:00", "22.09.2025 02:00", "22.09.2025 03:00", "22.09.2025 04:00", "22.09.2025 05:00", "22.09.2025 06:00",
+    "22.09.2025 07:00", "22.09.2025 08:00", "22.09.2025 09:00", "22.09.2025 10:00", "22.09.2025 11:00", "22.09.2025 12:00",
+    "22.09.2025 13:00", "22.09.2025 14:00", "22.09.2025 15:00", "22.09.2025 16:00", "22.09.2025 17:00", "22.09.2025 18:00",
+    "22.09.2025 19:00", "22.09.2025 20:00", "22.09.2025 21:00", "22.09.2025 22:00", "22.09.2025 23:00", "23.09.2025 00:00",
+    "23.09.2025 01:00", "23.09.2025 02:00", "23.09.2025 03:00", "23.09.2025 04:00", "23.09.2025 05:00", "23.09.2025 06:00",
+    "23.09.2025 07:00", "23.09.2025 08:00", "23.09.2025 09:00", "23.09.2025 10:00", "23.09.2025 11:00", "23.09.2025 12:00",
+    "23.09.2025 13:00", "23.09.2025 14:00", "23.09.2025 15:00", "23.09.2025 16:00", "23.09.2025 17:00", "23.09.2025 18:00",
+    "23.09.2025 19:00", "23.09.2025 20:00", "23.09.2025 21:00", "23.09.2025 22:00", "23.09.2025 23:00", "24.09.2025 00:00",
+    "24.09.2025 01:00", "24.09.2025 02:00", "24.09.2025 03:00", "24.09.2025 04:00", "24.09.2025 05:00", "24.09.2025 06:00",
+    "24.09.2025 07:00", "24.09.2025 08:00", "24.09.2025 09:00", "24.09.2025 10:00", "24.09.2025 11:00", "24.09.2025 12:00",
+    "24.09.2025 13:00", "24.09.2025 14:00", "24.09.2025 15:00", "24.09.2025 16:00", "24.09.2025 17:00", "24.09.2025 18:00",
+    "24.09.2025 19:00", "24.09.2025 20:00", "24.09.2025 21:00", "24.09.2025 22:00", "24.09.2025 23:00"
+]
 
 st.markdown("""
 <style>
@@ -188,7 +250,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & KARŞILAŞTIRMA</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ZAMAN SEÇİMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -217,7 +279,7 @@ def ensure_playwright_installed():
 
 @st.cache_data(ttl=300)
 def fetch_loggis_data(target_date_str=None):
-    """Парсит данные из LoggIS. Если target_date_str задан, выбирает его в интерфейсе."""
+    """Парсит данные из LoggIS для актуальной или выбранной пользователем даты."""
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
@@ -259,12 +321,15 @@ def fetch_loggis_data(target_date_str=None):
                 pass
             page.wait_for_timeout(800)
 
-            # Выбор конкретной даты в выпадающем списке LoggIS, если передана
-            if target_date_str:
+            # Выбор конкретной даты в интерфейсе LoggIS
+            if target_date_str and target_date_str != "Последняя (Текущая)":
                 try:
-                    page.get_by_role("combobox").nth(1).select_option(target_date_str, timeout=5000)
+                    page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
                 except Exception:
-                    pass
+                    try:
+                        page.get_by_role("combobox").nth(1).select_option(target_date_str, timeout=3000)
+                    except Exception:
+                        pass
             else:
                 try:
                     page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
@@ -365,11 +430,8 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-with st.spinner("LoggIS verileri yükleniyor..."):
-    current_data = fetch_loggis_data(None)
-
 with col_nav:
-    st.subheader("KONTROL & KARŞILAŞTIRMA")
+    st.subheader("KONTROL & ZAMAN SEÇİMİ")
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
@@ -377,33 +439,38 @@ with col_nav:
     )
 
     st.markdown("---")
-    enable_comparison = st.checkbox("📅 Tarih Karşılaştırmasını Aç", value=False)
+    st.subheader("📅 Период данных")
     
-    historical_date_val = "Güncel"
-    if enable_comparison:
-        # Пример доступных дат для сравнения (в реальном проекте подтягиваются из LoggIS)
-        available_dates = ["En Son", "1 Gün Önce", "1 Hafta Önce", "1 Ay Önce"]
-        selected_past_option = st.selectbox("Geçmiş Dönem Seç:", options=available_dates)
-        
-        # Загрузка исторических данных (для примера эмулируем сдвиг или запрашиваем архив)
-        if selected_past_option != "En Son":
-            with st.spinner("Geçmiş dönem verileri alınıyor..."):
-                historical_data = fetch_loggis_data("HISTORICAL_ROW") # Либо передавать дату
-        else:
-            historical_data = current_data
-    else:
-        historical_data = current_data
+    # Выпадающий список всех ваших дат + вариант по умолчанию
+    date_options = ["Последняя (Текущая)"] + AVAILABLE_DATES
+    selected_date_choice = st.selectbox("Выберите дату и время:", options=date_options)
 
-    if st.button("Verileri Yenile"):
+    enable_comparison = st.checkbox("📊 Сравнить с базовой датой", value=False)
+    selected_base_choice = "Последняя (Текущая)"
+    if enable_comparison:
+        selected_base_choice = st.selectbox("Базовая дата для сравнения:", options=date_options, index=0)
+
+    if st.button("🔄 Загрузить / Обновить"):
         st.cache_data.clear()
         st.rerun()
 
+# Загружаем данные для выбранного основного периода
+with st.spinner(f"Загрузка данных ({selected_date_choice})..."):
+    current_data = fetch_loggis_data(None if selected_date_choice == "Последняя (Текущая)" else selected_date_choice)
+
+# Загружаем данные для базового периода (если включено сравнение)
+if enable_comparison and selected_base_choice != selected_date_choice:
+    with st.spinner(f"Загрузка базы для сравнения ({selected_base_choice})..."):
+        base_data = fetch_loggis_data(None if selected_base_choice == "Последняя (Текущая)" else selected_base_choice)
+else:
+    base_data = current_data
+
 cat_cfg = CATEGORIES[selected_comp]
 cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
-hist_layer = historical_data.get(selected_comp, {"values": {}, "date": ""})
+base_layer = base_data.get(selected_comp, {"values": {}, "date": ""})
 
 raw_v_map = cur_layer["values"]
-raw_hist_map = hist_layer["values"]
+raw_base_map = base_layer["values"]
 
 active_category_values = {}
 active_delta_values = {}
@@ -425,14 +492,14 @@ for s_name, val in raw_v_map.items():
         curr_val = float(val)
         active_category_values[s_name] = curr_val
         
-        # Расчет дельты с прошлым периодом
-        hist_val = raw_hist_map.get(s_name, curr_val)
-        if not np.isnan(hist_val):
-            active_delta_values[s_name] = round(curr_val - hist_val, 2)
+        # Расчет изменения (дельта) сопоставляемой даты
+        base_val = raw_base_map.get(s_name, curr_val)
+        if not np.isnan(base_val):
+            active_delta_values[s_name] = round(curr_val - base_val, 2)
         else:
             active_delta_values[s_name] = 0.0
 
-# Расчет шкалы
+# Расчет шкалы с буфером
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -454,11 +521,11 @@ with col_nav:
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    st.write("**Aktif Tarih:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{cur_layer['date'] if cur_layer['date'] else 'Güncel'}</span>", unsafe_allow_html=True)
+    st.write("**Выбранное время:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{selected_date_choice}</span>", unsafe_allow_html=True)
     if enable_comparison:
-        st.write("**Karşılaştırılan Tarih:**")
-        st.markdown(f"<span class='neon-data' style='font-size: 14px; color: #FF9500 !important;'>{selected_past_option}</span>", unsafe_allow_html=True)
+        st.write("**База сравнения:**")
+        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500 !important;'>{selected_base_choice}</span>", unsafe_allow_html=True)
     
     st.write("**Skala Limitleri:**")
     st.markdown(f"<span class='neon-data' style='font-size: 13px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
@@ -474,8 +541,11 @@ with col_3d:
         if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
             val_curr = active_category_values[selected_sensor]
             val_delta = active_delta_values.get(selected_sensor, 0.0)
-            delta_txt = f" (Δ {val_delta:+.2f})" if enable_comparison else ""
-            st.metric(label="Değer", value=f"{val_curr:+.2f} {cat_cfg['unit']}", delta=f"{val_delta:+.2f}" if enable_comparison else None)
+            st.metric(
+                label="Değer", 
+                value=f"{val_curr:+.2f} {cat_cfg['unit']}", 
+                delta=f"{val_delta:+.2f}" if enable_comparison else None
+            )
         else:
             st.metric(label="Değer", value="--")
 
@@ -515,12 +585,12 @@ with col_3d:
         #selected-hud {
             position: absolute; top: 14px; left: 14px; display: none; background: rgba(10, 14, 23, 0.92);
             border: 1px solid #00C8E6; padding: 8px 14px; border-radius: 8px; z-index: 95;
-            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3); max-width: 240px;
+            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3); max-width: 250px;
         }
         #selected-hud .hud-title { font-size: 11px; color: #8397AD; text-transform: uppercase; letter-spacing: 0.8px; }
         #selected-hud .hud-name { font-size: 15px; color: #FFFFFF; font-weight: 700; margin: 1px 0 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         #selected-hud .hud-val { font-size: 18px; color: #00E5FF; font-weight: 700; }
-        #selected-hud .hud-delta { font-size: 13px; font-weight: 700; margin-top: 2px; }
+        #selected-hud .hud-delta { font-size: 13px; font-weight: 700; margin-top: 3px; }
         #loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #00C8E6; font-size: 16px; font-weight: 700; text-align: center; width: 80%; }
         #color-legend {
             position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; align-items: center;
@@ -707,7 +777,7 @@ with col_3d:
                 if (isSelected) { selectedMeshRef = detached; updateHud(item.sensorName, item.val); }
             });
 
-            // Интерполяция на тоннеле
+            // Плавное наложение интерполяции по всему тоннелю (R = 60m)
             const R_SENSOR = 60.0;
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry; if (!geom.attributes.position) return;
@@ -737,7 +807,6 @@ with col_3d:
                 tMesh.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.2, transparent: true, opacity: payload.tunnelOpacity });
             });
 
-            // Автоцентровка камеры
             const box = new THREE.Box3().setFromObject(model);
             const center = box.getCenter(new THREE.Vector3());
             controls.target.copy(center);
@@ -752,8 +821,10 @@ with col_3d:
             if (payload.enableComparison && payload.activeDeltaValues[name] !== undefined) {
                 const delta = payload.activeDeltaValues[name];
                 hudDelta.style.display = 'block';
-                hudDelta.innerText = "Değişim: " + (delta > 0 ? "+" : "") + delta.toFixed(2) + " " + payload.unit;
+                hudDelta.innerText = "Değişim (Δ): " + (delta > 0 ? "+" : "") + delta.toFixed(2) + " " + payload.unit;
                 hudDelta.style.color = delta > 0 ? "#00FF66" : (delta < 0 ? "#FF0033" : "#8397AD");
+            } else {
+                hudDelta.style.display = 'none';
             }
         }
 
