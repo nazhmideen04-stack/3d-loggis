@@ -909,7 +909,6 @@ with col_3d:
                 const val = item.val;
 
                 if (hasData || payload.showNoDataRed) {
-                    // Строгое равенство имени и флаг, чтобы только ОДИН объект стал желтым
                     const isCandidate = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && sensorName === payload.selectedSensor);
                     const isSelected = isCandidate && !alreadyHighlightedOne;
 
@@ -999,21 +998,13 @@ with col_3d:
                 }
             });
 
-            const overallBox = new THREE.Box3();
-            tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
-            const tunnelSize = overallBox.getSize(new THREE.Vector3());
-            const isZAxis = tunnelSize.z >= tunnelSize.x;
-
             const R_INFLUENCE = 48.0;
 
-            // ИНТЕРПОЛЯЦИЯ И НАЗНАЧЕНИЕ МАТЕРИАЛА С ПРЯМЫМ РЕГУЛЯТОРОМ ПРОЗРАЧНОСТИ
+            // АЛЬТЕРНАТИВНОЕ РЕШЕНИЕ: DEPTH-MASK / FRONT-SIDE РЕНДЕРИНГ
+            // Тоннель полностью оригинальный. Диски исчезают, а прозрачность работает на 100%!
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
-
-                if (!geom.attributes.normal) {
-                    geom.computeVertexNormals();
-                }
 
                 const posAttr = geom.attributes.position;
                 const colors = new Float32Array(posAttr.count * 3);
@@ -1076,64 +1067,36 @@ with col_3d:
 
                 geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 geom.attributes.color.needsUpdate = true;
-                
+
                 const isTransparent = payload.tunnelOpacity < 0.98;
 
-                const customShader = THREE.ShaderLib.standard;
-                const uniforms = THREE.UniformsUtils.clone(customShader.uniforms);
-                uniforms.opacity.value = payload.tunnelOpacity;
+                // 1. Предварительный проход глубины: скрывает всё, что находится внутри трубы
+                if (isTransparent) {
+                    const depthMaskMat = new THREE.MeshBasicMaterial({
+                        colorWrite: false,
+                        depthWrite: true,
+                        side: THREE.FrontSide
+                    });
+                    const depthMaskMesh = new THREE.Mesh(geom, depthMaskMat);
+                    depthMaskMesh.renderOrder = 0;
+                    tMesh.add(depthMaskMesh);
+                }
 
-                let fragmentShaderCode = customShader.fragmentShader;
-                let vertexShaderCode = customShader.vertexShader;
-
-                vertexShaderCode = vertexShaderCode.replace(
-                    '#include <common>',
-                    `
-                    #include <common>
-                    varying vec3 vWorldNormalClean;
-                    `
-                ).replace(
-                    '#include <defaultnormal_vertex>',
-                    `
-                    #include <defaultnormal_vertex>
-                    vWorldNormalClean = normalize(mat3(modelMatrix) * objectNormal);
-                    `
-                );
-
-                fragmentShaderCode = fragmentShaderCode.replace(
-                    '#include <common>',
-                    `
-                    #include <common>
-                    varying vec3 vWorldNormalClean;
-                    `
-                ).replace(
-                    '#include <dithering_fragment>',
-                    `
-                    #include <dithering_fragment>
-                    vec3 norm = normalize(vWorldNormalClean);
-                    ${isZAxis ? 'if (abs(norm.z) > 0.80) discard;' : 'if (abs(norm.x) > 0.80) discard;'}
-                    gl_FragColor.a *= opacity;
-                    `
-                );
-
-                const cleanMat = new THREE.ShaderMaterial({
-                    uniforms: uniforms,
-                    vertexShader: vertexShaderCode,
-                    fragmentShader: fragmentShaderCode,
-                    lights: true,
+                // 2. Основной визуальный материал: рисует внешнюю полупрозрачную оболочку свода
+                const visualMat = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
                     vertexColors: true,
                     transparent: isTransparent,
                     opacity: payload.tunnelOpacity,
+                    roughness: 0.18,
+                    metalness: 0.02,
                     depthWrite: !isTransparent,
-                    side: THREE.DoubleSide
+                    side: THREE.FrontSide // Строго FrontSide убирает просвечивание внутренних дисков и перегородок!
                 });
 
-                cleanMat.roughness = 0.18;
-                cleanMat.metalness = 0.02;
-                cleanMat.defines = { STANDARD: '' };
-
-                tMesh.material = cleanMat;
-                tMesh.renderOrder = 0;
+                tMesh.material = visualMat;
+                tMesh.renderOrder = 1;
+                tMesh.material.needsUpdate = true;
             });
 
             const boxTA = new THREE.Box3();
@@ -1170,10 +1133,14 @@ with col_3d:
             scene.add(portalsGroup);
 
             if (payload.showMeters) {
+                const overallBox = new THREE.Box3();
+                tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
+
                 if (!overallBox.isEmpty()) {
                     const size = overallBox.getSize(new THREE.Vector3());
                     const rulerGroup = new THREE.Group();
 
+                    const isZAxis = size.z >= size.x;
                     const lengthM = isZAxis ? size.z : size.x;
                     const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x;
                     const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
@@ -1346,7 +1313,7 @@ with col_3d:
                 
                 interactiveSensors.forEach(m => {
                     if (m === sensorMesh) {
-                        m.material.color.setHex(0xFFD700); // Только выбранный окрасится в желтый
+                        m.material.color.setHex(0xFFD700); // Только он окрасится в желтый
                     } else if (m.userData.isUsable) {
                         m.material.color.setHex(0xFFFFFF); // Все остальные рабочие - белые
                     } else {
@@ -1391,6 +1358,7 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
+        // ДВУХПРОХОДНЫЙ РЕНДЕР
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
