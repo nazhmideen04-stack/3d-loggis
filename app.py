@@ -494,7 +494,6 @@ with col_3d:
                 const legendBar = document.getElementById('legend-bar');
                 const legendTitle = document.getElementById('legend-title');
 
-                // ПАЛИТРЫ ЛЕГЕНДЫ
                 if (payload.comp === "temp") {{
                     legendTitle.innerText = "[°C]";
                     legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #33FF33, #00FFCC, #0066FF, #0011AA)";
@@ -751,6 +750,7 @@ with col_3d:
                                     const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
                                     const sensorColor = isSelected ? new THREE.Color(0xFFE600) : getColorForValue(rawVal, payload.clim, payload.comp);
 
+                                    // ВЫДЕЛЕНИЕ СЕНСОРОВ ПОВЕРХ ТОННЕЛЯ БЕЗ ДЕФОРМАЦИИ СЕТКИ
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: sensorColor,
                                         emissive: isSelected ? new THREE.Color(0xFFE600) : sensorColor,
@@ -825,8 +825,8 @@ with col_3d:
                         }}
                     }});
 
-                    // ШИРОКАЯ И ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ
-                    const R_INFLUENCE = 55.0;
+                    // АДЕКВАТНАЯ ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ВСЕЙ ДЛИНЫ ТОННЕЛЕЙ
+                    const R_INFLUENCE = 45.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -1004,7 +1004,7 @@ with col_3d:
                         }}
                     }}
 
-                    // ФОКУС КАМЕРЫ НА МОДЕЛИ С КОМФОРТНЫМ КРУПНЫМ РАКУРСОМ
+                    // НАВЕДЕНИЕ И ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (ПОБЛИЖЕ К ТОННЕЛЯМ)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1033,10 +1033,11 @@ with col_3d:
                             const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
                             controls.target.copy(center);
+                            // Камера приближена для крупного и выразительного обзора
                             camera.position.set(
-                                center.x - maxDim * 0.40,
-                                center.y + maxDim * 0.45,
-                                center.z + maxDim * 0.55
+                                center.x - maxDim * 0.35,
+                                center.y + maxDim * 0.38,
+                                center.z + maxDim * 0.48
                             );
                             controls.update();
                         }}
@@ -1054,7 +1055,7 @@ with col_3d:
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.5)).add(new THREE.Vector3(0, 1.8, 0));
+                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
 
                     if (!animate) {{
                         camera.position.copy(endCamPos);
@@ -1082,7 +1083,7 @@ with col_3d:
                         .start();
                 }}
 
-                // КЛИК ПО ДАТЧИКУ В 3D ДЛЯ ВЫДЕЛЕНИЯ
+                // КЛИК ПО ДАТЧИКУ В 3D ДЛЯ ВЫДЕЛЕНИЯ И ПОДЛЕТА
                 window.addEventListener('click', function(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1153,4 +1154,4 @@ with col_3d:
         </html>
         """
 
-        st.components.v1.html(threejs_html, height=820, scrolling=False)
+        st.components.v1.html(threejs_html, height=760, scrolling=False)
