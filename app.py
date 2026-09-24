@@ -538,14 +538,14 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
+                // 7-СТУПЕНЧАТАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const strainStops = [
                     new THREE.Color("#0022FF"), // Глубокий синий
-                    new THREE.Color("#00E5FF"), // Циан
-                    new THREE.Color("#00FF44"), // Зеленый
+                    new THREE.Color("#00E5FF"), // Неоновый циан
+                    new THREE.Color("#00FF44"), // Чистый зеленый
                     new THREE.Color("#FFE600"), // Желтый
-                    new THREE.Color("#FFAA00"), // Оранжевый
-                    new THREE.Color("#FF5500"), // Красно-оранжевый
+                    new THREE.Color("#FFAA00"), // Янтарный
+                    new THREE.Color("#FF5500"), // Насыщенный оранжевый
                     new THREE.Color("#FF0022")  // Алый красный
                 ];
 
@@ -656,13 +656,6 @@ with col_3d:
                     return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
                 }}
 
-                // БАЗОВЫЙ ИДЕНТИФИКАТОР (для исключения наложения парных линий/мешей)
-                function getBaseSensorKey(sensorId) {{
-                    // Например, TA-S1-L-M1 превращается в TA-S1-L
-                    const m = sensorId.match(/^(T[AB]-(?:CS|S|TP)\d+-[LR])/i);
-                    return m ? m[1].toUpperCase() : sensorId.toUpperCase();
-                }}
-
                 const normalizedDataMap = {{}};
                 for (const rawKey in payload.activeCategoryValues) {{
                     const nKey = normalizeKey(rawKey);
@@ -711,6 +704,7 @@ with col_3d:
                     return {{ found: false, key: sensorId, val: NaN }};
                 }}
 
+                // СТРОГОЕ СООТВЕТСТВИЕ ТЕКУЩЕЙ ОТКРЫТОЙ КАТЕГОРИИ
                 function isCategoryMatch(name, comp) {{
                     const u = name.toUpperCase();
                     if (comp === "hoop") {{
@@ -863,9 +857,8 @@ with col_3d:
                         }}
                     }});
 
-                    // 1. АНАЛИЗ ВСЕХ СЕНСОРОВ: ОПРЕДЕЛЯЕМ ТОЧКИ И БАЗОВЫЕ ИМЕНА С ДАННЫМИ
-                    const activeBaseKeys = new Set();
-                    const activeSensorPositions = [];
+                    // 1. СОБИРАЕМ СПИСОК РАБОЧИХ ДАТЧИКОВ
+                    const activeSensorsRegistry = [];
 
                     rawSensors.forEach(child => {{
                         const name = child.name;
@@ -873,52 +866,51 @@ with col_3d:
                         const dataLookup = findSensorData(sensorId, payload.comp);
                         
                         if (dataLookup.found) {{
-                            activeBaseKeys.add(getBaseSensorKey(sensorId));
-                            activeBaseKeys.add(getBaseSensorKey(dataLookup.key));
-                            
                             const wPos = new THREE.Vector3();
                             child.getWorldPosition(wPos);
-                            activeSensorPositions.push(wPos);
+                            activeSensorsRegistry.push({{
+                                id: dataLookup.key.toUpperCase(),
+                                pos: wPos
+                            }});
                         }}
                     }});
 
-                    // 2. ФИЛЬТРАЦИЯ И ПЕРЕНОС: ИСКЛЮЧАЕМ НАЛОЖЕНИЕ КРАСНЫХ ЛИНИЙ НА РАБОЧИЕ СЕНСОРЫ
+                    // 2. РЕНДЕРИНГ: И РАБОЧИЕ (БЕЛЫЕ), И ДЕЙСТВИТЕЛЬНО НЕРАБОЧИЕ (КРАСНЫЕ)
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
-                        const baseKey = getBaseSensorKey(sensorId);
 
                         const dataLookup = findSensorData(sensorId, payload.comp);
                         const hasData = dataLookup.found;
                         const canonicalId = dataLookup.key;
                         const sensorVal = dataLookup.val;
 
+                        // Относится ли датчик строго к текущей категории
                         const isCategory = isCategoryMatch(canonicalId, payload.comp) || isCategoryMatch(sensorId, payload.comp) || (payload.comp === "temp" && (sensorId.toUpperCase().includes("-TP") || canonicalId.toUpperCase().includes("-TP")));
 
                         const wPos = new THREE.Vector3();
                         child.getWorldPosition(wPos);
 
-                        // Проверяем: лежит ли этот объект в той же точке, где уже есть рабочий белый датчик?
-                        let isCoveringActiveSensor = false;
+                        // Проверяем: лежит ли этот меш ровно поверх УЖЕ существующего активного датчика с тем же смысловым именем?
+                        let isExactDuplicateOfActive = false;
                         if (!hasData) {{
-                            if (activeBaseKeys.has(baseKey)) {{
-                                isCoveringActiveSensor = true;
-                            }} else {{
-                                for (let p of activeSensorPositions) {{
-                                    if (wPos.distanceTo(p) < 0.35) {{ // Если объект лежит прямо поверх рабочего сенсора
-                                        isCoveringActiveSensor = true;
-                                        break;
-                                    }}
+                            for (let active of activeSensorsRegistry) {{
+                                // Скрываем только точный дубль в пределах 5 см с тем же именем
+                                if (wPos.distanceTo(active.pos) < 0.05 && active.id === canonicalId.toUpperCase()) {{
+                                    isExactDuplicateOfActive = true;
+                                    break;
                                 }}
                             }}
                         }}
 
-                        // Если у объекта нет данных, но поверх него уже стоит рабочий датчик -> СКРЫВАЕМ ЕГО, НЕ КРАСИМ В КРАСНЫЙ!
-                        if (!hasData && isCoveringActiveSensor) {{
+                        if (!hasData && isExactDuplicateOfActive) {{
                             child.visible = false;
                             return;
                         }}
 
+                        // Показываем:
+                        // 1. Все датчики с данными (Белые)
+                        // 2. Если включен чекбокс — ВСЕ датчики текущего типа без данных (Красные)
                         if (hasData || (isCategory && payload.showNoDataRed)) {{
                             child.userData.sensorName = canonicalId;
                             child.userData.val = hasData ? sensorVal : NaN;
@@ -931,7 +923,7 @@ with col_3d:
                             if (isSelected) {{
                                 sensorColor = 0xFFD700; // Золотой
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033; // Красный ТОЛЬКО ЕСЛИ ДАТЧИК РЕАЛЬНО БЕЗ ДАННЫХ И НЕ ПЕРЕКРЫВАЕТ БЕЛЫЙ
+                                sensorColor = 0xFF0033; // Ярко-красный для нерабочих
                             }}
 
                             child.material = new THREE.MeshBasicMaterial({{
