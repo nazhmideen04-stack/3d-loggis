@@ -192,95 +192,114 @@ def fetch_all_categories_data():
         page = context.new_page()
         page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
-        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3500)
-
-        page.get_by_text("Types").click()
-        page.wait_for_timeout(800)
-
         try:
-            page.get_by_role("combobox").first.select_option("MONTH_02")
-        except Exception:
-            pass
-        page.wait_for_timeout(600)
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
 
-        try:
-            page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE")
-        except Exception:
-            pass
-        page.wait_for_timeout(800)
-
-        for cat_key, cat_cfg in CATEGORIES.items():
             try:
-                page.get_by_role("listbox").select_option(cat_cfg["name"])
+                page.get_by_text("Types").click(timeout=8000)
             except Exception:
+                pass
+            page.wait_for_timeout(1000)
+
+            try:
+                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            except Exception:
+                pass
+            page.wait_for_timeout(800)
+
+            try:
+                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1000)
+
+            for cat_key, cat_cfg in CATEGORIES.items():
                 try:
-                    page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
                 except Exception:
-                    page.get_by_text(cat_cfg["name"]).first.click(force=True)
+                    try:
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                    except Exception:
+                        try:
+                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
+                        except Exception:
+                            pass
 
-            page.wait_for_timeout(2500)
+                # Даем таблице время перестроиться в DOM
+                page.wait_for_timeout(3000)
 
-            val_map = {}
-            latest_date_str = ""
+                val_map = {}
+                latest_date_str = ""
 
-            for _ in range(15):
-                extracted = page.evaluate("""() => {
-                    const table = document.querySelector('table');
-                    if (!table) return null;
+                # Безопасный опрос таблицы с защитой от сбоя фрейма
+                for _ in range(15):
+                    try:
+                        extracted = page.evaluate("""() => {
+                            try {
+                                const table = document.querySelector('table');
+                                if (!table) return null;
 
-                    const trs = Array.from(table.querySelectorAll('tr'));
-                    let headerCells = [];
-                    for (const tr of trs) {
-                        const cells = Array.from(tr.querySelectorAll('th, td')).map(c => c.innerText.trim());
-                        if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
-                            headerCells = cells;
-                            break;
-                        }
-                    }
-                    if (headerCells.length === 0 && trs.length > 0) {
-                        headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => c.innerText.trim());
-                    }
+                                const trs = Array.from(table.querySelectorAll('tr'));
+                                let headerCells = [];
+                                for (const tr of trs) {
+                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
+                                        headerCells = cells;
+                                        break;
+                                    }
+                                }
+                                if (headerCells.length === 0 && trs.length > 0) {
+                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                }
 
-                    const tbody = table.querySelector('tbody') || table;
-                    const rows = Array.from(tbody.querySelectorAll('tr'));
-                    let dataCells = [];
-                    for (const r of rows) {
-                        const cells = Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim());
-                        if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':) || cells[0].includes('-'))) {
-                            dataCells = cells;
-                            break;
-                        }
-                    }
+                                const tbody = table.querySelector('tbody') || table;
+                                const rows = Array.from(tbody.querySelectorAll('tr'));
+                                let dataCells = [];
+                                for (const r of rows) {
+                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
+                                        dataCells = cells;
+                                        break;
+                                    }
+                                }
 
-                    if (headerCells.length === 0 || dataCells.length === 0) return null;
-                    return { headers: headerCells, values: dataCells };
-                }""")
+                                if (headerCells.length === 0 || dataCells.length === 0) return null;
+                                return { headers: headerCells, values: dataCells };
+                            } catch (e) {
+                                return null;
+                            }
+                        }""")
 
-                if extracted and extracted.get("values") and extracted.get("headers"):
-                    headers = extracted["headers"]
-                    values = extracted["values"]
-                    latest_date_str = values[0]
+                        if extracted and extracted.get("values") and extracted.get("headers"):
+                            headers = extracted["headers"]
+                            values = extracted["values"]
+                            latest_date_str = values[0]
 
-                    for h, v_str in zip(headers[1:], values[1:]):
-                        if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
-                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                            s_name = m.group(1) if m else h.split()[0].strip()
-                            v = clean_num(v_str)
-                            if not np.isnan(v):
-                                val_map[s_name] = v
+                            for h, v_str in zip(headers[1:], values[1:]):
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                    s_name = m.group(1) if m else h.split()[0].strip()
+                                    v = clean_num(v_str)
+                                    if not np.isnan(v):
+                                        val_map[s_name] = v
 
-                    if len(val_map) > 0:
-                        break
+                            if len(val_map) > 0:
+                                break
+                    except Exception:
+                        # Если контекст страницы был временно сброшен AJAX-обновлением, повторяем без падения
+                        pass
 
-                page.wait_for_timeout(500)
+                    page.wait_for_timeout(600)
 
-            all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
-        browser.close()
+        except Exception as e:
+            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
+        finally:
+            browser.close()
 
     return all_results
-
 @st.cache_data
 def get_model_b64(path):
     if not os.path.exists(path):
