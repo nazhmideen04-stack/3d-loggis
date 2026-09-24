@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -29,6 +29,68 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
+
+# Полный список доступных исторических дат из базы
+AVAILABLE_DATES = [
+    "08.09.2025 17:00", "08.09.2025 18:00", "08.09.2025 20:00", "08.09.2025 21:00", "08.09.2025 22:00", "08.09.2025 23:00",
+    "09.09.2025 00:00", "09.09.2025 01:00", "09.09.2025 02:00", "09.09.2025 03:00", "09.09.2025 04:00", "09.09.2025 05:00",
+    "09.09.2025 14:00", "09.09.2025 15:00", "09.09.2025 16:00", "09.09.2025 17:00", "09.09.2025 18:00", "09.09.2025 19:00",
+    "09.09.2025 20:00", "09.09.2025 21:00", "09.09.2025 22:00", "09.09.2025 23:00", "10.09.2025 00:00", "10.09.2025 01:00",
+    "10.09.2025 02:00", "10.09.2025 03:00", "10.09.2025 04:00", "10.09.2025 05:00", "10.09.2025 06:00", "10.09.2025 07:00",
+    "10.09.2025 08:00", "10.09.2025 09:00", "10.09.2025 10:00", "10.09.2025 11:00", "10.09.2025 12:00", "10.09.2025 13:00",
+    "10.09.2025 14:00", "10.09.2025 15:00", "10.09.2025 16:00", "10.09.2025 17:00", "10.09.2025 18:00", "10.09.2025 19:00",
+    "10.09.2025 20:00", "10.09.2025 21:00", "10.09.2025 22:00", "10.09.2025 23:00", "11.09.2025 00:00", "11.09.2025 01:00",
+    "11.09.2025 02:00", "11.09.2025 03:00", "11.09.2025 04:00", "11.09.2025 05:00", "11.09.2025 06:00", "11.09.2025 07:00",
+    "11.09.2025 08:00", "11.09.2025 09:00", "11.09.2025 10:00", "11.09.2025 11:00", "11.09.2025 12:00", "11.09.2025 13:00",
+    "11.09.2025 14:00", "11.09.2025 15:00", "11.09.2025 16:00", "11.09.2025 17:00", "11.09.2025 18:00", "11.09.2025 19:00",
+    "11.09.2025 20:00", "11.09.2025 21:00", "11.09.2025 22:00", "11.09.2025 23:00", "12.09.2025 00:00", "12.09.2025 01:00",
+    "12.09.2025 02:00", "12.09.2025 03:00", "12.09.2025 11:00", "12.09.2025 12:00", "12.09.2025 13:00", "12.09.2025 14:00",
+    "12.09.2025 15:00", "12.09.2025 16:00", "13.09.2025 06:00", "13.09.2025 07:00", "13.09.2025 08:00", "13.09.2025 09:00",
+    "13.09.2025 10:00", "13.09.2025 11:00", "13.09.2025 12:00", "13.09.2025 13:00", "13.09.2025 14:00", "13.09.2025 15:00",
+    "14.09.2025 05:00", "14.09.2025 06:00", "14.09.2025 07:00", "14.09.2025 08:00", "14.09.2025 09:00", "14.09.2025 10:00",
+    "14.09.2025 11:00", "14.09.2025 12:00", "14.09.2025 13:00", "14.09.2025 14:00", "14.09.2025 15:00", "14.09.2025 16:00",
+    "14.09.2025 17:00", "14.09.2025 18:00", "14.09.2025 19:00", "14.09.2025 20:00", "14.09.2025 21:00", "14.09.2025 22:00",
+    "14.09.2025 23:00", "15.09.2025 00:00", "15.09.2025 01:00", "15.09.2025 02:00", "15.09.2025 03:00", "15.09.2025 04:00",
+    "15.09.2025 05:00", "15.09.2025 06:00", "15.09.2025 07:00", "15.09.2025 08:00", "15.09.2025 09:00", "15.09.2025 10:00",
+    "15.09.2025 11:00", "15.09.2025 12:00", "15.09.2025 13:00", "15.09.2025 14:00", "15.09.2025 15:00", "15.09.2025 16:00",
+    "15.09.2025 17:00", "15.09.2025 18:00", "15.09.2025 19:00", "15.09.2025 20:00", "15.09.2025 21:00", "15.09.2025 22:00",
+    "15.09.2025 23:00", "16.09.2025 00:00", "16.09.2025 01:00", "16.09.2025 02:00", "16.09.2025 03:00", "16.09.2025 04:00",
+    "16.09.2025 05:00", "16.09.2025 06:00", "16.09.2025 07:00", "16.09.2025 08:00", "16.09.2025 09:00", "16.09.2025 10:00",
+    "16.09.2025 11:00", "16.09.2025 12:00", "16.09.2025 13:00", "16.09.2025 14:00", "16.09.2025 15:00", "16.09.2025 16:00",
+    "16.09.2025 17:00", "16.09.2025 18:00", "16.09.2025 19:00", "16.09.2025 20:00", "16.09.2025 21:00", "16.09.2025 22:00",
+    "16.09.2025 23:00", "17.09.2025 00:00", "17.09.2025 01:00", "17.09.2025 02:00", "17.09.2025 03:00", "17.09.2025 04:00",
+    "17.09.2025 05:00", "17.09.2025 06:00", "17.09.2025 07:00", "17.09.2025 08:00", "17.09.2025 09:00", "17.09.2025 10:00",
+    "17.09.2025 13:00", "17.09.2025 14:00", "17.09.2025 15:00", "17.09.2025 16:00", "17.09.2025 17:00", "17.09.2025 18:00",
+    "17.09.2025 19:00", "17.09.2025 20:00", "17.09.2025 21:00", "17.09.2025 22:00", "17.09.2025 23:00", "18.09.2025 00:00",
+    "18.09.2025 01:00", "18.09.2025 02:00", "18.09.2025 03:00", "18.09.2025 04:00", "18.09.2025 05:00", "18.09.2025 06:00",
+    "18.09.2025 07:00", "18.09.2025 08:00", "18.09.2025 09:00", "18.09.2025 10:00", "18.09.2025 11:00", "18.09.2025 12:00",
+    "18.09.2025 13:00", "18.09.2025 14:00", "18.09.2025 15:00", "18.09.2025 16:00", "18.09.2025 17:00", "18.09.2025 18:00",
+    "18.09.2025 19:00", "18.09.2025 20:00", "18.09.2025 21:00", "18.09.2025 22:00", "18.09.2025 23:00", "19.09.2025 00:00",
+    "19.09.2025 01:00", "19.09.2025 02:00", "19.09.2025 03:00", "19.09.2025 04:00", "19.09.2025 05:00", "19.09.2025 06:00",
+    "19.09.2025 07:00", "19.09.2025 08:00", "19.09.2025 09:00", "19.09.2025 10:00", "19.09.2025 11:00", "19.09.2025 12:00",
+    "19.09.2025 13:00", "19.09.2025 14:00", "19.09.2025 15:00", "19.09.2025 16:00", "19.09.2025 17:00", "19.09.2025 18:00",
+    "19.09.2025 19:00", "19.09.2025 20:00", "19.09.2025 21:00", "19.09.2025 22:00", "19.09.2025 23:00", "20.09.2025 00:00",
+    "20.09.2025 01:00", "20.09.2025 02:00", "20.09.2025 03:00", "20.09.2025 04:00", "20.09.2025 05:00", "20.09.2025 06:00",
+    "20.09.2025 07:00", "20.09.2025 08:00", "20.09.2025 09:00", "20.09.2025 10:00", "20.09.2025 11:00", "20.09.2025 12:00",
+    "20.09.2025 13:00", "20.09.2025 14:00", "20.09.2025 15:00", "20.09.2025 16:00", "20.09.2025 17:00", "20.09.2025 18:00",
+    "20.09.2025 19:00", "20.09.2025 20:00", "20.09.2025 21:00", "20.09.2025 22:00", "20.09.2025 23:00", "21.09.2025 00:00",
+    "21.09.2025 01:00", "21.09.2025 02:00", "21.09.2025 03:00", "21.09.2025 04:00", "21.09.2025 05:00", "21.09.2025 06:00",
+    "21.09.2025 07:00", "21.09.2025 08:00", "21.09.2025 09:00", "21.09.2025 10:00", "21.09.2025 11:00", "21.09.2025 12:00",
+    "21.09.2025 13:00", "21.09.2025 14:00", "21.09.2025 15:00", "21.09.2025 16:00", "21.09.2025 17:00", "21.09.2025 18:00",
+    "21.09.2025 19:00", "21.09.2025 20:00", "21.09.2025 21:00", "21.09.2025 22:00", "21.09.2025 23:00", "22.09.2025 00:00",
+    "22.09.2025 01:00", "22.09.2025 02:00", "22.09.2025 03:00", "22.09.2025 04:00", "22.09.2025 05:00", "22.09.2025 06:00",
+    "22.09.2025 07:00", "22.09.2025 08:00", "22.09.2025 09:00", "22.09.2025 10:00", "22.09.2025 11:00", "22.09.2025 12:00",
+    "22.09.2025 13:00", "22.09.2025 14:00", "22.09.2025 15:00", "22.09.2025 16:00", "22.09.2025 17:00", "22.09.2025 18:00",
+    "22.09.2025 19:00", "22.09.2025 20:00", "22.09.2025 21:00", "22.09.2025 22:00", "22.09.2025 23:00", "23.09.2025 00:00",
+    "23.09.2025 01:00", "23.09.2025 02:00", "23.09.2025 03:00", "23.09.2025 04:00", "23.09.2025 05:00", "23.09.2025 06:00",
+    "23.09.2025 07:00", "23.09.2025 08:00", "23.09.2025 09:00", "23.09.2025 10:00", "23.09.2025 11:00", "23.09.2025 12:00",
+    "23.09.2025 13:00", "23.09.2025 14:00", "23.09.2025 15:00", "23.09.2025 16:00", "23.09.2025 17:00", "23.09.2025 18:00",
+    "23.09.2025 19:00", "23.09.2025 20:00", "23.09.2025 21:00", "23.09.2025 22:00", "23.09.2025 23:00", "24.09.2025 00:00",
+    "24.09.2025 01:00", "24.09.2025 02:00", "24.09.2025 03:00", "24.09.2025 04:00", "24.09.2025 05:00", "24.09.2025 06:00",
+    "24.09.2025 07:00", "24.09.2025 08:00", "24.09.2025 09:00", "24.09.2025 10:00", "24.09.2025 11:00", "24.09.2025 12:00",
+    "24.09.2025 13:00", "24.09.2025 14:00", "24.09.2025 15:00", "24.09.2025 16:00", "24.09.2025 17:00", "24.09.2025 18:00",
+    "24.09.2025 19:00", "24.09.2025 20:00", "24.09.2025 21:00", "24.09.2025 22:00", "24.09.2025 23:00"
+]
 
 # Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
@@ -208,7 +270,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & DOM PARSER</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -236,12 +298,11 @@ def ensure_playwright_installed():
         pass
 
 @st.cache_data(ttl=300)
-def fetch_loggis_data(target_date_str=None):
+def fetch_all_categories_data(target_date_str=None):
     """
-    Использует ваш сценарий Playwright (Types -> ALL -> категория),
-    собирает список доступных дат из второго комбобокса и парсит таблицу из DOM.
+    Универсальная функция: по умолчанию грузит текущие данные (MONTH_02 + TABLE_ROW_DATE),
+    а при передаче target_date_str переключается на ALL и выбирает нужную историческую дату из базы.
     """
-    dates_list = []
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
@@ -271,30 +332,20 @@ def fetch_loggis_data(target_date_str=None):
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            # Нажимаем Types
             try:
                 page.get_by_text("Types").click(timeout=8000)
             except Exception:
                 pass
             page.wait_for_timeout(1000)
 
-            # Выбираем ALL в первом комбобоксе по вашему скрипту
-            try:
-                page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
-            except Exception:
-                pass
-            page.wait_for_timeout(1000)
-
-            # Считываем все исторические даты из второго комбобокса
-            try:
-                date_combo = page.get_by_role("combobox").nth(1)
-                options = date_combo.locator("option").all_inner_texts()
-                dates_list = [opt.strip() for opt in options if opt.strip() and opt.strip() != "TABLE_ROW_DATE"]
-            except Exception:
-                pass
-
-            # Если пользователь выбрал конкретную дату из истории — устанавливаем её
+            # Если выбрана конкретная история — включаем ALL в первом селекторе, как в твоем новом скрипте
             if target_date_str and target_date_str != "En Son (Güncel)":
+                try:
+                    page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(800)
+                
                 try:
                     page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
                 except Exception:
@@ -303,10 +354,18 @@ def fetch_loggis_data(target_date_str=None):
                     except Exception:
                         pass
             else:
+                # Режим текущих данных (стабильный MONTH_02 + TABLE_ROW_DATE)
+                try:
+                    page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(800)
+
                 try:
                     page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
                 except Exception:
                     pass
+
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
@@ -321,10 +380,10 @@ def fetch_loggis_data(target_date_str=None):
                         except Exception:
                             pass
 
-                page.wait_for_timeout(2500)
+                page.wait_for_timeout(3000)
 
                 val_map = {}
-                row_date_str = ""
+                latest_date_str = ""
 
                 for _ in range(15):
                     try:
@@ -367,7 +426,7 @@ def fetch_loggis_data(target_date_str=None):
                         if extracted and extracted.get("values") and extracted.get("headers"):
                             headers = extracted["headers"]
                             values = extracted["values"]
-                            row_date_str = values[0]
+                            latest_date_str = values[0]
 
                             for h, v_str in zip(headers[1:], values[1:]):
                                 if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
@@ -384,14 +443,14 @@ def fetch_loggis_data(target_date_str=None):
 
                     page.wait_for_timeout(600)
 
-                all_results[cat_key] = {"values": val_map, "date": row_date_str}
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
         except Exception as e:
-            st.warning(f"LoggIS verisi alınırken hata oluştu: {e}")
+            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
         finally:
             browser.close()
 
-    return dates_list, all_results
+    return all_results
 
 @st.cache_data
 def get_model_b64(path):
@@ -402,10 +461,6 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Первичный запуск для сбора доступных дат и актуальных данных
-with st.spinner("LoggIS verileri senkronize ediliyor..."):
-    available_dates, current_data = fetch_loggis_data(None)
-
 with col_nav:
     st.subheader("KONTROL PANELİ")
     selected_comp = st.radio(
@@ -415,22 +470,22 @@ with col_nav:
     )
 
     st.markdown("---")
-    st.subheader("⏱️ Geçmiş Zaman Seçimi")
+    st.subheader("⏱️ Zaman Seçimi")
     
-    date_options = ["En Son (Güncel)"] + (available_dates if available_dates else [])
+    # Выбор между актуальными данными и историческими датами из вашего списка
+    date_options = ["En Son (Güncel)"] + AVAILABLE_DATES
     selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_options)
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# Если выбрана конкретная дата из истории — запрашиваем данные для неё
-if selected_date_choice != "En Son (Güncel)":
-    with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
-        _, current_data = fetch_loggis_data(selected_date_choice)
+# Загружаем данные для выбранного времени (текущие или исторические)
+with st.spinner(f"Veriler yükleniyor ({selected_date_choice})..."):
+    all_data = fetch_all_categories_data(selected_date_choice)
 
 cat_cfg = CATEGORIES[selected_comp]
-cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
 raw_v_map = cur_layer["values"]
 
 active_category_values = {}
@@ -470,7 +525,7 @@ with col_nav:
 
     st.markdown("---")
     st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{cur_layer['date'] if cur_layer['date'] else selected_date_choice}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{selected_date_choice}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
