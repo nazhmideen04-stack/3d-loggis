@@ -499,7 +499,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE TÜNEL ИНТЕРПОЛЯЦИЯСЫ ЖҮКТЕЛУДЕ...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="selected-hud">
@@ -538,15 +538,15 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ВЫСОКОКОНТРАСТНАЯ ИНЖЕНЕРНАЯ ШКАЛА
+                // 7-СТУПЕНЧАТАЯ ВЫСОКОКОНТРАСТНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
-                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
-                    new THREE.Color("#00E5FF"), // 0.16: Циан
-                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
-                    new THREE.Color("#FFE600"), // 0.50: Желтый
-                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
-                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжевый
-                    new THREE.Color("#FF0022")  // 1.00: Алый красный
+                    new THREE.Color("#0022FF"), // Глубокий синий
+                    new THREE.Color("#00E5FF"), // Циан
+                    new THREE.Color("#00FF44"), // Чистый зеленый
+                    new THREE.Color("#FFE600"), // Желтый
+                    new THREE.Color("#FFAA00"), // Янтарный
+                    new THREE.Color("#FF5500"), // Оранжевый
+                    new THREE.Color("#FF0022")  // Алый красный
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -761,17 +761,19 @@ with col_3d:
                                     interactiveSensors.push(child);
 
                                     const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
-                                    
-                                    // ЧИСТЫЙ НЕПРОЗРАЧНЫЙ БЕЛЫЙ ЦВЕТ (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
                                     const sensorColor = isSelected ? 0xFFD700 : 0xFFFFFF;
 
+                                    // 100% НЕПРОЗРАЧНЫЙ БЕЛЫЙ МАТЕРИАЛ ДАТЧИКА
                                     child.material = new THREE.MeshBasicMaterial({{
                                         color: sensorColor,
                                         side: THREE.DoubleSide,
+                                        transparent: false,
+                                        opacity: 1.0,
+                                        blending: THREE.NoBlending,
                                         depthTest: false,
                                         depthWrite: false
                                     }});
-                                    child.renderOrder = 99999; // ВСЕГДА ВЫШЕ СВОДА И ИНТЕРПОЛЯЦИИ
+                                    child.renderOrder = 99999;
 
                                     if (isSelected) {{
                                         selectedMeshRef = child;
@@ -786,6 +788,9 @@ with col_3d:
                                     child.material = new THREE.MeshBasicMaterial({{
                                         color: 0xFF0033,
                                         side: THREE.DoubleSide,
+                                        transparent: false,
+                                        opacity: 1.0,
+                                        blending: THREE.NoBlending,
                                         depthTest: false,
                                         depthWrite: false
                                     }});
@@ -806,7 +811,7 @@ with col_3d:
                                 );
 
                                 if (isTunnel) {{
-                                    child.renderOrder = 0; // Тоннель всегда в нижнем слое
+                                    child.renderOrder = 0;
                                     tunnelMeshes.push(child);
                                 }} else {{
                                     child.material = new THREE.MeshStandardMaterial({{
