@@ -30,7 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH (все паразитные фильтры hue-rotate удалены)
+# Фирменный стиль DESTECH
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -78,7 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* РАДИОКНОПКИ: ЧИСТЫЙ СИНИЙ БЕЗ ЦВЕТОВЫХ СДВИГОВ */
+    /* РАДИОКНОПКИ */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -114,7 +114,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* СЛАЙДЕР И ЧЕКБОКСЫ: ЧИСТЫЙ СИНИЙ */
+    /* СЛАЙДЕР И ЧЕКБОКСЫ */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -977,7 +977,9 @@ with col_3d:
                     const detachedMesh = new THREE.Mesh(item.mesh.geometry.clone(), sensorMat);
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
-                    detachedMesh.scale.copy(wScale);
+                    
+                    // УВЕЛИЧЕНИЕ ТОЛЩИНЫ И РАЗМЕРА СЕНСОРОВ В 2.5 РАЗА
+                    detachedMesh.scale.copy(wScale).multiplyScalar(2.5);
 
                     detachedMesh.userData.sensorName = sensorName;
                     detachedMesh.userData.val = hasData ? val : NaN;
