@@ -23,6 +23,7 @@ st.markdown("""
 
     :root {
         --primary-color: #00C8E6 !important;
+        accent-color: #00C8E6 !important;
     }
 
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -63,6 +64,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -78,7 +80,7 @@ st.markdown("""
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
-        filter: hue-rotate(185deg) saturate(2) !important;
+        filter: hue-rotate(185deg) saturate(2.5) !important;
         transform: scale(1.2) !important;
     }
 
@@ -95,24 +97,28 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* ПЕРЕКРАШИВАНИЕ СЛАЙДЕРА В ФИРМЕННЫЙ СИНИЙ/ЦИАН */
-    div[data-baseweb="slider"] div[role="slider"] {
+    /* ПОЛЗУНОК И ПОЛОСА СЛАЙДЕРА В ЦИАН */
+    div[data-testid="stSlider"] {
+        accent-color: #00C8E6 !important;
+    }
+    div[data-testid="stSlider"] [data-baseweb="slider"] {
+        filter: hue-rotate(185deg) saturate(3) brightness(1.1) !important;
+    }
+    div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
-        box-shadow: 0 0 12px rgba(0, 200, 230, 0.6) !important;
-    }
-    div[data-baseweb="slider"] > div > div:first-child > div {
-        background: #00C8E6 !important;
+        box-shadow: 0 0 14px #00C8E6 !important;
     }
 
-    /* ПЕРЕКРАШИВАНИЕ ЧЕКБОКСОВ В ФИРМЕННЫЙ СИНИЙ/ЦИАН */
-    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] span:first-child {
-        border-color: #00C8E6 !important;
+    /* ЧЕКБОКСЫ В ЦИАН */
+    div[data-testid="stCheckbox"] {
+        accent-color: #00C8E6 !important;
     }
-    div[data-testid="stCheckbox"] label input:checked ~ span[data-baseweb="checkbox"] {
-        background-color: #00C8E6 !important;
+    div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
+        filter: hue-rotate(185deg) saturate(3) brightness(1.1) !important;
+    }
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
         border-color: #00C8E6 !important;
-        box-shadow: 0 0 8px rgba(0, 200, 230, 0.4) !important;
     }
     div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] svg {
         fill: #0A0E17 !important;
@@ -361,7 +367,6 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Реальный диапазон шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -570,7 +575,7 @@ with col_3d:
         const legendBar = document.getElementById('legend-bar');
         const legendTitle = document.getElementById('legend-title');
         const lblMax = document.getElementById('lbl-max');
-        const lblMid = document.getElementById('lbl-min');
+        const lblMid = document.getElementById('lbl-mid');
         const lblMin = document.getElementById('lbl-min');
 
         const selectedHud = document.getElementById('selected-hud');
@@ -745,6 +750,7 @@ with col_3d:
             return { found: false, key: sensorId, val: NaN };
         }
 
+        // ШРИФТ И РАЗМЕР СПРАЙТА УВЕЛИЧЕНЫ В 4 РАЗА
         function createPortalMarker(text) {
             const canvas = document.createElement('canvas');
             canvas.width = 2048;
@@ -757,6 +763,7 @@ with col_3d:
             ctx.strokeRect(40, 40, 1968, 944);
             ctx.fillRect(40, 40, 1968, 944);
 
+            // 135px * 4 = 540px
             ctx.font = '900 540px Syne, Chakra Petch, sans-serif';
             ctx.fillStyle = '#00E5FF';
             ctx.shadowColor = '#00C8E6';
@@ -768,6 +775,7 @@ with col_3d:
             const texture = new THREE.CanvasTexture(canvas);
             const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
             const sprite = new THREE.Sprite(mat);
+            // 6.0 * 4 = 24.0, 3.0 * 4 = 12.0
             sprite.scale.set(24.0, 12.0, 1);
             return sprite;
         }
@@ -921,6 +929,7 @@ with col_3d:
                 }
             });
 
+            // ЭКСКЛЮЗИВНАЯ ПОДСВЕТКА СТРОГО ОДНОГО СЕНСОРА
             let alreadyHighlightedOne = false;
 
             finalSensors.forEach(item => {
@@ -1087,6 +1096,7 @@ with col_3d:
 
                 const isTransparent = payload.tunnelOpacity < 0.98;
 
+                // 1. Скрытый проход глубины: отсекает всё паразитное содержимое внутри трубы
                 if (isTransparent) {
                     const depthMaskMat = new THREE.MeshBasicMaterial({
                         colorWrite: false,
@@ -1098,6 +1108,7 @@ with col_3d:
                     tMesh.add(depthMaskMesh);
                 }
 
+                // 2. Визуальный материал свода с плавной прозрачностью и без дисков
                 const visualMat = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
@@ -1134,6 +1145,7 @@ with col_3d:
             if (hasTA) {
                 const cA = boxTA.getCenter(new THREE.Vector3());
                 const spriteTA = createPortalMarker("TA");
+                // Корректировка высоты для увеличенной в 4 раза таблички
                 spriteTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0);
                 portalsGroup.add(spriteTA);
             }
@@ -1317,6 +1329,7 @@ with col_3d:
             return null;
         }
 
+        // ВЫДЕЛЕНИЕ СТРОГО ОДНОГО СЕНСОРА ПРИ КЛИКЕ
         window.addEventListener('click', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) {
