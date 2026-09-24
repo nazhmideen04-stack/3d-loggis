@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)[cite: 2]
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -30,7 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH с мобильной адаптацией
+# Фирменный стиль DESTECH с мобильной адаптацией[cite: 2]
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -698,15 +698,15 @@ with col_3d:
             new THREE.Color("#BD0026")
         ];
 
+        // ВЫРАЗИТЕЛЬНАЯ ТЕПЛОВИЗИОННАЯ ПАЛИТРА
         const tempStops = [
-            new THREE.Color("#000004"),
-            new THREE.Color("#2C105C"),
-            new THREE.Color("#711F81"),
-            new THREE.Color("#B5367A"),
-            new THREE.Color("#F1605D"),
-            new THREE.Color("#FEA066"),
-            new THREE.Color("#FEDA8B"),
-            new THREE.Color("#FCFDBF")
+            new THREE.Color("#001144"),
+            new THREE.Color("#0077FF"),
+            new THREE.Color("#00E5FF"),
+            new THREE.Color("#00FF66"),
+            new THREE.Color("#FFDD00"),
+            new THREE.Color("#FF5500"),
+            new THREE.Color("#FF0022")
         ];
 
         let currentStops = hoopStops;
@@ -735,14 +735,17 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
+        // ПЕРЦЕПТИВНО ЧИСТАЯ ИНТЕРПОЛЯЦИЯ В HSL С ПЛАВНЫМ ПЕРЕХОДОМ
         function sampleColorRamp(stops, t) {
             t = Math.max(0, Math.min(1, t));
             const scaled = t * (stops.length - 1);
             const idx = Math.floor(scaled);
             const fract = scaled - idx;
             if (idx >= stops.length - 1) return stops[stops.length - 1].clone();
+            
+            const smoothT = fract * fract * (3 - 2 * fract);
             const c = new THREE.Color();
-            c.lerpColors(stops[idx], stops[idx + 1], fract);
+            c.lerpHSL(stops[idx], stops[idx + 1], smoothT);
             return c;
         }
 
@@ -968,7 +971,6 @@ with col_3d:
                 const uName = name.toUpperCase();
                 const sensorId = extractSensorId(name);
 
-                // Строгая фильтрация: в температуре ТОЛЬКО датчики -TP
                 let isCategory = false;
                 if (payload.comp === "hoop") {
                     if (uName.includes("-CS")) isCategory = true;
@@ -1058,8 +1060,6 @@ with col_3d:
                     const detachedMesh = new THREE.Mesh(item.mesh.geometry.clone(), sensorMat);
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
-                    
-                    // Исходный масштаб без изменений
                     detachedMesh.scale.copy(wScale);
 
                     detachedMesh.userData.sensorName = sensorName;
@@ -1117,7 +1117,10 @@ with col_3d:
                 }
             });
 
-            const R_INFLUENCE = 48.0;
+            // =========================================================================
+            // ТОЧНАЯ И ВЫРАЗИТЕЛЬНАЯ ИНТЕРПОЛЯЦИЯ НА СВОДЕ ТОННЕЛЯ
+            // =========================================================================
+            const R_INFLUENCE = 18.0; // Сфокусированный радиус влияния
 
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
@@ -1140,9 +1143,7 @@ with col_3d:
                 if (pool.length === 0) {
                     for (let i = 0; i < posAttr.count; i++) {
                         const idx = i * 3;
-                        colors[idx] = 0.082;
-                        colors[idx + 1] = 0.110;
-                        colors[idx + 2] = 0.157;
+                        colors[idx] = 0.05; colors[idx + 1] = 0.08; colors[idx + 2] = 0.12;
                     }
                 } else {
                     for (let i = 0; i < posAttr.count; i++) {
@@ -1150,34 +1151,31 @@ with col_3d:
                         worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
 
                         let totalWeight = 0;
-                        let accumR = 0, accumG = 0, accumB = 0;
+                        let accumVal = 0;
 
                         for (let j = 0; j < pool.length; j++) {
                             const s = pool[j];
                             const d = worldV.distanceTo(s.pos);
                             
                             if (d < R_INFLUENCE) {
-                                const rNorm = d / R_INFLUENCE;
-                                const wEnvelope = Math.pow(1.0 - Math.pow(rNorm, 1.3), 1.2);
-                                const w = wEnvelope / (Math.pow(d, 1.8) + 0.15);
-
-                                const c = getColorForValue(s.val, dynamicClim);
-                                accumR += c.r * w;
-                                accumG += c.g * w;
-                                accumB += c.b * w;
+                                // Косинусно-сглаженная весовая функция для четких изотерм
+                                const w = 0.5 * (1.0 + Math.cos(Math.PI * (d / R_INFLUENCE))) / (d + 0.1);
+                                accumVal += s.val * w;
                                 totalWeight += w;
                             }
                         }
 
                         const idx = i * 3;
-                        if (totalWeight > 0.000001) {
-                            colors[idx] = accumR / totalWeight;
-                            colors[idx + 1] = accumG / totalWeight;
-                            colors[idx + 2] = accumB / totalWeight;
+                        if (totalWeight > 0.00001) {
+                            const finalSensorVal = accumVal / totalWeight;
+                            const c = getColorForValue(finalSensorVal, dynamicClim);
+                            colors[idx] = c.r;
+                            colors[idx + 1] = c.g;
+                            colors[idx + 2] = c.b;
                         } else {
-                            colors[idx] = 0.082;
-                            colors[idx + 1] = 0.110;
-                            colors[idx + 2] = 0.157;
+                            colors[idx] = 0.05;
+                            colors[idx + 1] = 0.08;
+                            colors[idx + 2] = 0.12;
                         }
                     }
                 }
