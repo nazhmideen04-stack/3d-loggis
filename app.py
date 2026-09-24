@@ -259,7 +259,6 @@ def fetch_loggis_data(target_date_str=None):
                 pass
             page.wait_for_timeout(800)
 
-            # Получаем актуальный список дат из селектора LoggIS
             try:
                 date_select = page.get_by_role("combobox").nth(1)
                 options = date_select.locator("option").all_inner_texts()
