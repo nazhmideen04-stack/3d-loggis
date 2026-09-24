@@ -538,59 +538,72 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ИНЖЕНЕРНАЯ ШКАЛА
-                const strainStops = [
-                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
-                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
-                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
-                    new THREE.Color("#FFE600"), // 0.50: Желтый
-                    new THREE.Color("#FFAA00"), // 0.67: Янтарный
-                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжевый
-                    new THREE.Color("#FF0022")  // 1.00: Алый красный
+                // 1. ПАЛИТРА ДЛЯ ÇEVRESEL GERİNİM (CS) - Яркая Радуга Turbo
+                const hoopStops = [
+                    new THREE.Color("#0022FF"), // Глубокий синий (мин)
+                    new THREE.Color("#00E5FF"), // Циан
+                    new THREE.Color("#00FF44"), // Зеленый
+                    new THREE.Color("#FFE600"), // Желтый
+                    new THREE.Color("#FFAA00"), // Янтарный
+                    new THREE.Color("#FF5500"), // Оранжевый
+                    new THREE.Color("#FF0022")  // Алый красный (макс)
                 ];
 
+                // 2. ПАЛИТРА ДЛЯ BOYUNA GERİNİM (S) - Осевые деформации (Сжатие/Растяжение)
+                const axialStops = [
+                    new THREE.Color("#081D58"), // Темный индиго (сильное сжатие)
+                    new THREE.Color("#253494"), // Синий
+                    new THREE.Color("#1D91C0"), // Голубой
+                    new THREE.Color("#7FCDBB"), // Аквамарин
+                    new THREE.Color("#FFFFD9"), // Нейтрально-светлый
+                    new THREE.Color("#FEB24C"), // Персиковый
+                    new THREE.Color("#F03B20"), // Оранжево-красный
+                    new THREE.Color("#BD0026")  // Насыщенный бордово-красный (сильное растяжение)
+                ];
+
+                // 3. ПАЛИТРА ДЛЯ SICAKLIK (TP) - Термографическая температурная шкала
                 const tempStops = [
-                    new THREE.Color("#0011AA"),
-                    new THREE.Color("#0066FF"),
-                    new THREE.Color("#00FFCC"),
-                    new THREE.Color("#33FF33"),
-                    new THREE.Color("#FFFF00"),
-                    new THREE.Color("#FFAA00"),
-                    new THREE.Color("#FF5500"),
-                    new THREE.Color("#FF0000")
+                    new THREE.Color("#000004"), // Угольно-черный (холод)
+                    new THREE.Color("#2C105C"), // Глубокий фиолетовый
+                    new THREE.Color("#711F81"), // Пурпурный
+                    new THREE.Color("#B5367A"), // Маджента
+                    new THREE.Color("#F1605D"), // Коралловый
+                    new THREE.Color("#FEA066"), // Теплый оранжевый
+                    new THREE.Color("#FEDA8B"), // Золотисто-желтый
+                    new THREE.Color("#FCFDBF")  // Бело-желтый (жар)
                 ];
 
-                let currentStops = strainStops;
+                // Выбор активной палитры строго по типу
+                let currentStops = hoopStops;
+                if (payload.comp === "axial") {
+                    currentStops = axialStops;
+                    legendTitle.innerText = "Boyuna [µm/m]";
+                } else if (payload.comp === "temp") {
+                    currentStops = tempStops;
+                    legendTitle.innerText = "Sıcaklık [°C]";
+                } else {
+                    currentStops = hoopStops;
+                    legendTitle.innerText = "Çevresel [µm/m]";
+                }
 
-                // ГЕНЕРАТОР ГРАДИЕНТА СТРОГО ИЗ ТОГО ЖЕ МАССИВА ЦВЕТОВ THREE.JS
-                function buildExactLegendGradient(stops) {{
+                // ГЕНЕРАТОР ГРАДИЕНТА СТРОГО ИЗ АКТИВНОГО МАССИВА ЦВЕТОВ THREE.JS
+                function buildExactLegendGradient(stops) {
                     const n = stops.length;
                     const items = [];
-                    for (let i = 0; i < n; i++) {{
+                    for (let i = 0; i < n; i++) {
                         // Верх легенды — это максимум (i = n - 1), низ — минимум (i = 0)
                         const colorObj = stops[n - 1 - i];
                         const hex = '#' + colorObj.getHexString();
                         const percent = ((i / (n - 1)) * 100).toFixed(1);
                         items.push(hex + ' ' + percent + '%');
-                    }}
+                    }
                     return 'linear-gradient(to bottom, ' + items.join(', ') + ')';
-                }}
+                }
 
-                if (payload.comp === "temp") {{
-                    currentStops = tempStops;
-                    legendTitle.innerText = "Sıcaklık [°C]";
-                }} else if (payload.comp === "axial") {{
-                    currentStops = strainStops;
-                    legendTitle.innerText = "Boyuna [µm/m]";
-                }} else {{
-                    currentStops = strainStops;
-                    legendTitle.innerText = "Çevresel [µm/m]";
-                }}
-
-                // Применяем полностью синхронизированный градиент
+                // Применяем полностью синхронизированный градиент для легенды
                 legendBar.style.background = buildExactLegendGradient(currentStops);
 
-                function sampleColorRamp(stops, t) {{
+                function sampleColorRamp(stops, t) {
                     t = Math.max(0, Math.min(1, t));
                     const scaled = t * (stops.length - 1);
                     const idx = Math.floor(scaled);
@@ -599,15 +612,15 @@ with col_3d:
                     const c = new THREE.Color();
                     c.lerpColors(stops[idx], stops[idx + 1], fract);
                     return c;
-                }}
+                }
 
-                function getColorForValue(val, clim) {{
+                function getColorForValue(val, clim) {
                     if (val === undefined || isNaN(val)) return new THREE.Color(0x334455);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
                     return sampleColorRamp(currentStops, t);
-                }}
+                }
 
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
@@ -616,7 +629,7 @@ with col_3d:
 
                 const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
-                const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
+                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.autoClear = false;
@@ -628,13 +641,13 @@ with col_3d:
                 controls.minDistance = 0.5;
                 controls.maxDistance = 2500;
 
-                controls.addEventListener('change', () => {{
-                    const camState = {{
+                controls.addEventListener('change', () => {
+                    const camState = {
                         pos: [camera.position.x, camera.position.y, camera.position.z],
                         target: [controls.target.x, controls.target.y, controls.target.z]
-                    }};
+                    };
                     sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
-                }});
+                });
 
                 const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
                 scene.add(ambientLight);
@@ -651,56 +664,56 @@ with col_3d:
                 const tunnelMeshes = [];
                 
                 const raycaster = new THREE.Raycaster();
-                raycaster.params.Line = {{ threshold: 1.0 }};
-                raycaster.params.Points = {{ threshold: 1.0 }};
+                raycaster.params.Line = { threshold: 1.0 };
+                raycaster.params.Points = { threshold: 1.0 };
                 
                 const mouse = new THREE.Vector2();
 
-                function extractSensorId(name) {{
+                function extractSensorId(name) {
                     const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
                     return m ? m[0] : name;
-                }}
+                }
 
-                function normalizeKey(str) {{
+                function normalizeKey(str) {
                     return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
-                }}
+                }
 
-                function getCanonicalSensorId(name) {{
+                function getCanonicalSensorId(name) {
                     const m = name.match(/(T[AB])-([A-Za-z]+)0*(\d+)-([A-Za-z0-9]+)/i);
-                    if (m) {{
+                    if (m) {
                         return (m[1] + '-' + m[2] + parseInt(m[3], 10) + '-' + m[4]).toUpperCase();
-                    }}
+                    }
                     return name.toUpperCase();
-                }}
+                }
 
-                const normalizedDataMap = {{}};
-                for (const rawKey in payload.activeCategoryValues) {{
+                const normalizedDataMap = {};
+                for (const rawKey in payload.activeCategoryValues) {
                     const val = payload.activeCategoryValues[rawKey];
-                    normalizedDataMap[rawKey.toUpperCase()] = {{ canonicalKey: rawKey, val: val }};
-                    normalizedDataMap[normalizeKey(rawKey)] = {{ canonicalKey: rawKey, val: val }};
-                    normalizedDataMap[getCanonicalSensorId(rawKey)] = {{ canonicalKey: rawKey, val: val }};
-                }}
+                    normalizedDataMap[rawKey.toUpperCase()] = { canonicalKey: rawKey, val: val };
+                    normalizedDataMap[normalizeKey(rawKey)] = { canonicalKey: rawKey, val: val };
+                    normalizedDataMap[getCanonicalSensorId(rawKey)] = { canonicalKey: rawKey, val: val };
+                }
 
-                function checkSensorData(sensorId, comp) {{
+                function checkSensorData(sensorId, comp) {
                     const uId = sensorId.toUpperCase();
                     const nId = normalizeKey(sensorId);
                     const cId = getCanonicalSensorId(sensorId);
 
-                    if (normalizedDataMap[uId]) return {{ found: true, key: normalizedDataMap[uId].canonicalKey, val: normalizedDataMap[uId].val }};
-                    if (normalizedDataMap[cId]) return {{ found: true, key: normalizedDataMap[cId].canonicalKey, val: normalizedDataMap[cId].val }};
-                    if (normalizedDataMap[nId]) return {{ found: true, key: normalizedDataMap[nId].canonicalKey, val: normalizedDataMap[nId].val }};
+                    if (normalizedDataMap[uId]) return { found: true, key: normalizedDataMap[uId].canonicalKey, val: normalizedDataMap[uId].val };
+                    if (normalizedDataMap[cId]) return { found: true, key: normalizedDataMap[cId].canonicalKey, val: normalizedDataMap[cId].val };
+                    if (normalizedDataMap[nId]) return { found: true, key: normalizedDataMap[nId].canonicalKey, val: normalizedDataMap[nId].val };
 
-                    if (comp === "temp" && !uId.includes("-TP")) {{
+                    if (comp === "temp" && !uId.includes("-TP")) {
                         const tpVariant = uId.replace("-CS", "-TP").replace("-S", "-TP");
                         const cTpVariant = getCanonicalSensorId(tpVariant);
-                        if (normalizedDataMap[tpVariant]) return {{ found: true, key: normalizedDataMap[tpVariant].canonicalKey, val: normalizedDataMap[tpVariant].val }};
-                        if (normalizedDataMap[cTpVariant]) return {{ found: true, key: normalizedDataMap[cTpVariant].canonicalKey, val: normalizedDataMap[cTpVariant].val }};
-                    }}
+                        if (normalizedDataMap[tpVariant]) return { found: true, key: normalizedDataMap[tpVariant].canonicalKey, val: normalizedDataMap[tpVariant].val };
+                        if (normalizedDataMap[cTpVariant]) return { found: true, key: normalizedDataMap[cTpVariant].canonicalKey, val: normalizedDataMap[cTpVariant].val };
+                    }
 
-                    return {{ found: false, key: sensorId, val: NaN }};
-                }}
+                    return { found: false, key: sensorId, val: NaN };
+                }
 
-                function createPortalMarker(text) {{
+                function createPortalMarker(text) {
                     const canvas = document.createElement('canvas');
                     canvas.width = 512;
                     canvas.height = 256;
@@ -721,13 +734,13 @@ with col_3d:
                     ctx.fillText(text, 256, 128);
 
                     const texture = new THREE.CanvasTexture(canvas);
-                    const mat = new THREE.SpriteMaterial({{ map: texture, depthTest: false }});
+                    const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
                     const sprite = new THREE.Sprite(mat);
                     sprite.scale.set(6.0, 3.0, 1);
                     return sprite;
-                }}
+                }
 
-                function createRulerLabel(text) {{
+                function createRulerLabel(text) {
                     const canvas = document.createElement('canvas');
                     canvas.width = 256;
                     canvas.height = 128;
@@ -746,22 +759,22 @@ with col_3d:
                     ctx.fillText(text, 128, 64);
 
                     const texture = new THREE.CanvasTexture(canvas);
-                    const mat = new THREE.SpriteMaterial({{ map: texture, depthTest: false }});
+                    const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
                     const sprite = new THREE.Sprite(mat);
                     sprite.scale.set(2.4, 1.2, 1);
                     return sprite;
-                }}
+                }
 
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) {{
+                for (let i = 0; i < binaryStr.length; i++) {
                     bytes[i] = binaryStr.charCodeAt(i);
-                }}
+                }
 
                 let selectedMeshRef = null;
 
                 const gltfLoader = new THREE.GLTFLoader();
-                gltfLoader.parse(bytes.buffer, '', function(gltf) {{
+                gltfLoader.parse(bytes.buffer, '', function(gltf) {
                     const model = gltf.scene;
                     scene.add(model);
                     model.updateMatrixWorld(true);
@@ -769,20 +782,20 @@ with col_3d:
 
                     const rawSensors = [];
 
-                    model.traverse(function(child) {{
-                        if (child.isLine || child.isLineSegments) {{
+                    model.traverse(function(child) {
+                        if (child.isLine || child.isLineSegments) {
                             child.visible = false;
                             return;
-                        }}
+                        }
 
-                        if (child.isMesh) {{
+                        if (child.isMesh) {
                             const name = child.name;
                             const uName = name.toUpperCase();
 
-                            if (uName.includes("BOX001")) {{
+                            if (uName.includes("BOX001")) {
                                 child.visible = false;
                                 return;
-                            }}
+                            }
 
                             const isParasiticRing = (
                                 uName.includes("RING") ||
@@ -801,10 +814,10 @@ with col_3d:
                                 uName.includes("COVER")
                             );
 
-                            if (isParasiticRing && !uName.startsWith("TA-") && !uName.startsWith("TB-")) {{
+                            if (isParasiticRing && !uName.startsWith("TA-") && !uName.startsWith("TB-")) {
                                 child.visible = false;
                                 return;
-                            }}
+                            }
 
                             const isSensorObject = (
                                 uName.startsWith("TA-") || 
@@ -814,9 +827,9 @@ with col_3d:
                                 uName.includes("-TP")
                             );
 
-                            if (isSensorObject) {{
+                            if (isSensorObject) {
                                 rawSensors.push(child);
-                            }} else {{
+                            } else {
                                 const isTunnel = (
                                     uName.includes("TUNNEL") || 
                                     uName.includes("TÜNEL") || 
@@ -826,21 +839,22 @@ with col_3d:
                                     uName.startsWith("TB_")
                                 );
 
-                                if (isTunnel) {{
+                                if (isTunnel) {
                                     tunnelMeshes.push(child);
-                                }} else {{
-                                    child.material = new THREE.MeshStandardMaterial({{
+                                } else {
+                                    child.material = new THREE.MeshStandardMaterial({
                                         color: 0x141E2D,
                                         roughness: 0.8
-                                    }});
-                                }}
-                            }}
-                        }}
-                    }});
+                                    });
+                                }
+                            }
+                        }
+                    });
 
+                    // 1. СТРОГИЙ ОТБОР СЕНСОРОВ ПО КАТЕГОРИИ
                     const targetMeshes = [];
 
-                    rawSensors.forEach(child => {{
+                    rawSensors.forEach(child => {
                         child.visible = false;
 
                         const name = child.name;
@@ -848,14 +862,14 @@ with col_3d:
                         const sensorId = extractSensorId(name);
 
                         let isCategory = false;
-                        if (payload.comp === "hoop") {{
+                        if (payload.comp === "hoop") {
                             if (uName.includes("-CS")) isCategory = true;
-                        }} else if (payload.comp === "axial") {{
+                        } else if (payload.comp === "axial") {
                             if (uName.includes("-S") && !uName.includes("-CS")) isCategory = true;
-                        }} else if (payload.comp === "temp") {{
+                        } else if (payload.comp === "temp") {
                             if (uName.includes("-TP")) isCategory = true;
                             else if (checkSensorData(sensorId, "temp").found) isCategory = true;
-                        }}
+                        }
 
                         if (!isCategory) return;
 
@@ -867,60 +881,62 @@ with col_3d:
                         const wPos = new THREE.Vector3();
                         child.getWorldPosition(wPos);
 
-                        targetMeshes.push({{
+                        targetMeshes.push({
                             mesh: child,
                             pos: wPos,
                             sensorName: sensorName,
                             hasData: hasData,
                             val: val
-                        }});
-                    }});
+                        });
+                    });
 
+                    // 2. ДЕДУПЛИКАЦИЯ ТОЛЬКО ДЛЯ ИДЕНТИЧНЫХ ДАТЧИКОВ
                     const finalSensors = [];
-                    targetMeshes.forEach(item => {{
+                    targetMeshes.forEach(item => {
                         let duplicate = null;
-                        for (let f of finalSensors) {{
-                            if (f.pos.distanceTo(item.pos) < 0.12 && getCanonicalSensorId(f.sensorName) === getCanonicalSensorId(item.sensorName)) {{
+                        for (let f of finalSensors) {
+                            if (f.pos.distanceTo(item.pos) < 0.12 && getCanonicalSensorId(f.sensorName) === getCanonicalSensorId(item.sensorName)) {
                                 duplicate = f;
                                 break;
-                            }}
-                        }}
+                            }
+                        }
 
-                        if (!duplicate) {{
+                        if (!duplicate) {
                             finalSensors.push(item);
-                        }} else {{
-                            if (!duplicate.hasData && item.hasData) {{
+                        } else {
+                            if (!duplicate.hasData && item.hasData) {
                                 duplicate.hasData = true;
                                 duplicate.val = item.val;
                                 duplicate.sensorName = item.sensorName;
                                 duplicate.mesh = item.mesh;
-                            }}
-                        }}
-                    }});
+                            }
+                        }
+                    });
 
-                    finalSensors.forEach(item => {{
+                    // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ
+                    finalSensors.forEach(item => {
                         const hasData = item.hasData;
                         const sensorName = item.sensorName;
                         const val = item.val;
 
-                        if (hasData || payload.showNoDataRed) {{
+                        if (hasData || payload.showNoDataRed) {
                             const isSelected = (sensorName === payload.selectedSensor || getCanonicalSensorId(sensorName) === getCanonicalSensorId(payload.selectedSensor || ""));
 
-                            let sensorColor = 0xFFFFFF;
-                            if (isSelected) {{
-                                sensorColor = 0xFFD700;
-                            }} else if (!hasData) {{
-                                sensorColor = 0xFF0033;
-                            }}
+                            let sensorColor = 0xFFFFFF; // Белый по умолчанию
+                            if (isSelected) {
+                                sensorColor = 0xFFD700; // Золотой
+                            } else if (!hasData) {
+                                sensorColor = 0xFF0033; // Красный
+                            }
 
-                            const sensorMat = new THREE.MeshBasicMaterial({{
+                            const sensorMat = new THREE.MeshBasicMaterial({
                                 color: sensorColor,
                                 side: THREE.DoubleSide,
                                 transparent: false,
                                 opacity: 1.0,
                                 depthTest: true,
                                 depthWrite: true
-                            }});
+                            });
 
                             const wQuat = new THREE.Quaternion();
                             const wScale = new THREE.Vector3();
@@ -940,29 +956,30 @@ with col_3d:
                             sensorScene.add(detachedMesh);
                             interactiveSensors.push(detachedMesh);
 
-                            if (isSelected) {{
+                            if (isSelected) {
                                 selectedMeshRef = detachedMesh;
                                 updateHud(sensorName, val);
-                            }}
-                        }}
-                    }});
+                            }
+                        }
+                    });
 
+                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
 
                     let dynamicClim = [0.0, 1.0];
-                    if (validVals.length > 0) {{
+                    if (validVals.length > 0) {
                         let dMin = Math.min(...validVals);
                         let dMax = Math.max(...validVals);
-                        if (Math.abs(dMax - dMin) < 0.001) {{
+                        if (Math.abs(dMax - dMin) < 0.001) {
                             dMin -= 1.0;
                             dMax += 1.0;
-                        }}
+                        }
                         dynamicClim = [dMin, dMax];
-                    }} else if (payload.clim) {{
+                    } else if (payload.clim) {
                         dynamicClim = payload.clim;
-                    }}
+                    }
 
                     const finalMin = dynamicClim[0];
                     const finalMax = dynamicClim[1];
@@ -973,23 +990,24 @@ with col_3d:
                     lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
 
                     const interpolationSensors = [];
-                    interactiveSensors.forEach(sMesh => {{
-                        if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {{
+                    interactiveSensors.forEach(sMesh => {
+                        if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {
                             const uName = sMesh.userData.sensorName.toUpperCase();
                             const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
 
-                            interpolationSensors.push({{
+                            interpolationSensors.push({
                                 pos: sMesh.position.clone(),
                                 val: sMesh.userData.val,
                                 tun: tun,
                                 name: sMesh.userData.sensorName
-                            }});
-                        }}
-                    }});
+                            });
+                        }
+                    });
 
+                    // ИНТЕРПОЛЯЦИЯ СВОДА ТОННЕЛЯ
                     const R_INFLUENCE = 48.0;
 
-                    tunnelMeshes.forEach(tMesh => {{
+                    tunnelMeshes.forEach(tMesh => {
                         const geom = tMesh.geometry;
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
 
@@ -1007,26 +1025,26 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
-                        if (pool.length === 0) {{
-                            for (let i = 0; i < posAttr.count; i++) {{
+                        if (pool.length === 0) {
+                            for (let i = 0; i < posAttr.count; i++) {
                                 const idx = i * 3;
                                 colors[idx] = 0.082;
                                 colors[idx + 1] = 0.110;
                                 colors[idx + 2] = 0.157;
-                            }}
-                        }} else {{
-                            for (let i = 0; i < posAttr.count; i++) {{
+                            }
+                        } else {
+                            for (let i = 0; i < posAttr.count; i++) {
                                 localV.fromBufferAttribute(posAttr, i);
                                 worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
 
                                 let totalWeight = 0;
                                 let accumR = 0, accumG = 0, accumB = 0;
 
-                                for (let j = 0; j < pool.length; j++) {{
+                                for (let j = 0; j < pool.length; j++) {
                                     const s = pool[j];
                                     const d = worldV.distanceTo(s.pos);
                                     
-                                    if (d < R_INFLUENCE) {{
+                                    if (d < R_INFLUENCE) {
                                         const rNorm = d / R_INFLUENCE;
                                         const wEnvelope = Math.pow(1.0 - Math.pow(rNorm, 1.3), 1.2);
                                         const w = wEnvelope / (Math.pow(d, 1.8) + 0.15);
@@ -1036,27 +1054,27 @@ with col_3d:
                                         accumG += c.g * w;
                                         accumB += c.b * w;
                                         totalWeight += w;
-                                    }}
-                                }}
+                                    }
+                                }
 
                                 const idx = i * 3;
-                                if (totalWeight > 0.000001) {{
+                                if (totalWeight > 0.000001) {
                                     colors[idx] = accumR / totalWeight;
                                     colors[idx + 1] = accumG / totalWeight;
                                     colors[idx + 2] = accumB / totalWeight;
-                                }} else {{
+                                } else {
                                     colors[idx] = 0.082;
                                     colors[idx + 1] = 0.110;
                                     colors[idx + 2] = 0.157;
-                                }}
-                            }}
-                        }}
+                                }
+                            }
+                        }
 
                         geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                         geom.attributes.color.needsUpdate = true;
                         
                         const isTransparent = payload.tunnelOpacity < 0.98;
-                        tMesh.material = new THREE.MeshStandardMaterial({{
+                        tMesh.material = new THREE.MeshStandardMaterial({
                             color: 0xffffff,
                             vertexColors: true,
                             transparent: isTransparent,
@@ -1065,49 +1083,49 @@ with col_3d:
                             metalness: 0.02,
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
-                        }});
+                        });
                         tMesh.renderOrder = 0;
                         tMesh.material.needsUpdate = true;
-                    }});
+                    });
 
                     const boxTA = new THREE.Box3();
                     const boxTB = new THREE.Box3();
                     let hasTA = false, hasTB = false;
 
-                    tunnelMeshes.forEach(tm => {{
+                    tunnelMeshes.forEach(tm => {
                         const u = tm.name.toUpperCase();
-                        if (u.includes("TB")) {{
+                        if (u.includes("TB")) {
                             boxTB.expandByObject(tm);
                             hasTB = true;
-                        }} else if (u.includes("TA")) {{
+                        } else if (u.includes("TA")) {
                             boxTA.expandByObject(tm);
                             hasTA = true;
-                        }}
-                    }});
+                        }
+                    });
 
                     const portalsGroup = new THREE.Group();
 
-                    if (hasTA) {{
+                    if (hasTA) {
                         const cA = boxTA.getCenter(new THREE.Vector3());
                         const spriteTA = createPortalMarker("TA");
                         spriteTA.position.set(cA.x, boxTA.max.y + 3.2, boxTA.min.z - 2.0);
                         portalsGroup.add(spriteTA);
-                    }}
+                    }
 
-                    if (hasTB) {{
+                    if (hasTB) {
                         const cB = boxTB.getCenter(new THREE.Vector3());
                         const spriteTB = createPortalMarker("TB");
                         spriteTB.position.set(cB.x, boxTB.max.y + 3.2, boxTB.min.z - 2.0);
                         portalsGroup.add(spriteTB);
-                    }}
+                    }
 
                     scene.add(portalsGroup);
 
-                    if (payload.showMeters) {{
+                    if (payload.showMeters) {
                         const overallBox = new THREE.Box3();
                         tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
 
-                        if (!overallBox.isEmpty()) {{
+                        if (!overallBox.isEmpty()) {
                             const size = overallBox.getSize(new THREE.Vector3());
                             const rulerGroup = new THREE.Group();
 
@@ -1124,71 +1142,71 @@ with col_3d:
                             const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
 
                             const linePoints = [];
-                            if (isZAxis) {{
+                            if (isZAxis) {
                                 linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord));
                                 linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord));
-                            }} else {{
+                            } else {
                                 linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos));
                                 linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos));
-                            }}
+                            }
 
                             const axisGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-                            const axisMat = new THREE.LineBasicMaterial({{ color: 0x00E5FF, linewidth: 3 }});
+                            const axisMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 });
                             rulerGroup.add(new THREE.Line(axisGeom, axisMat));
 
-                            for (let i = 0; i <= stepsCount; i++) {{
+                            for (let i = 0; i <= stepsCount; i++) {
                                 const currentPos = startCoord + i * step;
                                 const reversedDistance = (totalDistanceM - (i * step)).toFixed(0);
                                 const distanceText = reversedDistance + " m";
 
                                 const tickPoints = [];
-                                if (isZAxis) {{
+                                if (isZAxis) {
                                     tickPoints.push(new THREE.Vector3(lateralPos - 0.8, yRuler, currentPos));
                                     tickPoints.push(new THREE.Vector3(lateralPos + 0.8, yRuler, currentPos));
-                                }} else {{
+                                } else {
                                     tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos - 0.8));
                                     tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos + 0.8));
-                                }}
+                                }
 
                                 const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
                                 rulerGroup.add(new THREE.Line(tickGeom, axisMat));
 
                                 const label = createRulerLabel(distanceText);
-                                if (isZAxis) {{
+                                if (isZAxis) {
                                     label.position.set(lateralPos + 2.4, yRuler + 0.4, currentPos);
-                                }} else {{
+                                } else {
                                     label.position.set(currentPos, yRuler + 0.4, lateralPos + 2.4);
-                                }}
+                                }
                                 rulerGroup.add(label);
-                            }}
+                            }
 
                             scene.add(rulerGroup);
-                        }}
-                    }}
+                        }
+                    }
 
                     // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
-                    if (selectedMeshRef && isNewSensorSelected) {{
+                    if (selectedMeshRef && isNewSensorSelected) {
                         sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
                         flyCameraTo(selectedMeshRef, true);
-                    }} else {{
+                    } else {
                         const savedStateStr = sessionStorage.getItem('threejs_camera_state');
-                        if (savedStateStr) {{
-                            try {{
+                        if (savedStateStr) {
+                            try {
                                 const st = JSON.parse(savedStateStr);
                                 camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
                                 controls.target.set(st.target[0], st.target[1], st.target[2]);
                                 controls.update();
-                            }} catch(e) {{}}
-                        }} else {{
+                            } catch(e) {}
+                        } else {
                             const tunnelBox = new THREE.Box3();
-                            if (tunnelMeshes.length > 0) {{
+                            if (tunnelMeshes.length > 0) {
                                 tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
-                            }} else {{
+                            } else {
                                 tunnelBox.setFromObject(model);
-                            }}
+                            }
 
                             const center = tunnelBox.getCenter(new THREE.Vector3());
                             const size = tunnelBox.getSize(new THREE.Vector3());
@@ -1201,24 +1219,24 @@ with col_3d:
                                 center.z + maxDim * 0.55
                             );
                             controls.update();
-                        }}
-                    }}
+                        }
+                    }
 
-                }}, undefined, function(err) {{
+                }, undefined, function(err) {
                     loaderText.innerHTML = "Model yüklenirken hata oluştu!";
                     console.error(err);
-                }});
+                });
 
-                function updateHud(name, val) {{
-                    if (val !== undefined && !isNaN(val)) {{
+                function updateHud(name, val) {
+                    if (val !== undefined && !isNaN(val)) {
                         selectedHud.style.display = 'block';
                         hudName.innerText = name;
                         const valTxt = (val > 0 ? "+" + val.toFixed(2) : val.toFixed(2)) + " " + payload.unit;
                         hudVal.innerText = valTxt;
-                    }}
-                }}
+                    }
+                }
 
-                function flyCameraTo(targetMesh, animate = true) {{
+                function flyCameraTo(targetMesh, animate = true) {
                     const targetPos = targetMesh.position.clone();
 
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
@@ -1226,12 +1244,12 @@ with col_3d:
 
                     const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
 
-                    if (!animate) {{
+                    if (!animate) {
                         camera.position.copy(endCamPos);
                         controls.target.copy(targetPos);
                         controls.update();
                         return;
-                    }}
+                    }
 
                     new TWEEN.Tween(controls.target)
                         .to(targetPos, 1400)
@@ -1242,17 +1260,17 @@ with col_3d:
                         .to(endCamPos, 1400)
                         .easing(TWEEN.Easing.Cubic.InOut)
                         .onUpdate(() => controls.update())
-                        .onComplete(() => {{
-                            const camState = {{
+                        .onComplete(() => {
+                            const camState = {
                                 pos: [camera.position.x, camera.position.y, camera.position.z],
                                 target: [controls.target.x, controls.target.y, controls.target.z]
-                            }};
+                            };
                             sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
-                        }})
+                        })
                         .start();
-                }}
+                }
 
-                function getIntersectedSensor(e) {{
+                function getIntersectedSensor(e) {
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
                     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1260,37 +1278,37 @@ with col_3d:
                     raycaster.setFromCamera(mouse, camera);
                     const intersects = raycaster.intersectObjects(interactiveSensors, true);
 
-                    if (intersects.length > 0) {{
+                    if (intersects.length > 0) {
                         let obj = intersects[0].object;
-                        while (obj && !obj.userData.sensorName && obj.parent) {{
+                        while (obj && !obj.userData.sensorName && obj.parent) {
                             obj = obj.parent;
-                        }}
+                        }
                         return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null;
-                    }}
+                    }
                     return null;
-                }}
+                }
 
-                window.addEventListener('click', function(e) {{
+                window.addEventListener('click', function(e) {
                     const sensorMesh = getIntersectedSensor(e);
-                    if (sensorMesh) {{
+                    if (sensorMesh) {
                         const sensorName = sensorMesh.userData.sensorName;
                         const sensorVal = sensorMesh.userData.val;
                         
-                        interactiveSensors.forEach(m => {{
-                            if (m.userData.isUsable) {{
+                        interactiveSensors.forEach(m => {
+                            if (m.userData.isUsable) {
                                 const isSel = (m.userData.sensorName === sensorName || getCanonicalSensorId(m.userData.sensorName) === getCanonicalSensorId(sensorName));
                                 m.material.color.setHex(isSel ? 0xFFD700 : 0xFFFFFF);
-                            }}
-                        }});
+                            }
+                        });
 
                         flyCameraTo(sensorMesh, true);
                         updateHud(sensorName, sensorVal);
-                    }}
-                }});
+                    }
+                });
 
-                window.addEventListener('mousemove', function(e) {{
+                window.addEventListener('mousemove', function(e) {
                     const sensorMesh = getIntersectedSensor(e);
-                    if (sensorMesh) {{
+                    if (sensorMesh) {
                         const name = sensorMesh.userData.sensorName;
                         const val = sensorMesh.userData.val;
                         const isUsable = sensorMesh.userData.isUsable;
@@ -1300,28 +1318,28 @@ with col_3d:
                         tooltip.style.left = (e.clientX + 14) + 'px';
                         tooltip.style.top = (e.clientY + 14) + 'px';
                         
-                        if (isUsable) {{
+                        if (isUsable) {
                             const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                             renderer.domElement.style.cursor = 'pointer';
-                        }} else if (isNoData) {{
+                        } else if (isNoData) {
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span>';
                             renderer.domElement.style.cursor = 'pointer';
-                        }}
-                    }} else {{
+                        }
+                    } else {
                         tooltip.style.display = 'none';
                         renderer.domElement.style.cursor = 'default';
-                    }}
-                }});
+                    }
+                });
 
-                window.addEventListener('resize', function() {{
+                window.addEventListener('resize', function() {
                     camera.aspect = container.clientWidth / container.clientHeight;
                     camera.updateProjectionMatrix();
                     renderer.setSize(container.clientWidth, container.clientHeight);
-                }});
+                });
 
                 // ДВУХПРОХОДНЫЙ РЕНДЕР
-                function animate(time) {{
+                function animate(time) {
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
                     controls.update();
@@ -1331,7 +1349,7 @@ with col_3d:
 
                     renderer.clearDepth();
                     renderer.render(sensorScene, camera);
-                }}
+                }
                 requestAnimationFrame(animate);
             </script>
         </body>
