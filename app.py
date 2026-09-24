@@ -495,23 +495,23 @@ with col_3d:
                 const legendTitle = document.getElementById('legend-title');
 
                 // ПАЛИТРЫ ЛЕГЕНДЫ
-                if (payload.comp === "temp") {{
+                if (payload.comp === "temp") {
                     legendTitle.innerText = "[°C]";
                     legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #33FF33, #00FFCC, #0066FF, #0011AA)";
-                }} else if (payload.comp === "axial") {{
+                } else if (payload.comp === "axial") {
                     legendTitle.innerText = "[µm/m]";
                     legendBar.style.background = "linear-gradient(to bottom, #FF0044, #FF6600, #FFDD00, #00FF66, #00DDFF, #2255FF, #7700FF)";
-                }} else {{
+                } else {
                     legendTitle.innerText = "[µm/m]";
                     legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0026FF)";
-                }}
+                }
 
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
-                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 10000);
+                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
-                const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
+                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 renderer.setSize(container.clientWidth, container.clientHeight);
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -524,13 +524,13 @@ with col_3d:
                 controls.minDistance = 0.5;
                 controls.maxDistance = 2500;
 
-                controls.addEventListener('change', () => {{
-                    const camState = {{
+                controls.addEventListener('change', () => {
+                    const camState = {
                         pos: [camera.position.x, camera.position.y, camera.position.z],
                         target: [controls.target.x, controls.target.y, controls.target.z]
-                    }};
+                    };
                     sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
-                }});
+                });
 
                 const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
                 scene.add(ambientLight);
@@ -579,7 +579,7 @@ with col_3d:
                     new THREE.Color("#FF0022")
                 ];
 
-                function sampleColorRamp(stops, t) {{
+                function sampleColorRamp(stops, t) {
                     t = Math.max(0, Math.min(1, t));
                     const scaled = t * (stops.length - 1);
                     const idx = Math.floor(scaled);
@@ -588,37 +588,37 @@ with col_3d:
                     const c = new THREE.Color();
                     c.lerpColors(stops[idx], stops[idx + 1], fract);
                     return c;
-                }}
+                }
 
-                function getColorForValue(val, clim, comp) {{
+                function getColorForValue(val, clim, comp) {
                     if (val === undefined || isNaN(val)) return new THREE.Color(0x334455);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
 
-                    if (comp === "hoop") {{
+                    if (comp === "hoop") {
                         return sampleColorRamp(HOOP_STOPS, t);
-                    }} else if (comp === "axial") {{
+                    } else if (comp === "axial") {
                         return sampleColorRamp(AXIAL_STOPS, t);
-                    }} else {{
+                    } else {
                         return sampleColorRamp(RAINBOW_STOPS, t);
-                    }}
-                }}
+                    }
+                }
 
-                function extractSensorId(name) {{
+                function extractSensorId(name) {
                     const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
                     return m ? m[0] : name;
-                }}
+                }
 
-                function isCategoryMatch(name, comp) {{
+                function isCategoryMatch(name, comp) {
                     const u = name.toUpperCase();
                     if (comp === "hoop") return u.includes("-CS");
                     if (comp === "axial") return (u.includes("-S") || u.includes("-S1") || u.includes("-S2") || u.includes("-S3")) && !u.includes("-CS");
                     if (comp === "temp") return u.includes("-TP") || u.includes("-CS") || u.includes("-S");
                     return false;
-                }}
+                }
 
-                function createPortalMarker(text) {{
+                function createPortalMarker(text) {
                     const canvas = document.createElement('canvas');
                     canvas.width = 512;
                     canvas.height = 256;
@@ -639,13 +639,13 @@ with col_3d:
                     ctx.fillText(text, 256, 128);
 
                     const texture = new THREE.CanvasTexture(canvas);
-                    const mat = new THREE.SpriteMaterial({{ map: texture, depthTest: false }});
+                    const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
                     const sprite = new THREE.Sprite(mat);
                     sprite.scale.set(6.0, 3.0, 1);
                     return sprite;
-                }}
+                }
 
-                function createRulerLabel(text) {{
+                function createRulerLabel(text) {
                     const canvas = document.createElement('canvas');
                     canvas.width = 256;
                     canvas.height = 128;
@@ -664,34 +664,34 @@ with col_3d:
                     ctx.fillText(text, 128, 64);
 
                     const texture = new THREE.CanvasTexture(canvas);
-                    const mat = new THREE.SpriteMaterial({{ map: texture, depthTest: false }});
+                    const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
                     const sprite = new THREE.Sprite(mat);
                     sprite.scale.set(2.4, 1.2, 1);
                     return sprite;
-                }}
+                }
 
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) {{
+                for (let i = 0; i < binaryStr.length; i++) {
                     bytes[i] = binaryStr.charCodeAt(i);
-                }}
+                }
 
                 let selectedMeshRef = null;
 
                 const gltfLoader = new THREE.GLTFLoader();
-                gltfLoader.parse(bytes.buffer, '', function(gltf) {{
+                gltfLoader.parse(bytes.buffer, '', function(gltf) {
                     const model = gltf.scene;
                     scene.add(model);
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    model.traverse(function(child) {{
-                        if (child.isMesh) {{
+                    model.traverse(function(child) {
+                        if (child.isMesh) {
                             const name = child.name;
                             const uName = name.toUpperCase();
 
-                            if (uName.includes("BOX001")) {{
-                                child.material = new THREE.MeshStandardMaterial({{
+                            if (uName.includes("BOX001")) {
+                                child.material = new THREE.MeshStandardMaterial({
                                     color: 0x0E2238,
                                     emissive: 0x001122,
                                     transparent: true,
@@ -700,18 +700,18 @@ with col_3d:
                                     metalness: 0.1,
                                     depthWrite: false,
                                     side: THREE.DoubleSide
-                                }});
+                                });
 
                                 const edges = new THREE.EdgesGeometry(child.geometry);
-                                const lineMat = new THREE.LineBasicMaterial({{
+                                const lineMat = new THREE.LineBasicMaterial({
                                     color: 0x00C8E6,
                                     transparent: true,
                                     opacity: 0.22
-                                }});
+                                });
                                 const wireframeLine = new THREE.LineSegments(edges, lineMat);
                                 child.add(wireframeLine);
                                 return;
-                            }}
+                            }
 
                             const isSensorObject = (
                                 uName.startsWith("TA-") || 
@@ -721,26 +721,26 @@ with col_3d:
                                 uName.includes("-TP")
                             );
 
-                            if (isSensorObject) {{
+                            if (isSensorObject) {
                                 const sensorId = extractSensorId(name);
                                 child.userData.sensorName = sensorId;
                                 child.userData.isSensor = true;
 
                                 let resolvedSensorId = sensorId;
-                                if (payload.comp === "temp" && !sensorId.includes("-TP")) {{
+                                if (payload.comp === "temp" && !sensorId.includes("-TP")) {
                                     const baseMatch = sensorId.match(/^(T[AB]-(?:CS|S)\d+-[LR](?:-M\d+)?)/i);
-                                    if (baseMatch) {{
+                                    if (baseMatch) {
                                         const tpCandidate = baseMatch[1].replace(/-CS|-S/i, "-TP");
-                                        if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
+                                        if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {
                                             resolvedSensorId = tpCandidate;
-                                        }}
-                                    }}
-                                }}
+                                        }
+                                    }
+                                }
 
                                 const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
                                 const isCategory = isCategoryMatch(sensorId, payload.comp);
 
-                                if (hasData) {{
+                                if (hasData) {
                                     child.visible = true;
                                     const rawVal = payload.activeCategoryValues[resolvedSensorId];
                                     child.userData.val = rawVal;
@@ -748,14 +748,11 @@ with col_3d:
                                     child.userData.isNoData = false;
                                     interactiveSensors.push(child);
 
-                                    // ЗАМЕТНЫЙ РАЗМЕР И ПРИОРИТЕТ ВЕРХНЕГО СЛОЯ
-                                    child.scale.set(1.8, 1.8, 1.8);
-
                                     const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
                                     const sensorColor = isSelected ? new THREE.Color(0xFFE600) : getColorForValue(rawVal, payload.clim, payload.comp);
 
-                                    // ДАТЧИКИ НИКОГДА НЕ ПЕРЕКРЫВАЮТСЯ ТОННЕЛЕМ
-                                    child.material = new THREE.MeshStandardMaterial({{
+                                    // ДАТЧИКИ ВИДНЫ ПОВЕРХ ТОННЕЛЯ БЕЗ ИСКАЖЕНИЯ СЕТКИ
+                                    child.material = new THREE.MeshStandardMaterial({
                                         color: sensorColor,
                                         emissive: isSelected ? new THREE.Color(0xFFE600) : sensorColor,
                                         emissiveIntensity: isSelected ? 2.5 : 1.8,
@@ -763,20 +760,19 @@ with col_3d:
                                         metalness: 0.1,
                                         depthTest: false,
                                         depthWrite: false
-                                    }});
+                                    });
                                     child.renderOrder = 999;
 
-                                    if (isSelected) {{
+                                    if (isSelected) {
                                         selectedMeshRef = child;
-                                    }}
-                                }} else if (isCategory && payload.showNoDataRed) {{
+                                    }
+                                } else if (isCategory && payload.showNoDataRed) {
                                     child.visible = true;
                                     child.userData.isUsable = false;
                                     child.userData.isNoData = true;
                                     interactiveSensors.push(child);
 
-                                    child.scale.set(1.8, 1.8, 1.8);
-                                    child.material = new THREE.MeshStandardMaterial({{
+                                    child.material = new THREE.MeshStandardMaterial({
                                         color: 0xFF0033,
                                         emissive: 0xFF0000,
                                         emissiveIntensity: 2.5,
@@ -784,14 +780,14 @@ with col_3d:
                                         metalness: 0.1,
                                         depthTest: false,
                                         depthWrite: false
-                                    }});
+                                    });
                                     child.renderOrder = 999;
-                                }} else {{
+                                } else {
                                     child.visible = false;
                                     child.userData.isUsable = false;
                                     child.userData.isNoData = false;
-                                }}
-                            }} else {{
+                                }
+                            } else {
                                 const isTunnel = (
                                     uName.includes("TUNNEL") || 
                                     uName.includes("TÜNEL") || 
@@ -801,39 +797,39 @@ with col_3d:
                                     uName.startsWith("TB_")
                                 );
 
-                                if (isTunnel) {{
+                                if (isTunnel) {
                                     tunnelMeshes.push(child);
-                                }} else {{
-                                    child.material = new THREE.MeshStandardMaterial({{
+                                } else {
+                                    child.material = new THREE.MeshStandardMaterial({
                                         color: 0x141E2D,
                                         roughness: 0.8
-                                    }});
-                                }}
-                            }}
-                        }}
-                    }});
+                                    });
+                                }
+                            }
+                        }
+                    });
 
                     const interpolationSensors = [];
-                    interactiveSensors.forEach(sMesh => {{
-                        if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {{
+                    interactiveSensors.forEach(sMesh => {
+                        if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {
                             const wPos = new THREE.Vector3();
                             sMesh.getWorldPosition(wPos);
                             const uName = sMesh.userData.sensorName.toUpperCase();
                             const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
 
-                            interpolationSensors.push({{
+                            interpolationSensors.push({
                                 pos: wPos,
                                 val: sMesh.userData.val,
                                 tun: tun,
                                 name: sMesh.userData.sensorName
-                            }});
-                        }}
-                    }});
+                            });
+                        }
+                    });
 
-                    // АДЕКВАТНАЯ ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ВСЕЙ ДЛИНЫ ТОННЕЛЕЙ
+                    // ШИРОКАЯ И ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ
                     const R_INFLUENCE = 55.0;
 
-                    tunnelMeshes.forEach(tMesh => {{
+                    tunnelMeshes.forEach(tMesh => {
                         const geom = tMesh.geometry;
                         if (!geom || !geom.attributes || !geom.attributes.position) return;
 
@@ -851,28 +847,28 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
-                        if (pool.length === 0) {{
-                            for (let i = 0; i < posAttr.count; i++) {{
+                        if (pool.length === 0) {
+                            for (let i = 0; i < posAttr.count; i++) {
                                 const idx = i * 3;
                                 colors[idx] = 0.082;
                                 colors[idx + 1] = 0.110;
                                 colors[idx + 2] = 0.157;
-                            }}
-                        }} else {{
-                            for (let i = 0; i < posAttr.count; i++) {{
+                            }
+                        } else {
+                            for (let i = 0; i < posAttr.count; i++) {
                                 localV.fromBufferAttribute(posAttr, i);
                                 worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
 
                                 let totalWeight = 0;
                                 let accumR = 0, accumG = 0, accumB = 0;
 
-                                for (let j = 0; j < pool.length; j++) {{
+                                for (let j = 0; j < pool.length; j++) {
                                     const s = pool[j];
                                     const d = worldV.distanceTo(s.pos);
                                     
-                                    if (d < R_INFLUENCE) {{
+                                    if (d < R_INFLUENCE) {
                                         const rNorm = d / R_INFLUENCE;
-                                        // Мягкое квадратичное ядро для распределения без пятен
+                                        // Мягкое бикубическое ядро для непрерывной заливки без пятен
                                         const wEnvelope = (1.0 - rNorm * rNorm);
                                         const w = (wEnvelope * wEnvelope) / (d * d + 0.35);
 
@@ -881,27 +877,27 @@ with col_3d:
                                         accumG += c.g * w;
                                         accumB += c.b * w;
                                         totalWeight += w;
-                                    }}
-                                }}
+                                    }
+                                }
 
                                 const idx = i * 3;
-                                if (totalWeight > 0.000001) {{
+                                if (totalWeight > 0.000001) {
                                     colors[idx] = accumR / totalWeight;
                                     colors[idx + 1] = accumG / totalWeight;
                                     colors[idx + 2] = accumB / totalWeight;
-                                }} else {{
+                                } else {
                                     colors[idx] = 0.082;
                                     colors[idx + 1] = 0.110;
                                     colors[idx + 2] = 0.157;
-                                }}
-                            }}
-                        }}
+                                }
+                            }
+                        }
 
                         geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                         geom.attributes.color.needsUpdate = true;
                         
                         const isTransparent = payload.tunnelOpacity < 0.98;
-                        tMesh.material = new THREE.MeshStandardMaterial({{
+                        tMesh.material = new THREE.MeshStandardMaterial({
                             color: 0xffffff,
                             vertexColors: true,
                             transparent: isTransparent,
@@ -910,48 +906,48 @@ with col_3d:
                             metalness: 0.05,
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
-                        }});
+                        });
                         tMesh.material.needsUpdate = true;
-                    }});
+                    });
 
                     const boxTA = new THREE.Box3();
                     const boxTB = new THREE.Box3();
                     let hasTA = false, hasTB = false;
 
-                    tunnelMeshes.forEach(tm => {{
+                    tunnelMeshes.forEach(tm => {
                         const u = tm.name.toUpperCase();
-                        if (u.includes("TB")) {{
+                        if (u.includes("TB")) {
                             boxTB.expandByObject(tm);
                             hasTB = true;
-                        }} else if (u.includes("TA")) {{
+                        }} else if (u.includes("TA")) {
                             boxTA.expandByObject(tm);
                             hasTA = true;
-                        }}
-                    }});
+                        }
+                    });
 
                     const portalsGroup = new THREE.Group();
 
-                    if (hasTA) {{
+                    if (hasTA) {
                         const cA = boxTA.getCenter(new THREE.Vector3());
                         const spriteTA = createPortalMarker("TA");
                         spriteTA.position.set(cA.x, boxTA.max.y + 3.2, boxTA.min.z - 2.0);
                         portalsGroup.add(spriteTA);
-                    }}
+                    }
 
-                    if (hasTB) {{
+                    if (hasTB) {
                         const cB = boxTB.getCenter(new THREE.Vector3());
                         const spriteTB = createPortalMarker("TB");
                         spriteTB.position.set(cB.x, boxTB.max.y + 3.2, boxTB.min.z - 2.0);
                         portalsGroup.add(spriteTB);
-                    }}
+                    }
 
                     scene.add(portalsGroup);
 
-                    if (payload.showMeters) {{
+                    if (payload.showMeters) {
                         const overallBox = new THREE.Box3();
                         tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
 
-                        if (!overallBox.isEmpty()) {{
+                        if (!overallBox.isEmpty()) {
                             const size = overallBox.getSize(new THREE.Vector3());
                             const rulerGroup = new THREE.Group();
 
@@ -968,93 +964,93 @@ with col_3d:
                             const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
 
                             const linePoints = [];
-                            if (isZAxis) {{
+                            if (isZAxis) {
                                 linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord));
                                 linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord));
-                            }} else {{
+                            } else {
                                 linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos));
                                 linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos));
-                            }}
+                            }
 
                             const axisGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-                            const axisMat = new THREE.LineBasicMaterial({{ color: 0x00E5FF, linewidth: 3 }});
+                            const axisMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 });
                             rulerGroup.add(new THREE.Line(axisGeom, axisMat));
 
-                            for (let i = 0; i <= stepsCount; i++) {{
+                            for (let i = 0; i <= stepsCount; i++) {
                                 const currentPos = startCoord + i * step;
                                 const reversedDistance = (totalDistanceM - (i * step)).toFixed(0);
                                 const distanceText = reversedDistance + " m";
 
                                 const tickPoints = [];
-                                if (isZAxis) {{
+                                if (isZAxis) {
                                     tickPoints.push(new THREE.Vector3(lateralPos - 0.8, yRuler, currentPos));
                                     tickPoints.push(new THREE.Vector3(lateralPos + 0.8, yRuler, currentPos));
-                                }} else {{
+                                } else {
                                     tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos - 0.8));
                                     tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos + 0.8));
-                                }}
+                                }
 
                                 const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
                                 rulerGroup.add(new THREE.Line(tickGeom, axisMat));
 
                                 const label = createRulerLabel(distanceText);
-                                if (isZAxis) {{
+                                if (isZAxis) {
                                     label.position.set(lateralPos + 2.4, yRuler + 0.4, currentPos);
-                                }} else {{
+                                } else {
                                     label.position.set(currentPos, yRuler + 0.4, lateralPos + 2.4);
-                                }}
+                                }
                                 rulerGroup.add(label);
-                            }}
+                            }
 
                             scene.add(rulerGroup);
-                        }}
-                    }}
+                        }
+                    }
 
-                    // ФОКУС КАМЕРЫ НА МОДЕЛИ С КОМФОРТНЫМ КРУПНЫМ РАКУРСОМ
+                    // НАВЕДЕНИЕ И ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНО И БЕЗ ИСКАЖЕНИЙ)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
-                    if (selectedMeshRef && isNewSensorSelected) {{
+                    if (selectedMeshRef && isNewSensorSelected) {
                         sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
                         flyCameraTo(selectedMeshRef, true);
-                    }} else {{
+                    } else {
                         const savedStateStr = sessionStorage.getItem('threejs_camera_state');
-                        if (savedStateStr) {{
-                            try {{
+                        if (savedStateStr) {
+                            try {
                                 const st = JSON.parse(savedStateStr);
                                 camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
                                 controls.target.set(st.target[0], st.target[1], st.target[2]);
                                 controls.update();
-                            }} catch(e) {{}}
-                        }} else {{
+                            } catch(e) {}
+                        } else {
                             const tunnelBox = new THREE.Box3();
-                            if (tunnelMeshes.length > 0) {{
+                            if (tunnelMeshes.length > 0) {
                                 tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
-                            }} else {{
+                            } else {
                                 tunnelBox.setFromObject(model);
-                            }}
+                            }
 
                             const center = tunnelBox.getCenter(new THREE.Vector3());
                             const size = tunnelBox.getSize(new THREE.Vector3());
                             const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
                             controls.target.copy(center);
-                            // Комфортное близкое положение камеры
+                            // Комфортный ракурс вблизи тоннелей
                             camera.position.set(
                                 center.x - maxDim * 0.40,
                                 center.y + maxDim * 0.45,
                                 center.z + maxDim * 0.55
                             );
                             controls.update();
-                        }}
-                    }}
+                        }
+                    }
 
-                }}, undefined, function(err) {{
+                }, undefined, function(err) {
                     loaderText.innerHTML = "Model yüklenirken hata oluştu!";
                     console.error(err);
-                }});
+                });
 
-                function flyCameraTo(targetMesh, animate = true) {{
+                function flyCameraTo(targetMesh, animate = true) {
                     const targetPos = new THREE.Vector3();
                     targetMesh.getWorldPosition(targetPos);
 
@@ -1063,12 +1059,12 @@ with col_3d:
 
                     const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.5)).add(new THREE.Vector3(0, 1.8, 0));
 
-                    if (!animate) {{
+                    if (!animate) {
                         camera.position.copy(endCamPos);
                         controls.target.copy(targetPos);
                         controls.update();
                         return;
-                    }}
+                    }
 
                     new TWEEN.Tween(controls.target)
                         .to(targetPos, 1400)
@@ -1079,18 +1075,18 @@ with col_3d:
                         .to(endCamPos, 1400)
                         .easing(TWEEN.Easing.Cubic.InOut)
                         .onUpdate(() => controls.update())
-                        .onComplete(() => {{
-                            const camState = {{
+                        .onComplete(() => {
+                            const camState = {
                                 pos: [camera.position.x, camera.position.y, camera.position.z],
                                 target: [controls.target.x, controls.target.y, controls.target.z]
-                            }};
+                            };
                             sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
-                        }})
+                        })
                         .start();
-                }}
+                }
 
-                // КЛИК ПО ДАТЧИКУ В 3D ДЛЯ ВЫДЕЛЕНИЯ
-                window.addEventListener('click', function(e) {{
+                // КЛИК В 3D ПО СЕНСОРУ ДЛЯ ВЫДЕЛЕНИЯ
+                window.addEventListener('click', function(e) {
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
                     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1098,15 +1094,15 @@ with col_3d:
                     raycaster.setFromCamera(mouse, camera);
                     const intersects = raycaster.intersectObjects(interactiveSensors);
 
-                    if (intersects.length > 0) {{
+                    if (intersects.length > 0) {
                         const mesh = intersects[0].object;
-                        if (mesh.userData.isUsable || mesh.userData.isNoData) {{
+                        if (mesh.userData.isUsable || mesh.userData.isNoData) {
                             flyCameraTo(mesh, true);
-                        }}
-                    }}
-                }});
+                        }
+                    }
+                });
 
-                window.addEventListener('mousemove', function(e) {{
+                window.addEventListener('mousemove', function(e) {
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
                     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1114,7 +1110,7 @@ with col_3d:
                     raycaster.setFromCamera(mouse, camera);
                     const intersects = raycaster.intersectObjects(interactiveSensors);
 
-                    if (intersects.length > 0) {{
+                    if (intersects.length > 0) {
                         const mesh = intersects[0].object;
                         const name = mesh.userData.sensorName;
                         const val = mesh.userData.val;
@@ -1125,39 +1121,39 @@ with col_3d:
                         tooltip.style.left = (e.clientX + 14) + 'px';
                         tooltip.style.top = (e.clientY + 14) + 'px';
                         
-                        if (isUsable) {{
+                        if (isUsable) {
                             const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                             renderer.domElement.style.cursor = 'pointer';
-                        }} else if (isNoData) {{
+                        } else if (isNoData) {
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span>';
                             renderer.domElement.style.cursor = 'pointer';
-                        }} else {{
+                        } else {
                             tooltip.style.display = 'none';
                             renderer.domElement.style.cursor = 'default';
-                        }}
-                    }} else {{
+                        }
+                    } else {
                         tooltip.style.display = 'none';
                         renderer.domElement.style.cursor = 'default';
-                    }}
-                }});
+                    }
+                });
 
-                window.addEventListener('resize', function() {{
+                window.addEventListener('resize', function() {
                     camera.aspect = container.clientWidth / container.clientHeight;
                     camera.updateProjectionMatrix();
                     renderer.setSize(container.clientWidth, container.clientHeight);
-                }});
+                });
 
-                function animate(time) {{
+                function animate(time) {
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
                     controls.update();
                     renderer.render(scene, camera);
-                }}
+                }
                 requestAnimationFrame(animate);
             </script>
         </body>
         </html>
         """
 
-        st.components.v1.html(threejs_html, height=820, scrolling=False)
+        st.components.v1.html(threejs_html, height=760, scrolling=False)
