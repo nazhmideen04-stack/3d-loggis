@@ -560,7 +560,7 @@ with col_3d:
             new THREE.Color("#BD0026")
         ];
 
-        // 3. ПАЛИТРА ДЛЯ SICAKLIK (TP) - Термографическая температурная шкала
+        // 3. ПАЛИТРА ДЛЯ SICAKLIK (TP) - Термографическая шкала
         const tempStops = [
             new THREE.Color("#000004"),
             new THREE.Color("#2C105C"),
@@ -911,20 +911,21 @@ with col_3d:
                 }
             });
 
-            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ
+            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (ПОДСВЕТКА СТРОГО ОДНОГО ВЫБРАННОГО)
             finalSensors.forEach(item => {
                 const hasData = item.hasData;
                 const sensorName = item.sensorName;
                 const val = item.val;
 
                 if (hasData || payload.showNoDataRed) {
-                    const isSelected = (sensorName === payload.selectedSensor || getCanonicalSensorId(sensorName) === getCanonicalSensorId(payload.selectedSensor || ""));
+                    // Строгое поштучное выделение одного датчика
+                    const isSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && sensorName === payload.selectedSensor);
 
                     let sensorColor = 0xFFFFFF; // Белый по умолчанию
                     if (isSelected) {
-                        sensorColor = 0xFFD700; // Золотой
+                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для одного выбранного
                     } else if (!hasData) {
-                        sensorColor = 0xFF0033; // Красный
+                        sensorColor = 0xFF0033; // Красный при отсутствии данных
                     }
 
                     const sensorMat = new THREE.MeshBasicMaterial({
@@ -1286,6 +1287,7 @@ with col_3d:
             return null;
         }
 
+        // ВЫДЕЛЕНИЕ СТРОГО ОДНОГО СЕНСОРА ПРИ КЛИКЕ
         window.addEventListener('click', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) {
@@ -1293,9 +1295,12 @@ with col_3d:
                 const sensorVal = sensorMesh.userData.val;
                 
                 interactiveSensors.forEach(m => {
-                    if (m.userData.isUsable) {
-                        const isSel = (m.userData.sensorName === sensorName || getCanonicalSensorId(m.userData.sensorName) === getCanonicalSensorId(sensorName));
-                        m.material.color.setHex(isSel ? 0xFFD700 : 0xFFFFFF);
+                    if (m === sensorMesh) {
+                        m.material.color.setHex(0xFFD700); // Только он окрасится в желтый
+                    } else if (m.userData.isUsable) {
+                        m.material.color.setHex(0xFFFFFF); // Все остальные рабочие - белые
+                    } else {
+                        m.material.color.setHex(0xFF0033); // Нерабочие - красные
                     }
                 });
 
@@ -1336,6 +1341,7 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
+        // ДВУХПРОХОДНЫЙ РЕНДЕР
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
