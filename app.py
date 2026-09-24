@@ -208,7 +208,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & VERİ TABANI ZAMAN SEÇİMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -236,10 +236,19 @@ def ensure_playwright_installed():
         pass
 
 @st.cache_data(ttl=300)
-def fetch_loggis_data(target_date_str=None):
-    """Динамически извлекает список доступных дат со страницы LoggIS и парсит значения."""
-    dates_list = []
-    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
+def fetch_all_categories_data(data_mode="current", selected_date=None):
+    """
+    data_mode:
+      - current: сохраняет старую логику MONTH_02 + TABLE_ROW_DATE
+                 и берет первую (самую свежую) строку.
+      - historical: переключает период на ALL + TABLE_ROW_DATE,
+                    считывает доступные исторические строки и выбирает
+                    строку selected_date.
+    """
+    all_results = {
+        k: {"values": {}, "date": "", "available_dates": []}
+        for k in CATEGORIES
+    }
 
     with sync_playwright() as p:
         browser_args = [
@@ -249,6 +258,7 @@ def fetch_loggis_data(target_date_str=None):
             "--disable-gpu",
             "--window-size=1920,1080",
         ]
+
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
         except Exception:
@@ -259,68 +269,78 @@ def fetch_loggis_data(target_date_str=None):
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            )
         )
+
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
+        page.route(
+            "**/*",
+            lambda route: route.abort()
+            if route.request.resource_type in ["image", "media"]
+            else route.continue_()
+        )
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            # Интеграция вашего базового сценария Playwright:
             try:
                 page.get_by_text("Types").click(timeout=8000)
             except Exception:
                 pass
+
+            page.wait_for_timeout(1000)
+
+            # ВАЖНО:
+            # Текущие данные оставляем как в исходном загруженном коде:
+            # MONTH_02.
+            #
+            # Для истории используем ALL, чтобы получить старые записи.
+            period_option = "MONTH_02" if data_mode == "current" else "ALL"
+
+            try:
+                page.get_by_role("combobox").first.select_option(
+                    period_option, timeout=5000
+                )
+            except Exception:
+                pass
+
             page.wait_for_timeout(1000)
 
             try:
-                page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
-            except Exception:
-                pass
-            page.wait_for_timeout(800)
-
-            # Сбор всех доступных дат из селектора базы данных
-            try:
-                date_combo = page.get_by_role("combobox").nth(1)
-                options = date_combo.locator("option").all_inner_texts()
-                dates_list = [opt.strip() for opt in options if opt.strip() and opt.strip() != "TABLE_ROW_DATE"]
+                page.get_by_role("combobox").nth(1).select_option(
+                    "TABLE_ROW_DATE", timeout=5000
+                )
             except Exception:
                 pass
 
-            # Если пользователь выбрал конкретную историческую дату — выбираем её, иначе берем текущую
-            if target_date_str and target_date_str != "En Son (Güncel)":
-                try:
-                    page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
-                except Exception:
-                    try:
-                        page.get_by_role("combobox").nth(1).select_option(target_date_str, timeout=3000)
-                    except Exception:
-                        pass
-            else:
-                try:
-                    page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
-                except Exception:
-                    pass
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(1200)
 
             for cat_key, cat_cfg in CATEGORIES.items():
                 try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                    page.get_by_role("listbox").select_option(
+                        cat_cfg["name"], timeout=6000
+                    )
                 except Exception:
                     try:
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                        page.locator(
+                            f"option:has-text('{cat_cfg['name']}')"
+                        ).first.click(force=True, timeout=4000)
                     except Exception:
                         try:
-                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
+                            page.get_by_text(cat_cfg["name"]).first.click(
+                                force=True, timeout=4000
+                            )
                         except Exception:
                             pass
 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(2500)
 
-                val_map = {}
-                latest_date_str = ""
+                rows_data = []
 
                 for _ in range(15):
                     try:
@@ -330,64 +350,163 @@ def fetch_loggis_data(target_date_str=None):
                                 if (!table) return null;
 
                                 const trs = Array.from(table.querySelectorAll('tr'));
+
                                 let headerCells = [];
                                 for (const tr of trs) {
-                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
+                                    const cells = Array.from(
+                                        tr.querySelectorAll('th, td')
+                                    ).map(c => (c.innerText || '').trim());
+
+                                    if (
+                                        cells.some(c =>
+                                            c.includes('TA-') ||
+                                            c.includes('TB-')
+                                        )
+                                    ) {
                                         headerCells = cells;
                                         break;
                                     }
                                 }
-                                if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+
+                                if (
+                                    headerCells.length === 0 &&
+                                    trs.length > 0
+                                ) {
+                                    headerCells = Array.from(
+                                        trs[0].querySelectorAll('th, td')
+                                    ).map(c => (c.innerText || '').trim());
                                 }
 
-                                const tbody = table.querySelector('tbody') || table;
-                                const rows = Array.from(tbody.querySelectorAll('tr'));
-                                let dataCells = [];
+                                if (headerCells.length === 0) return null;
+
+                                const tbody =
+                                    table.querySelector('tbody') || table;
+
+                                const rows = Array.from(
+                                    tbody.querySelectorAll('tr')
+                                );
+
+                                const resultRows = [];
+
                                 for (const r of rows) {
-                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
-                                        dataCells = cells;
-                                        break;
+                                    const cells = Array.from(
+                                        r.querySelectorAll('td')
+                                    ).map(c => (c.innerText || '').trim());
+
+                                    if (cells.length <= 1) continue;
+
+                                    const first = cells[0] || '';
+
+                                    // Дата/время в первой колонке.
+                                    const looksLikeDate =
+                                        first.includes('/') ||
+                                        first.includes(':') ||
+                                        first.includes('-') ||
+                                        /\\d{4}/.test(first);
+
+                                    if (looksLikeDate) {
+                                        resultRows.push(cells);
                                     }
                                 }
 
-                                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                                return { headers: headerCells, values: dataCells };
+                                return {
+                                    headers: headerCells,
+                                    rows: resultRows
+                                };
                             } catch(e) {
                                 return null;
                             }
                         }""")
 
-                        if extracted and extracted.get("values") and extracted.get("headers"):
+                        if (
+                            extracted and
+                            extracted.get("headers") and
+                            extracted.get("rows")
+                        ):
                             headers = extracted["headers"]
-                            values = extracted["values"]
-                            latest_date_str = values[0]
+                            raw_rows = extracted["rows"]
 
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
-                                    v = clean_num(v_str)
-                                    if not np.isnan(v):
-                                        val_map[s_name] = v
-
-                            if len(val_map) > 0:
+                            if raw_rows:
+                                rows_data = raw_rows
                                 break
+
                     except Exception:
                         pass
 
                     page.wait_for_timeout(600)
 
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+                if not rows_data:
+                    all_results[cat_key] = {
+                        "values": {},
+                        "date": "",
+                        "available_dates": []
+                    }
+                    continue
+
+                # Собираем все даты, которые реально видит таблица.
+                available_dates = []
+                for row in rows_data:
+                    if row and row[0]:
+                        d = str(row[0]).strip()
+                        if d and d not in available_dates:
+                            available_dates.append(d)
+
+                # Для current сохраняем старое поведение:
+                # первая строка = самая свежая запись.
+                target_row = rows_data[0]
+
+                # Для historical выбираем строку по выбранной дате.
+                if data_mode == "historical" and selected_date:
+                    exact_rows = [
+                        row for row in rows_data
+                        if row and str(row[0]).strip() == str(selected_date).strip()
+                    ]
+
+                    if exact_rows:
+                        target_row = exact_rows[0]
+
+                val_map = {}
+                selected_date_str = (
+                    str(target_row[0]).strip()
+                    if target_row else ""
+                )
+
+                for h, v_str in zip(
+                    headers[1:],
+                    target_row[1:]
+                ):
+                    if (
+                        "TA-" in h or
+                        "TB-" in h or
+                        cat_cfg["tag"] in h
+                    ):
+                        m = re.search(
+                            r"(T[AB]-[A-Za-z0-9\-]+)",
+                            h
+                        )
+                        s_name = (
+                            m.group(1)
+                            if m
+                            else h.split()[0].strip()
+                        )
+
+                        v = clean_num(v_str)
+
+                        if not np.isnan(v):
+                            val_map[s_name] = v
+
+                all_results[cat_key] = {
+                    "values": val_map,
+                    "date": selected_date_str,
+                    "available_dates": available_dates
+                }
 
         except Exception as e:
             st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
         finally:
             browser.close()
 
-    return dates_list, all_results
+    return all_results
 
 @st.cache_data
 def get_model_b64(path):
@@ -398,36 +517,80 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Первичный запрос для сбора всех доступных дат с сайта
-with st.spinner("LoggIS zaman etiketleri yükleniyor..."):
-    available_dates, current_data = fetch_loggis_data(None)
-
+# -------------------------------------------------------------------------
+# РЕЖИМ ДАННЫХ
+# -------------------------------------------------------------------------
+# CURRENT:
+#   оставляет исходную логику файла: MONTH_02 + TABLE_ROW_DATE.
+#
+# HISTORICAL:
+#   переключает первый фильтр LoggIS на ALL,
+#   оставляет TABLE_ROW_DATE,
+#   получает старые строки и позволяет выбрать конкретную дату.
+# -------------------------------------------------------------------------
 with col_nav:
     st.subheader("KONTROL PANELİ")
+
+    data_mode_label = st.radio(
+        "Veri Zamanı:",
+        options=["Güncel Veriler", "Eski Veriler"],
+        index=0
+    )
+
+    data_mode = (
+        "current"
+        if data_mode_label == "Güncel Veriler"
+        else "historical"
+    )
+
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    st.markdown("---")
-    st.subheader("⏱️ Geçmiş Zaman Seçimi")
-    
-    # Формируем список выбора дат: сначала текущие, затем все найденные из базы
-    date_options = ["En Son (Güncel)"] + (available_dates if available_dates else [])
-    selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_options)
+# Сначала получаем данные выбранного режима.
+with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
+    all_data = fetch_all_categories_data(data_mode=data_mode)
 
-    if st.button("Verileri Yenile"):
-        st.cache_data.clear()
-        st.rerun()
+# Для исторического режима показываем даты, которые реально вернул LoggIS.
+selected_history_date = None
 
-# Если выбрана конкретная историческая дата — переполучаем данные для неё
-if selected_date_choice != "En Son (Güncel)":
-    with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
-        _, current_data = fetch_loggis_data(selected_date_choice)
+if data_mode == "historical":
+    date_source = all_data.get(
+        selected_comp,
+        {"available_dates": []}
+    ).get("available_dates", [])
+
+    if date_source:
+        selected_history_date = st.selectbox(
+            "Eski Veri Tarihi:",
+            options=date_source,
+            index=0,
+            help="LoggIS tablosunda bulunan eski tarih/saat kayıtlarından birini seçin."
+        )
+
+        # После выбора даты получаем именно эту строку.
+        with st.spinner("Seçilen eski veri LoggIS üzerinden alınıyor..."):
+            all_data = fetch_all_categories_data(
+                data_mode="historical",
+                selected_date=selected_history_date
+            )
+    else:
+        st.warning(
+            "LoggIS içinde tarihsel kayıt bulunamadı. "
+            "İlk filtre ALL olarak ayarlanmış olmalı."
+        )
+
+if st.button("Verileri Yenile"):
+    st.cache_data.clear()
+    st.rerun()
 
 cat_cfg = CATEGORIES[selected_comp]
-cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
+cur_layer = all_data.get(
+    selected_comp,
+    {"values": {}, "date": "", "available_dates": []}
+)
 raw_v_map = cur_layer["values"]
 
 active_category_values = {}
@@ -466,8 +629,17 @@ with col_nav:
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{selected_date_choice}</span>", unsafe_allow_html=True)
+    if data_mode == "current":
+        st.write("**En Son Veri Zamanı:**")
+    else:
+        st.write("**Seçilen Veri Zamanı:**")
+
+    st.markdown(
+        f"<span class='neon-data' style='font-size: 15px;'>"
+        f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}"
+        f"</span>",
+        unsafe_allow_html=True
+    )
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
@@ -1213,16 +1385,31 @@ with col_3d:
                 geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 geom.attributes.color.needsUpdate = true;
 
-                tMesh.material = new THREE.MeshStandardMaterial({
+                const isTransparent = payload.tunnelOpacity < 0.98;
+
+                if (isTransparent) {
+                    const depthMaskMat = new THREE.MeshBasicMaterial({
+                        colorWrite: false,
+                        depthWrite: true,
+                        side: THREE.FrontSide
+                    });
+                    const depthMaskMesh = new THREE.Mesh(geom, depthMaskMat);
+                    depthMaskMesh.renderOrder = 0;
+                    tMesh.add(depthMaskMesh);
+                }
+
+                const visualMat = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
-                    transparent: false,
+                    transparent: isTransparent,
+                    opacity: payload.tunnelOpacity,
                     roughness: 0.20,
                     metalness: 0.02,
-                    depthWrite: true,
+                    depthWrite: !isTransparent,
                     side: THREE.FrontSide
                 });
 
+                tMesh.material = visualMat;
                 tMesh.renderOrder = 1;
                 tMesh.material.needsUpdate = true;
             });
