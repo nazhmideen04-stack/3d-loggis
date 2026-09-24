@@ -236,19 +236,15 @@ def ensure_playwright_installed():
         pass
 
 @st.cache_data(ttl=300)
-def fetch_all_categories_data(data_mode="current", selected_date=None):
+def fetch_all_categories_data():
     """
-    data_mode:
-      - current: сохраняет старую логику MONTH_02 + TABLE_ROW_DATE
-                 и берет первую (самую свежую) строку.
-      - historical: переключает период на ALL + TABLE_ROW_DATE,
-                    считывает доступные исторические строки и выбирает
-                    строку selected_date.
+    ОСНОВНОЙ / ТЕКУЩИЙ РЕЖИМ.
+
+    Эта функция намеренно оставлена максимально близкой к исходному файлу:
+    MONTH_02 + TABLE_ROW_DATE и первая строка таблицы LoggIS.
+    Не смешиваем текущие данные с историческим режимом.
     """
-    all_results = {
-        k: {"values": {}, "date": "", "available_dates": []}
-        for k in CATEGORIES
-    }
+    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
         browser_args = [
@@ -269,11 +265,240 @@ def fetch_all_categories_data(data_mode="current", selected_date=None):
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="fr-FR",
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+        page.route(
+            "**/*",
+            lambda route: route.abort()
+            if route.request.resource_type in ["image", "media"]
+            else route.continue_()
+        )
+
+        try:
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
+
+            try:
+                page.get_by_text("Types").click(timeout=8000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1000)
+
+            # НЕ МЕНЯТЬ: это исходный режим текущих данных.
+            page.get_by_role("combobox").first.select_option(
+                "MONTH_02", timeout=5000
             )
+            page.wait_for_timeout(800)
+
+            page.get_by_role("combobox").nth(1).select_option(
+                "TABLE_ROW_DATE", timeout=5000
+            )
+            page.wait_for_timeout(1000)
+
+            for cat_key, cat_cfg in CATEGORIES.items():
+                try:
+                    page.get_by_role("listbox").select_option(
+                        cat_cfg["name"], timeout=6000
+                    )
+                except Exception:
+                    try:
+                        page.locator(
+                            f"option:has-text('{cat_cfg['name']}')"
+                        ).first.click(force=True, timeout=4000)
+                    except Exception:
+                        try:
+                            page.get_by_text(
+                                cat_cfg["name"]
+                            ).first.click(force=True, timeout=4000)
+                        except Exception:
+                            pass
+
+                page.wait_for_timeout(3000)
+
+                val_map = {}
+                latest_date_str = ""
+
+                for _ in range(15):
+                    try:
+                        extracted = page.evaluate("""() => {
+                            try {
+                                const table = document.querySelector('table');
+                                if (!table) return null;
+
+                                const trs = Array.from(table.querySelectorAll('tr'));
+                                let headerCells = [];
+
+                                for (const tr of trs) {
+                                    const cells = Array.from(
+                                        tr.querySelectorAll('th, td')
+                                    ).map(c => (c.innerText || '').trim());
+
+                                    if (cells.some(c =>
+                                        c.includes('TA-') || c.includes('TB-')
+                                    )) {
+                                        headerCells = cells;
+                                        break;
+                                    }
+                                }
+
+                                if (headerCells.length === 0 && trs.length > 0) {
+                                    headerCells = Array.from(
+                                        trs[0].querySelectorAll('th, td')
+                                    ).map(c => (c.innerText || '').trim());
+                                }
+
+                                const tbody =
+                                    table.querySelector('tbody') || table;
+
+                                const rows = Array.from(
+                                    tbody.querySelectorAll('tr')
+                                );
+
+                                let dataCells = [];
+
+                                for (const r of rows) {
+                                    const cells = Array.from(
+                                        r.querySelectorAll('td')
+                                    ).map(c => (c.innerText || '').trim());
+
+                                    if (
+                                        cells.length > 1 &&
+                                        (
+                                            cells[0].includes('/') ||
+                                            cells[0].includes(':') ||
+                                            cells[0].includes('-')
+                                        )
+                                    ) {
+                                        dataCells = cells;
+                                        break;
+                                    }
+                                }
+
+                                if (
+                                    headerCells.length === 0 ||
+                                    dataCells.length === 0
+                                ) return null;
+
+                                return {
+                                    headers: headerCells,
+                                    values: dataCells
+                                };
+                            } catch(e) {
+                                return null;
+                            }
+                        }""")
+
+                        if (
+                            extracted and
+                            extracted.get("values") and
+                            extracted.get("headers")
+                        ):
+                            headers = extracted["headers"]
+                            values = extracted["values"]
+                            latest_date_str = values[0]
+
+                            for h, v_str in zip(
+                                headers[1:], values[1:]
+                            ):
+                                if (
+                                    "TA-" in h or
+                                    "TB-" in h or
+                                    cat_cfg["tag"] in h
+                                ):
+                                    m = re.search(
+                                        r"(T[AB]-[A-Za-z0-9\-]+)",
+                                        h
+                                    )
+                                    s_name = (
+                                        m.group(1)
+                                        if m
+                                        else h.split()[0].strip()
+                                    )
+
+                                    v = clean_num(v_str)
+
+                                    if not np.isnan(v):
+                                        val_map[s_name] = v
+
+                            if len(val_map) > 0:
+                                break
+
+                    except Exception:
+                        pass
+
+                    page.wait_for_timeout(600)
+
+                all_results[cat_key] = {
+                    "values": val_map,
+                    "date": latest_date_str
+                }
+
+        except Exception as e:
+            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
+        finally:
+            browser.close()
+
+    return all_results
+
+
+def _normalize_history_date(value):
+    """Приводит дату к YYYY-MM-DD для сравнения с st.date_input."""
+    if value is None:
+        return ""
+
+    s = str(value).strip()
+
+    # ISO: 2026-09-24 / 2026-09-24 12:30...
+    m = re.search(r"(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})", s)
+    if m:
+        return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+
+    # Европейская запись: 24/09/2026 или 24.09.2026
+    m = re.search(r"(\d{1,2})[./-](\d{1,2})[./-](20\d{2})", s)
+    if m:
+        return f"{int(m.group(3)):04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+
+    return ""
+
+
+@st.cache_data(ttl=300)
+def fetch_historical_data(target_date):
+    """
+    ИСТОРИЧЕСКИЙ РЕЖИМ.
+
+    Текущий режим выше НЕ трогаем.
+    Здесь отдельно открываем LoggIS, переключаем период на ALL,
+    оставляем TABLE_ROW_DATE, собираем все видимые строки таблицы
+    и выбираем строку, соответствующую target_date.
+
+    Если LoggIS не показывает старые строки после ALL, функция
+    не подменяет их текущими данными и возвращает пустой результат.
+    """
+    result = {k: {"values": {}, "date": ""} for k in CATEGORIES}
+
+    target_iso = str(target_date)
+
+    with sync_playwright() as p:
+        browser_args = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--window-size=1920,1080",
+        ]
+
+        try:
+            browser = p.chromium.launch(headless=True, args=browser_args)
+        except Exception:
+            ensure_playwright_installed()
+            browser = p.chromium.launch(headless=True, args=browser_args)
+
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            timezone_id="Europe/Istanbul",
+            locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
 
         page = context.new_page()
@@ -295,21 +520,20 @@ def fetch_all_categories_data(data_mode="current", selected_date=None):
 
             page.wait_for_timeout(1000)
 
-            # ВАЖНО:
-            # Текущие данные оставляем как в исходном загруженном коде:
-            # MONTH_02.
-            #
-            # Для истории используем ALL, чтобы получить старые записи.
-            period_option = "MONTH_02" if data_mode == "current" else "ALL"
-
+            # Только исторический режим использует ALL.
+            # Если ALL отсутствует в конкретной версии LoggIS,
+            # не падаем и не подменяем результат текущими данными.
             try:
                 page.get_by_role("combobox").first.select_option(
-                    period_option, timeout=5000
+                    "ALL", timeout=5000
                 )
             except Exception:
-                pass
+                result["_error"] = {
+                    "message": "В LoggIS не найден вариант ALL."
+                }
+                return result
 
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(1200)
 
             try:
                 page.get_by_role("combobox").nth(1).select_option(
@@ -332,17 +556,17 @@ def fetch_all_categories_data(data_mode="current", selected_date=None):
                         ).first.click(force=True, timeout=4000)
                     except Exception:
                         try:
-                            page.get_by_text(cat_cfg["name"]).first.click(
-                                force=True, timeout=4000
-                            )
+                            page.get_by_text(
+                                cat_cfg["name"]
+                            ).first.click(force=True, timeout=4000)
                         except Exception:
                             pass
 
                 page.wait_for_timeout(2500)
 
-                rows_data = []
+                extracted = None
 
-                for _ in range(15):
+                for _ in range(20):
                     try:
                         extracted = page.evaluate("""() => {
                             try {
@@ -357,123 +581,92 @@ def fetch_all_categories_data(data_mode="current", selected_date=None):
                                         tr.querySelectorAll('th, td')
                                     ).map(c => (c.innerText || '').trim());
 
-                                    if (
-                                        cells.some(c =>
-                                            c.includes('TA-') ||
-                                            c.includes('TB-')
-                                        )
-                                    ) {
+                                    if (cells.some(c =>
+                                        c.includes('TA-') || c.includes('TB-')
+                                    )) {
                                         headerCells = cells;
                                         break;
                                     }
                                 }
 
-                                if (
-                                    headerCells.length === 0 &&
-                                    trs.length > 0
-                                ) {
+                                if (headerCells.length === 0 && trs.length) {
                                     headerCells = Array.from(
                                         trs[0].querySelectorAll('th, td')
                                     ).map(c => (c.innerText || '').trim());
                                 }
 
-                                if (headerCells.length === 0) return null;
+                                const body = table.querySelector('tbody') || table;
+                                const rows = Array.from(body.querySelectorAll('tr'));
 
-                                const tbody =
-                                    table.querySelector('tbody') || table;
-
-                                const rows = Array.from(
-                                    tbody.querySelectorAll('tr')
-                                );
-
-                                const resultRows = [];
+                                const dataRows = [];
 
                                 for (const r of rows) {
                                     const cells = Array.from(
                                         r.querySelectorAll('td')
                                     ).map(c => (c.innerText || '').trim());
 
-                                    if (cells.length <= 1) continue;
+                                    if (cells.length > 1) {
+                                        const first = cells[0] || '';
 
-                                    const first = cells[0] || '';
-
-                                    // Дата/время в первой колонке.
-                                    const looksLikeDate =
-                                        first.includes('/') ||
-                                        first.includes(':') ||
-                                        first.includes('-') ||
-                                        /\\d{4}/.test(first);
-
-                                    if (looksLikeDate) {
-                                        resultRows.push(cells);
+                                        if (
+                                            first.includes('/') ||
+                                            first.includes('.') ||
+                                            first.includes('-') ||
+                                            first.includes(':') ||
+                                            /\\d{4}/.test(first)
+                                        ) {
+                                            dataRows.push(cells);
+                                        }
                                     }
+                                }
+
+                                if (!headerCells.length || !dataRows.length) {
+                                    return null;
                                 }
 
                                 return {
                                     headers: headerCells,
-                                    rows: resultRows
+                                    rows: dataRows
                                 };
                             } catch(e) {
                                 return null;
                             }
                         }""")
 
-                        if (
-                            extracted and
-                            extracted.get("headers") and
-                            extracted.get("rows")
-                        ):
-                            headers = extracted["headers"]
-                            raw_rows = extracted["rows"]
-
-                            if raw_rows:
-                                rows_data = raw_rows
-                                break
+                        if extracted and extracted.get("rows"):
+                            break
 
                     except Exception:
                         pass
 
                     page.wait_for_timeout(600)
 
-                if not rows_data:
-                    all_results[cat_key] = {
-                        "values": {},
-                        "date": "",
-                        "available_dates": []
-                    }
+                if not extracted or not extracted.get("rows"):
                     continue
 
-                # Собираем все даты, которые реально видит таблица.
-                available_dates = []
-                for row in rows_data:
-                    if row and row[0]:
-                        d = str(row[0]).strip()
-                        if d and d not in available_dates:
-                            available_dates.append(d)
+                headers = extracted["headers"]
+                rows = extracted["rows"]
 
-                # Для current сохраняем старое поведение:
-                # первая строка = самая свежая запись.
-                target_row = rows_data[0]
+                # Ищем именно выбранную дату, не первую строку.
+                target_row = None
 
-                # Для historical выбираем строку по выбранной дате.
-                if data_mode == "historical" and selected_date:
-                    exact_rows = [
-                        row for row in rows_data
-                        if row and str(row[0]).strip() == str(selected_date).strip()
-                    ]
+                for row in rows:
+                    if not row:
+                        continue
 
-                    if exact_rows:
-                        target_row = exact_rows[0]
+                    row_iso = _normalize_history_date(row[0])
+
+                    if row_iso == target_iso:
+                        target_row = row
+                        break
+
+                if target_row is None:
+                    continue
 
                 val_map = {}
-                selected_date_str = (
-                    str(target_row[0]).strip()
-                    if target_row else ""
-                )
 
                 for h, v_str in zip(
-                    headers[1:],
-                    target_row[1:]
+                    headers[1:], target_row[1:]
                 ):
                     if (
                         "TA-" in h or
@@ -495,18 +688,19 @@ def fetch_all_categories_data(data_mode="current", selected_date=None):
                         if not np.isnan(v):
                             val_map[s_name] = v
 
-                all_results[cat_key] = {
+                result[cat_key] = {
                     "values": val_map,
-                    "date": selected_date_str,
-                    "available_dates": available_dates
+                    "date": target_row[0]
                 }
 
         except Exception as e:
-            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
+            result["_error"] = {
+                "message": f"LoggIS tarihsel veri hatası: {e}"
+            }
         finally:
             browser.close()
 
-    return all_results
+    return result
 
 @st.cache_data
 def get_model_b64(path):
@@ -518,29 +712,18 @@ def get_model_b64(path):
 col_nav, col_3d = st.columns([1, 4])
 
 # -------------------------------------------------------------------------
-# РЕЖИМ ДАННЫХ
+# VERİ MODU
 # -------------------------------------------------------------------------
-# CURRENT:
-#   оставляет исходную логику файла: MONTH_02 + TABLE_ROW_DATE.
-#
-# HISTORICAL:
-#   переключает первый фильтр LoggIS на ALL,
-#   оставляет TABLE_ROW_DATE,
-#   получает старые строки и позволяет выбрать конкретную дату.
+# Varsayılan olarak mevcut veriler kullanılır.
+# Bu bölüm mevcut veri fonksiyonunu değiştirmez.
 # -------------------------------------------------------------------------
 with col_nav:
     st.subheader("KONTROL PANELİ")
 
-    data_mode_label = st.radio(
+    data_mode = st.radio(
         "Veri Zamanı:",
         options=["Güncel Veriler", "Eski Veriler"],
         index=0
-    )
-
-    data_mode = (
-        "current"
-        if data_mode_label == "Güncel Veriler"
-        else "historical"
     )
 
     selected_comp = st.radio(
@@ -549,48 +732,77 @@ with col_nav:
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-# Сначала получаем данные выбранного режима.
-with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
-    all_data = fetch_all_categories_data(data_mode=data_mode)
+    if st.button("Verileri Yenile"):
+        st.cache_data.clear()
+        st.rerun()
 
-# Для исторического режима показываем даты, которые реально вернул LoggIS.
-selected_history_date = None
+# -------------------------------------------------------------------------
+# GÜNCEL VERİLER
+# -------------------------------------------------------------------------
+# Burada orijinal fetch_all_categories_data() çalışır.
+# MONTH_02 + TABLE_ROW_DATE aynen korunmuştur.
+# -------------------------------------------------------------------------
+if data_mode == "Güncel Veriler":
+    with st.spinner("Tüm güncel sensör verileri LoggIS üzerinden alınıyor..."):
+        all_data = fetch_all_categories_data()
 
-if data_mode == "historical":
-    date_source = all_data.get(
-        selected_comp,
-        {"available_dates": []}
-    ).get("available_dates", [])
+    history_status = ""
 
-    if date_source:
-        selected_history_date = st.selectbox(
-            "Eski Veri Tarihi:",
-            options=date_source,
-            index=0,
-            help="LoggIS tablosunda bulunan eski tarih/saat kayıtlarından birini seçin."
-        )
+# -------------------------------------------------------------------------
+# ESKİ VERİLER
+# -------------------------------------------------------------------------
+else:
+    st.markdown("### Eski veritabanından veri seç")
 
-        # После выбора даты получаем именно эту строку.
-        with st.spinner("Seçilen eski veri LoggIS üzerinden alınıyor..."):
-            all_data = fetch_all_categories_data(
-                data_mode="historical",
-                selected_date=selected_history_date
-            )
-    else:
+    selected_history_date = st.date_input(
+        "Tarih:",
+        value=datetime.date.today(),
+        format="DD.MM.YYYY",
+        help="LoggIS içindeki eski kayıtlardan alınacak tarihi seçin."
+    )
+
+    load_old_data = st.button(
+        "⬇ Eski Veriyi Yükle",
+        type="primary"
+    )
+
+    # Tarih seçildiğinde veya butona basıldığında geçmiş veriyi al.
+    # Buton, kullanıcının açıkça eski veriyi yüklemesini sağlar.
+    history_key = selected_history_date.isoformat()
+
+    if load_old_data:
+        st.session_state["selected_history_date"] = history_key
+
+    active_history_date = st.session_state.get(
+        "selected_history_date",
+        history_key
+    )
+
+    with st.spinner(
+        f"{active_history_date} tarihli eski veri LoggIS üzerinden alınıyor..."
+    ):
+        all_data = fetch_historical_data(active_history_date)
+
+    history_status = all_data.get("_error", {}).get("message", "")
+
+    if history_status:
+        st.error(history_status)
+
+    # Eski veri bulunamadığında güncel veriye FALLBACK YOK.
+    # Böylece eski veri yerine yanlışlıkla güncel veri gösterilmez.
+    found_any_history = any(
+        bool(all_data.get(k, {}).get("values"))
+        for k in CATEGORIES
+    )
+
+    if not found_any_history and not history_status:
         st.warning(
-            "LoggIS içinde tarihsel kayıt bulunamadı. "
-            "İlk filtre ALL olarak ayarlanmış olmalı."
+            "Seçilen tarih için LoggIS tablosunda veri bulunamadı. "
+            "Tarih formatı veya LoggIS'in ALL filtresindeki kayıtları kontrol edin."
         )
-
-if st.button("Verileri Yenile"):
-    st.cache_data.clear()
-    st.rerun()
 
 cat_cfg = CATEGORIES[selected_comp]
-cur_layer = all_data.get(
-    selected_comp,
-    {"values": {}, "date": "", "available_dates": []}
-)
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
 raw_v_map = cur_layer["values"]
 
 active_category_values = {}
@@ -629,17 +841,8 @@ with col_nav:
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    if data_mode == "current":
-        st.write("**En Son Veri Zamanı:**")
-    else:
-        st.write("**Seçilen Veri Zamanı:**")
-
-    st.markdown(
-        f"<span class='neon-data' style='font-size: 15px;'>"
-        f"{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}"
-        f"</span>",
-        unsafe_allow_html=True
-    )
+    st.write("**En Son Veri Zamanı:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
