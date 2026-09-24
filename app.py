@@ -4,7 +4,7 @@ import sys
 import json
 import base64
 import subprocess
-from datetime import date, datetime
+from datetime import datetime
 import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
@@ -756,7 +756,7 @@ else:
 
     selected_history_date = st.date_input(
         "Tarih:",
-        value=date.today(),
+        value=datetime.today().date(),
         format="DD.MM.YYYY",
         help="LoggIS içindeki eski kayıtlardan alınacak tarihi seçin."
     )
@@ -768,7 +768,7 @@ else:
 
     # Tarih seçildiğinde veya butona basıldığında geçmiş veriyi al.
     # Buton, kullanıcının açıkça eski veriyi yüklemesini sağlar.
-    history_key = selected_history_date.isoformat()
+    history_key = selected_history_date.strftime("%Y-%m-%d")
 
     if load_old_data:
         st.session_state["selected_history_date"] = history_key
