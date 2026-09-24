@@ -515,7 +515,7 @@ with col_3d:
 </head>
 <body>
     <div id="canvas-container">
-        <div id="loader">3B MODEL VE TÜNEL ИНТЕРПОЛЯЦИЯСЫ ЖҮКТЕЛУДЕ...</div>
+        <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
         <div id="sensor-tooltip"></div>
         
         <div id="selected-hud">
@@ -900,14 +900,22 @@ with col_3d:
                 }
             });
 
-            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (ПОДСВЕТКА СТРОГО ОДНОГО ВЫБРАННОГО)
+            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (СТРОГО ОДИН ВЫБРАННЫЙ СЕНСОР)
+            let alreadyHighlightedOne = false;
+
             finalSensors.forEach(item => {
                 const hasData = item.hasData;
                 const sensorName = item.sensorName;
                 const val = item.val;
 
                 if (hasData || payload.showNoDataRed) {
-                    const isSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && sensorName === payload.selectedSensor);
+                    // Строгое равенство имени и флаг, чтобы только ОДИН объект стал желтым
+                    const isCandidate = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && sensorName === payload.selectedSensor);
+                    const isSelected = isCandidate && !alreadyHighlightedOne;
+
+                    if (isSelected) {
+                        alreadyHighlightedOne = true;
+                    }
 
                     let sensorColor = 0xFFFFFF; // Белый по умолчанию
                     if (isSelected) {
@@ -998,7 +1006,7 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
-            // ИНТЕРПОЛЯЦИЯ И НАЗНАЧЕНИЕ МАТЕРИАЛА С РАБОТАЮЩЕЙ ПРОЗРАЧНОСТЬЮ И БЕЗ ДИСКОВ
+            // ИНТЕРПОЛЯЦИЯ И НАЗНАЧЕНИЕ МАТЕРИАЛА С ПРЯМЫМ РЕГУЛЯТОРОМ ПРОЗРАЧНОСТИ
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -1071,10 +1079,9 @@ with col_3d:
                 
                 const isTransparent = payload.tunnelOpacity < 0.98;
 
-                // КОРРЕКТНЫЙ МАТЕРИАЛ: РАБОТАЕТ ПРОЗРАЧНОСТЬ И ОТСЕКАЮТСЯ ДИСКИ
                 const customShader = THREE.ShaderLib.standard;
                 const uniforms = THREE.UniformsUtils.clone(customShader.uniforms);
-                uniforms.opacity.value = payload.tunnelOpacity; // ЯВНАЯ ПЕРЕДАЧА ОПАКНОСТИ ИЗ СЛАЙДЕРА
+                uniforms.opacity.value = payload.tunnelOpacity;
 
                 let fragmentShaderCode = customShader.fragmentShader;
                 let vertexShaderCode = customShader.vertexShader;
@@ -1103,11 +1110,8 @@ with col_3d:
                     '#include <dithering_fragment>',
                     `
                     #include <dithering_fragment>
-                    // Отсекаем строго поперечные диски
                     vec3 norm = normalize(vWorldNormalClean);
                     ${isZAxis ? 'if (abs(norm.z) > 0.80) discard;' : 'if (abs(norm.x) > 0.80) discard;'}
-                    
-                    // ГАРАНТИЯ РАБОТЫ ПОЛЗУНКА ПРОЗРАЧНОСТИ
                     gl_FragColor.a *= opacity;
                     `
                 );
@@ -1267,7 +1271,6 @@ with col_3d:
             console.error(err);
         });
 
-        // ПЛАШКА ВЫБРАННОГО ДАТЧИКА: И ДЛЯ РАБОЧИХ, И ДЛЯ НЕРАБОЧИХ
         function updateHud(name, val, isUsable) {
             selectedHud.style.display = 'block';
             hudName.innerText = name;
@@ -1343,7 +1346,7 @@ with col_3d:
                 
                 interactiveSensors.forEach(m => {
                     if (m === sensorMesh) {
-                        m.material.color.setHex(0xFFD700); // Только он окрасится в желтый
+                        m.material.color.setHex(0xFFD700); // Только выбранный окрасится в желтый
                     } else if (m.userData.isUsable) {
                         m.material.color.setHex(0xFFFFFF); // Все остальные рабочие - белые
                     } else {
@@ -1388,7 +1391,6 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
-        // ДВУХПРОХОДНЫЙ РЕНДЕР
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
