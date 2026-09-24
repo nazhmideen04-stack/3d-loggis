@@ -204,7 +204,8 @@ def ensure_playwright_installed():
         pass
 
 # =========================================================================
-# 1. ТЕКУЩИЕ ДАННЫЕ (Оригинальный DOM парсер)
+# 1. ТЕКУЩИЕ ДАННЫЕ (Скачивание CSV за текущий период)
+# Гарантированно берет самую крайнюю запись
 # =========================================================================
 @st.cache_data(ttl=300)
 def fetch_current_data():
@@ -222,12 +223,12 @@ def fetch_current_data():
             browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
+            accept_downloads=True,
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul", locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
@@ -237,86 +238,97 @@ def fetch_current_data():
             except: pass
             page.wait_for_timeout(1000)
 
+            # Для текущих данных НЕ ВЫБИРАЕМ ALL.
+            # Оставляем MONTH_02 и TABLE_ROW_DATE, чтобы получить свежий короткий CSV.
             try: page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
             except: pass
-            page.wait_for_timeout(800)
-
+            page.wait_for_timeout(1000)
+            
             try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
             except: pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                target_tag = cat_cfg["tag"]
+                
+                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
                 except:
-                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
                     except: pass
                 
-                page.wait_for_timeout(3500)
+                page.wait_for_timeout(4000)
+
+                # ЗАЩИТА: Ждем обновления таблицы на сайте перед скачиванием
+                try:
+                    page.wait_for_function(
+                        f"() => Array.from(document.querySelectorAll('th, td')).some(el => el.innerText.includes('{target_tag}'))",
+                        timeout=15000
+                    )
+                except Exception:
+                    page.wait_for_timeout(3000)
 
                 val_map = {}
-                latest_date_str = ""
+                found_date = ""
 
-                for _ in range(15):
-                    try:
-                        extracted = page.evaluate("""() => {
-                            try {
-                                const table = document.querySelector('table');
-                                if (!table) return null;
+                csv_btn = page.locator("text=CSV").first
+                try: csv_btn.wait_for(state="visible", timeout=15000)
+                except: pass
 
-                                const trs = Array.from(table.querySelectorAll('tr'));
-                                let headerCells = [];
-                                for (const tr of trs) {
-                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    // Ищем просто TA- или TB- (оригинальный рабочий метод)
-                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
-                                        headerCells = cells; break;
-                                    }
-                                }
+                try:
+                    csv_btn.click(force=True, timeout=5000)
+                    page.wait_for_timeout(1500)
 
-                                if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                }
+                    with page.expect_download(timeout=25000) as d_info:
+                        try:
+                            with page.expect_popup(timeout=8000) as p_info:
+                                csv_btn.click(force=True)
+                            p_info.value.close()
+                        except:
+                            csv_btn.click(force=True)
+                            
+                    csv_path = d_info.value.path()
 
-                                const tbody = table.querySelector('tbody') || table;
-                                const rows = Array.from(tbody.querySelectorAll('tr'));
-                                let dataCells = [];
+                    if csv_path and os.path.exists(csv_path):
+                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                            lines = f.readlines()
+                        
+                        if len(lines) > 2:
+                            header = [h.replace('\ufeff', '').strip() for h in lines[0].strip().split(';')]
+                            rows_data = []
+                            for line in lines[2:]:
+                                parts = [p.strip() for p in line.strip().split(';')]
+                                if len(parts) == len(header):
+                                    rows_data.append(parts)
 
-                                for (const r of rows) {
-                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{4}/.test(cells[0]))) {
-                                        dataCells = cells; // Оставляем последнюю строку (самую актуальную)
-                                    }
-                                }
+                            if rows_data:
+                                # БЕРЕМ САМУЮ ПОСЛЕДНЮЮ СТРОКУ (САМЫЙ СВЕЖИЙ ЗАМЕР)
+                                target_row = rows_data[-1]
+                                found_date = target_row[0]
+                                
+                                for h, v_str in zip(header[1:], target_row[1:]):
+                                    if ("TA-" in h or "TB-" in h) and (target_tag in h):
+                                        if target_tag == "-S" and "-CS" in h:
+                                            continue 
+                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                        s_name = m.group(1) if m else h.split()[0].strip()
+                                        v = clean_num(v_str)
+                                        if not np.isnan(v):
+                                            val_map[s_name] = v
 
-                                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                                return { headers: headerCells, values: dataCells };
-                            } catch(e) { return null; }
-                        }""")
+                except Exception as e:
+                    print(f"Güncel CSV İndirme Hatası ({cat_key}): {e}")
 
-                        if extracted and extracted.get("values"):
-                            headers = extracted["headers"]
-                            values = extracted["values"]
-                            latest_date_str = values[0]
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
-                                    v = clean_num(v_str)
-                                    if not np.isnan(v):
-                                        val_map[s_name] = v
-                            if len(val_map) > 0:
-                                break
-                    except: pass
-                    page.wait_for_timeout(600)
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+                all_results[cat_key] = {"values": val_map, "date": found_date}
+
         except Exception as e:
             st.warning(f"Güncel veri alınırken hata oluştu: {e}")
         finally:
             browser.close()
+            
     return all_results
 
 # =========================================================================
-# 2. АРХИВНЫЕ ДАННЫЕ (Скачивание CSV)
+# 2. АРХИВНЫЕ ДАННЫЕ (Скачивание CSV полного архива)
 # =========================================================================
 @st.cache_data(ttl=3600)
 def fetch_historical_csv_data():
@@ -350,17 +362,29 @@ def fetch_historical_csv_data():
             except: pass
             page.wait_for_timeout(1000)
 
+            # Выбор ALL для скачивания полной базы
             try: page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except: pass
             page.wait_for_timeout(2000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
+                target_tag = cat_cfg["tag"]
+                
                 try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
                 except:
                     try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
                     except: pass
                 
                 page.wait_for_timeout(4000)
+
+                # ЗАЩИТА: Ждем обновления таблицы перед скачиванием
+                try:
+                    page.wait_for_function(
+                        f"() => Array.from(document.querySelectorAll('th, td')).some(el => el.innerText.includes('{target_tag}'))",
+                        timeout=15000
+                    )
+                except Exception:
+                    page.wait_for_timeout(4000)
 
                 csv_path = None
                 csv_btn = page.locator("text=CSV").first
@@ -377,6 +401,7 @@ def fetch_historical_csv_data():
                             p_info.value.close()
                         except:
                             csv_btn.click(force=True)
+                            
                     csv_path = d_info.value.path()
                 except Exception as e:
                     print(f"CSV İndirme Hatası ({cat_key}): {e}")
@@ -392,14 +417,18 @@ def fetch_historical_csv_data():
                             if len(parts) == len(header):
                                 d_str = parts[0]
                                 if d_str: dates_set.add(d_str)
+                                
                                 val_map = {}
                                 for h, v_str in zip(header[1:], parts[1:]):
-                                    if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                    if ("TA-" in h or "TB-" in h) and (target_tag in h):
+                                        if target_tag == "-S" and "-CS" in h:
+                                            continue
                                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                         s_name = m.group(1) if m else h.split()[0].strip()
                                         v = clean_num(v_str)
                                         if not np.isnan(v):
                                             val_map[s_name] = v
+                                            
                                 historical_db[cat_key][d_str] = val_map
 
         except Exception as e:
@@ -445,7 +474,7 @@ active_category_values = {}
 cat_cfg = CATEGORIES[selected_comp]
 
 if data_mode == "🔴 Canlı (Güncel) Veriler":
-    with st.spinner("Güncel veriler alınıyor..."):
+    with st.spinner("Güncel veriler alınıyor (CSV üzerinden)..."):
         all_data = fetch_current_data()
         cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
         raw_v_map = cur_layer["values"]
@@ -506,6 +535,7 @@ else:
                 elif selected_comp == "temp" and "-TP" in u_name:
                     active_category_values[s_name] = float(val)
 
+# Точный расчет без отступов (лимиты полностью соответствуют данным)
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -929,7 +959,7 @@ with col_3d:
                     const maxDim = Math.max(size.x, size.y, size.z, 20.0);
                     controls.target.copy(center); 
                     
-                    // Увеличено приближение камеры: множитель 0.45 (было 0.8)
+                    // БОЛЕЕ СИЛЬНОЕ ПРИБЛИЖЕНИЕ
                     const fov = camera.fov * (Math.PI / 180);
                     let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.45;
                     
