@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)[cite: 1]
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -30,7 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH с мобильной адаптацией
+# Фирменный стиль DESTECH с мобильной адаптацией[cite: 1]
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -737,7 +737,7 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
-        // ЕДИНАЯ ФУНКЦИЯ ПОЛУЧЕНИЯ ЦВЕТА И ДЛЯ СЕНСОРОВ, И ДЛЯ ТОННЕЛЯ
+        // ФУНКЦИЯ ПОЛУЧЕНИЯ ЦВЕТА ИЗ СИНХРОНИЗИРОВАННОЙ ШКАЛЫ
         function sampleColorRamp(stops, t) {
             t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
@@ -1025,7 +1025,6 @@ with col_3d:
                 }
             });
 
-            // РАСЧЁТ ДИНАМИЧЕСКИХ ГРАНИЦ ДЛЯ ПОЛНОЙ СИНХРОНИЗАЦИИ
             const validVals = finalSensors
                 .filter(s => s.hasData && !isNaN(s.val))
                 .map(s => s.val);
@@ -1070,15 +1069,12 @@ with col_3d:
                         alreadyHighlightedOne = true;
                     }
 
-                    // КАЖДЫЙ СЕНСОР ПОЛУЧАЕТ ЦВЕТ ТОЧНО ПО СВОЕМУ ЗНАЧЕНИЮ ИЗ ШКАЛЫ
+                    // САМИ СЕНСОРЫ СТРОГО БЕЛЫЕ (ИЛИ ЗОЛОТЫЕ ПРИ ВЫБОРЕ)
                     let sensorColor = 0xFFFFFF;
                     if (isSelected) {
-                        sensorColor = 0xFFD700; // Золотой контур для выбранного сенсора
+                        sensorColor = 0xFFD700; // Золотой при выделении
                     } else if (!hasData) {
                         sensorColor = 0xFF0033; // Красный при отсутствии данных
-                    } else {
-                        const c = getColorForValue(val, dynamicClim);
-                        sensorColor = c.getHex();
                     }
 
                     const sensorMat = new THREE.MeshBasicMaterial({
@@ -1130,8 +1126,8 @@ with col_3d:
                 }
             });
 
-            // ИНТЕРПОЛЯЦИЯ ЗНАЧЕНИЙ НА ПОВЕРХНОСТИ ТОННЕЛЯ (ВЗАИМНЫЙ ЦВЕТ С ЛЕГЕНДОЙ)
-            const R_INFLUENCE = 35.0;
+            // ВЫРАЗИТЕЛЬНЫЙ АКЦЕНТ И ИНТЕРПОЛЯЦИЯ НА СТЕНКЕ ТОННЕЛЯ ОТ КАЖДОГО СЕНСОРА
+            const R_INFLUENCE = 30.0; // Локальный радиус для четкого разделения цветовых зон
 
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
@@ -1169,8 +1165,9 @@ with col_3d:
                             const d = worldV.distanceTo(s.pos);
                             
                             if (d < R_INFLUENCE) {
-                                const q = 1.0 - (d / R_INFLUENCE);
-                                const w = (q * q) / (d + 0.2);
+                                // Плавный параболический спад: акцент на центре датчика и мягкое затухание наружу
+                                const normD = d / R_INFLUENCE;
+                                const w = Math.pow(1.0 - normD, 1.8) / (d + 0.25);
                                 accumulatedVal += s.val * w;
                                 totalWeight += w;
                             }
@@ -1179,6 +1176,7 @@ with col_3d:
                         const idx = i * 3;
                         if (totalWeight > 0.0001) {
                             const interpolatedVal = accumulatedVal / totalWeight;
+                            // Окрашиваем поверхность тоннеля строго по цвету легенды
                             const c = getColorForValue(interpolatedVal, dynamicClim);
                             colors[idx] = c.r;
                             colors[idx + 1] = c.g;
@@ -1437,10 +1435,9 @@ with col_3d:
             
             interactiveSensors.forEach(m => {
                 if (m === sensorMesh) {
-                    m.material.color.setHex(0xFFD700);
+                    m.material.color.setHex(0xFFD700); // Золотой для выделенного
                 } else if (m.userData.isUsable) {
-                    const c = getColorForValue(m.userData.val, dynamicClim);
-                    m.material.color.setHex(c.getHex());
+                    m.material.color.setHex(0xFFFFFF); // Все остальные снова чисто белые
                 } else {
                     m.material.color.setHex(0xFF0033);
                 }
