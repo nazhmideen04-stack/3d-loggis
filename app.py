@@ -656,49 +656,44 @@ with col_3d:
                     return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
                 }}
 
+                // КАНОНИЧЕСКИЙ КЛЮЧ (устраняет расхождения вроде TA-CS01-L vs TA-CS1-L)
+                function getCanonicalSensorId(name) {{
+                    const m = name.match(/(T[AB])-([A-Za-z]+)0*(\d+)-([A-Za-z0-9]+)/i);
+                    if (m) {{
+                        return (m[1] + '-' + m[2] + parseInt(m[3], 10) + '-' + m[4]).toUpperCase();
+                    }}
+                    return name.toUpperCase();
+                }}
+
+                // БАЗА ДАННЫХ НОРМАЛИЗОВАННЫХ КЛЮЧЕЙ ИЗ ТАБЛИЦЫ
                 const normalizedDataMap = {{}};
                 for (const rawKey in payload.activeCategoryValues) {{
-                    const nKey = normalizeKey(rawKey);
-                    normalizedDataMap[nKey] = {{
-                        canonicalKey: rawKey,
-                        val: payload.activeCategoryValues[rawKey]
-                    }};
+                    const val = payload.activeCategoryValues[rawKey];
+                    normalizedDataMap[rawKey.toUpperCase()] = {{ canonicalKey: rawKey, val: val }};
+                    normalizedDataMap[normalizeKey(rawKey)] = {{ canonicalKey: rawKey, val: val }};
+                    normalizedDataMap[getCanonicalSensorId(rawKey)] = {{ canonicalKey: rawKey, val: val }};
                 }}
 
-                function getSensorTypeByName(name) {{
-                    const u = name.toUpperCase();
-                    if (u.includes("-CS")) return "hoop";
-                    if (u.includes("-TP")) return "temp";
-                    if (u.includes("-S")) return "axial";
-                    return "unknown";
-                }}
-
+                // ТОЧНАЯ ПРОВЕРКА НАЛИЧИЯ ДАННЫХ ДЛЯ СЕНСОРА CS/S/TP
                 function checkSensorData(sensorId, comp) {{
-                    if (payload.activeCategoryValues.hasOwnProperty(sensorId)) {{
-                        const v = payload.activeCategoryValues[sensorId];
-                        if (v !== undefined && v !== null && !isNaN(v)) {{
-                            return {{ found: true, key: sensorId, val: v }};
-                        }}
-                    }}
-
-                    if (comp === "temp" && !sensorId.toUpperCase().includes("-TP")) {{
-                        const tpCandidate = sensorId.toUpperCase().replace("-CS", "-TP").replace("-S", "-TP");
-                        if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
-                            const v = payload.activeCategoryValues[tpCandidate];
-                            if (v !== undefined && v !== null && !isNaN(v)) {{
-                                return {{ found: true, key: tpCandidate, val: v }};
-                            }}
-                        }}
-                    }}
-
+                    const uId = sensorId.toUpperCase();
                     const nId = normalizeKey(sensorId);
-                    if (normalizedDataMap.hasOwnProperty(nId)) {{
-                        const item = normalizedDataMap[nId];
-                        if (item.val !== undefined && item.val !== null && !isNaN(item.val)) {{
-                            return {{ found: true, key: item.canonicalKey, val: item.val }};
-                        }}
+                    const cId = getCanonicalSensorId(sensorId);
+
+                    // 1. Прямая проверка
+                    if (normalizedDataMap[uId]) return {{ found: true, key: normalizedDataMap[uId].canonicalKey, val: normalizedDataMap[uId].val }};
+                    if (normalizedDataMap[cId]) return {{ found: true, key: normalizedDataMap[cId].canonicalKey, val: normalizedDataMap[cId].val }};
+                    if (normalizedDataMap[nId]) return {{ found: true, key: normalizedDataMap[nId].canonicalKey, val: normalizedDataMap[nId].val }};
+
+                    // 2. Для температуры: преобразование из CS/S в TP
+                    if (comp === "temp" && !uId.includes("-TP")) {{
+                        const tpVariant = uId.replace("-CS", "-TP").replace("-S", "-TP");
+                        const cTpVariant = getCanonicalSensorId(tpVariant);
+                        if (normalizedDataMap[tpVariant]) return {{ found: true, key: normalizedDataMap[tpVariant].canonicalKey, val: normalizedDataMap[tpVariant].val }};
+                        if (normalizedDataMap[cTpVariant]) return {{ found: true, key: normalizedDataMap[cTpVariant].canonicalKey, val: normalizedDataMap[cTpVariant].val }};
                     }}
 
+                    // Данных действительно нет
                     return {{ found: false, key: sensorId, val: NaN }};
                 }}
 
@@ -840,20 +835,25 @@ with col_3d:
                         }}
                     }});
 
+                    // СТРОГОЕ РАСПРЕДЕЛЕНИЕ СЕНСОРОВ ПО КАТЕГОРИИ
                     const targetMeshes = [];
 
                     rawSensors.forEach(child => {{
-                        child.visible = false;
+                        child.visible = false; // Скрываем базовые меши
 
                         const name = child.name;
+                        const uName = name.toUpperCase();
                         const sensorId = extractSensorId(name);
-                        const sType = getSensorTypeByName(sensorId);
 
                         let isCategory = false;
-                        if (payload.comp === "hoop" && sType === "hoop") isCategory = true;
-                        if (payload.comp === "axial" && sType === "axial") isCategory = true;
-                        if (payload.comp === "temp") {{
-                            if (sType === "temp") isCategory = true;
+                        if (payload.comp === "hoop") {{
+                            // ДЛЯ CS БЕРЕМ ТОЛЬКО ОБЪЕКТЫ С -CS
+                            if (uName.includes("-CS")) isCategory = true;
+                        }} else if (payload.comp === "axial") {{
+                            // ДЛЯ S БЕРЕМ ТОЛЬКО С -S (ИСКЛЮЧАЯ -CS)
+                            if (uName.includes("-S") && !uName.includes("-CS")) isCategory = true;
+                        }} else if (payload.comp === "temp") {{
+                            if (uName.includes("-TP")) isCategory = true;
                             else if (checkSensorData(sensorId, "temp").found) isCategory = true;
                         }}
 
@@ -876,11 +876,12 @@ with col_3d:
                         }});
                     }});
 
+                    // УСТРАНЕНИЕ ДУБЛИКАТОВ С ПРИОРИТЕТОМ РАБОЧИХ ДАННЫХ
                     const finalSensors = [];
                     targetMeshes.forEach(item => {{
                         let duplicate = null;
                         for (let f of finalSensors) {{
-                            if (f.pos.distanceTo(item.pos) < 0.10 && f.sensorName.toUpperCase() === item.sensorName.toUpperCase()) {{
+                            if (f.pos.distanceTo(item.pos) < 0.12 && getCanonicalSensorId(f.sensorName) === getCanonicalSensorId(item.sensorName)) {{
                                 duplicate = f;
                                 break;
                             }}
@@ -889,27 +890,33 @@ with col_3d:
                         if (!duplicate) {{
                             finalSensors.push(item);
                         }} else {{
+                            // Если в одной точке несколько мешей одного датчика, и у одного есть данные — датчик СТРОГО РАБОЧИЙ!
                             if (!duplicate.hasData && item.hasData) {{
                                 duplicate.hasData = true;
                                 duplicate.val = item.val;
+                                duplicate.sensorName = item.sensorName;
                                 duplicate.mesh = item.mesh;
                             }}
                         }}
                     }});
 
+                    // РЕНДЕРИНГ В НЕЗАВИСИМОМ СЛОЕ
                     finalSensors.forEach(item => {{
                         const hasData = item.hasData;
                         const sensorName = item.sensorName;
                         const val = item.val;
 
+                        // Показываем:
+                        // 1. Все рабочие сенсоры текущего типа (БЕЛЫЕ)
+                        // 2. Если включен чекбокс — нерабочие сенсоры текущего типа (КРАСНЫЕ)
                         if (hasData || payload.showNoDataRed) {{
-                            const isSelected = (sensorName === payload.selectedSensor);
+                            const isSelected = (sensorName === payload.selectedSensor || getCanonicalSensorId(sensorName) === getCanonicalSensorId(payload.selectedSensor || ""));
 
-                            let sensorColor = 0xFFFFFF;
+                            let sensorColor = 0xFFFFFF; // Если данные есть — СТРОГО БЕЛЫЙ ЦВЕТ
                             if (isSelected) {{
-                                sensorColor = 0xFFD700;
+                                sensorColor = 0xFFD700; // Золотой при клике
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033;
+                                sensorColor = 0xFF0033; // Красный ТОЛЬКО ЕСЛИ ДАННЫХ ДЕЙСТВИТЕЛЬНО НЕТ
                             }}
 
                             const sensorMat = new THREE.MeshBasicMaterial({{
@@ -946,6 +953,7 @@ with col_3d:
                         }}
                     }});
 
+                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -986,6 +994,7 @@ with col_3d:
                         }}
                     }});
 
+                    // ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -1277,7 +1286,7 @@ with col_3d:
                         
                         interactiveSensors.forEach(m => {{
                             if (m.userData.isUsable) {{
-                                const isSel = (m.userData.sensorName === sensorName);
+                                const isSel = (m.userData.sensorName === sensorName || getCanonicalSensorId(m.userData.sensorName) === getCanonicalSensorId(sensorName));
                                 m.material.color.setHex(isSel ? 0xFFD700 : 0xFFFFFF);
                             }}
                         }});
