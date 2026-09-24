@@ -538,15 +538,15 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
+                // 7-СТУПЕНЧАТАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const strainStops = [
-                    new THREE.Color("#0022FF"), // Глубокий синий
-                    new THREE.Color("#00E5FF"), // Неоновый циан
-                    new THREE.Color("#00FF44"), // Чистый зеленый
-                    new THREE.Color("#FFE600"), // Желтый
-                    new THREE.Color("#FFAA00"), // Янтарный
-                    new THREE.Color("#FF5500"), // Насыщенный оранжевый
-                    new THREE.Color("#FF0022")  // Алый красный
+                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
+                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
+                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
+                    new THREE.Color("#FFE600"), // 0.50: Желтый
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарный
+                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжевый
+                    new THREE.Color("#FF0022")  // 1.00: Алый красный
                 ];
 
                 const tempStops = [
@@ -562,10 +562,18 @@ with col_3d:
 
                 let currentStops = strainStops;
 
-                function makeCssGradient(stops) {{
-                    const reversed = [...stops].reverse();
-                    const colorHexStrings = reversed.map(c => '#' + c.getHexString());
-                    return 'linear-gradient(to bottom, ' + colorHexStrings.join(', ') + ')';
+                // ГЕНЕРАТОР ГРАДИЕНТА СТРОГО ИЗ ТОГО ЖЕ МАССИВА ЦВЕТОВ THREE.JS
+                function buildExactLegendGradient(stops) {{
+                    const n = stops.length;
+                    const items = [];
+                    for (let i = 0; i < n; i++) {{
+                        // Верх легенды — это максимум (i = n - 1), низ — минимум (i = 0)
+                        const colorObj = stops[n - 1 - i];
+                        const hex = '#' + colorObj.getHexString();
+                        const percent = ((i / (n - 1)) * 100).toFixed(1);
+                        items.push(hex + ' ' + percent + '%');
+                    }}
+                    return 'linear-gradient(to bottom, ' + items.join(', ') + ')';
                 }}
 
                 if (payload.comp === "temp") {{
@@ -579,7 +587,8 @@ with col_3d:
                     legendTitle.innerText = "Çevresel [µm/m]";
                 }}
 
-                legendBar.style.background = makeCssGradient(currentStops);
+                // Применяем полностью синхронизированный градиент
+                legendBar.style.background = buildExactLegendGradient(currentStops);
 
                 function sampleColorRamp(stops, t) {{
                     t = Math.max(0, Math.min(1, t));
@@ -656,7 +665,6 @@ with col_3d:
                     return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
                 }}
 
-                // КАНОНИЧЕСКИЙ КЛЮЧ (устраняет расхождения вроде TA-CS01-L vs TA-CS1-L)
                 function getCanonicalSensorId(name) {{
                     const m = name.match(/(T[AB])-([A-Za-z]+)0*(\d+)-([A-Za-z0-9]+)/i);
                     if (m) {{
@@ -665,7 +673,6 @@ with col_3d:
                     return name.toUpperCase();
                 }}
 
-                // БАЗА ДАННЫХ НОРМАЛИЗОВАННЫХ КЛЮЧЕЙ ИЗ ТАБЛИЦЫ
                 const normalizedDataMap = {{}};
                 for (const rawKey in payload.activeCategoryValues) {{
                     const val = payload.activeCategoryValues[rawKey];
@@ -674,18 +681,15 @@ with col_3d:
                     normalizedDataMap[getCanonicalSensorId(rawKey)] = {{ canonicalKey: rawKey, val: val }};
                 }}
 
-                // ТОЧНАЯ ПРОВЕРКА НАЛИЧИЯ ДАННЫХ ДЛЯ СЕНСОРА CS/S/TP
                 function checkSensorData(sensorId, comp) {{
                     const uId = sensorId.toUpperCase();
                     const nId = normalizeKey(sensorId);
                     const cId = getCanonicalSensorId(sensorId);
 
-                    // 1. Прямая проверка
                     if (normalizedDataMap[uId]) return {{ found: true, key: normalizedDataMap[uId].canonicalKey, val: normalizedDataMap[uId].val }};
                     if (normalizedDataMap[cId]) return {{ found: true, key: normalizedDataMap[cId].canonicalKey, val: normalizedDataMap[cId].val }};
                     if (normalizedDataMap[nId]) return {{ found: true, key: normalizedDataMap[nId].canonicalKey, val: normalizedDataMap[nId].val }};
 
-                    // 2. Для температуры: преобразование из CS/S в TP
                     if (comp === "temp" && !uId.includes("-TP")) {{
                         const tpVariant = uId.replace("-CS", "-TP").replace("-S", "-TP");
                         const cTpVariant = getCanonicalSensorId(tpVariant);
@@ -693,7 +697,6 @@ with col_3d:
                         if (normalizedDataMap[cTpVariant]) return {{ found: true, key: normalizedDataMap[cTpVariant].canonicalKey, val: normalizedDataMap[cTpVariant].val }};
                     }}
 
-                    // Данных действительно нет
                     return {{ found: false, key: sensorId, val: NaN }};
                 }}
 
@@ -835,11 +838,10 @@ with col_3d:
                         }}
                     }});
 
-                    // СТРОГОЕ РАСПРЕДЕЛЕНИЕ СЕНСОРОВ ПО КАТЕГОРИИ
                     const targetMeshes = [];
 
                     rawSensors.forEach(child => {{
-                        child.visible = false; // Скрываем базовые меши
+                        child.visible = false;
 
                         const name = child.name;
                         const uName = name.toUpperCase();
@@ -847,10 +849,8 @@ with col_3d:
 
                         let isCategory = false;
                         if (payload.comp === "hoop") {{
-                            // ДЛЯ CS БЕРЕМ ТОЛЬКО ОБЪЕКТЫ С -CS
                             if (uName.includes("-CS")) isCategory = true;
                         }} else if (payload.comp === "axial") {{
-                            // ДЛЯ S БЕРЕМ ТОЛЬКО С -S (ИСКЛЮЧАЯ -CS)
                             if (uName.includes("-S") && !uName.includes("-CS")) isCategory = true;
                         }} else if (payload.comp === "temp") {{
                             if (uName.includes("-TP")) isCategory = true;
@@ -876,7 +876,6 @@ with col_3d:
                         }});
                     }});
 
-                    // УСТРАНЕНИЕ ДУБЛИКАТОВ С ПРИОРИТЕТОМ РАБОЧИХ ДАННЫХ
                     const finalSensors = [];
                     targetMeshes.forEach(item => {{
                         let duplicate = null;
@@ -890,7 +889,6 @@ with col_3d:
                         if (!duplicate) {{
                             finalSensors.push(item);
                         }} else {{
-                            // Если в одной точке несколько мешей одного датчика, и у одного есть данные — датчик СТРОГО РАБОЧИЙ!
                             if (!duplicate.hasData && item.hasData) {{
                                 duplicate.hasData = true;
                                 duplicate.val = item.val;
@@ -900,23 +898,19 @@ with col_3d:
                         }}
                     }});
 
-                    // РЕНДЕРИНГ В НЕЗАВИСИМОМ СЛОЕ
                     finalSensors.forEach(item => {{
                         const hasData = item.hasData;
                         const sensorName = item.sensorName;
                         const val = item.val;
 
-                        // Показываем:
-                        // 1. Все рабочие сенсоры текущего типа (БЕЛЫЕ)
-                        // 2. Если включен чекбокс — нерабочие сенсоры текущего типа (КРАСНЫЕ)
                         if (hasData || payload.showNoDataRed) {{
                             const isSelected = (sensorName === payload.selectedSensor || getCanonicalSensorId(sensorName) === getCanonicalSensorId(payload.selectedSensor || ""));
 
-                            let sensorColor = 0xFFFFFF; // Если данные есть — СТРОГО БЕЛЫЙ ЦВЕТ
+                            let sensorColor = 0xFFFFFF;
                             if (isSelected) {{
-                                sensorColor = 0xFFD700; // Золотой при клике
+                                sensorColor = 0xFFD700;
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033; // Красный ТОЛЬКО ЕСЛИ ДАННЫХ ДЕЙСТВИТЕЛЬНО НЕТ
+                                sensorColor = 0xFF0033;
                             }}
 
                             const sensorMat = new THREE.MeshBasicMaterial({{
@@ -953,7 +947,6 @@ with col_3d:
                         }}
                     }});
 
-                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -994,7 +987,6 @@ with col_3d:
                         }}
                     }});
 
-                    // ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
