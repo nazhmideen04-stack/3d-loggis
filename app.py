@@ -598,7 +598,6 @@ with col_3d:
             return 'linear-gradient(to bottom, ' + items.join(', ') + ')';
         }
 
-        // Применяем градиент к полосе легенды
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
         function sampleColorRamp(stops, t) {
@@ -618,6 +617,59 @@ with col_3d:
             let t = (val - min) / ((max - min) || 1.0);
             t = Math.max(0, Math.min(1, t));
             return sampleColorRamp(currentStops, t);
+        }
+
+        // БЕЗОПАСНОЕ УДАЛЕНИЕ ВНУТРЕННИХ ДИСКОВ/ПЕРЕГОРОДОК БЕЗ ПОВРЕЖДЕНИЯ СВОДА
+        function removeCapsPreservingTunnel(geometry) {
+            if (!geometry) return geometry;
+            const nonIndexed = geometry.toNonIndexed ? geometry.toNonIndexed() : geometry.clone();
+            if (!nonIndexed.attributes.position) return geometry;
+            
+            if (!nonIndexed.attributes.normal) {
+                nonIndexed.computeVertexNormals();
+            }
+
+            const pos = nonIndexed.attributes.position;
+            const norm = nonIndexed.attributes.normal;
+            
+            const box = new THREE.Box3().setFromBufferAttribute(pos);
+            const size = box.getSize(new THREE.Vector3());
+            const isZAxis = size.z >= size.x;
+
+            const newPos = [];
+            const newNorm = [];
+
+            for (let i = 0; i < pos.count; i += 3) {
+                const p0z = isZAxis ? pos.getZ(i) : pos.getX(i);
+                const p1z = isZAxis ? pos.getZ(i+1) : pos.getX(i+1);
+                const p2z = isZAxis ? pos.getZ(i+2) : pos.getX(i+2);
+
+                // Если треугольник абсолютно плоский вдоль оси тоннеля (все точки в одной Z-плоскости)
+                const isCrossSectionFlat = (Math.abs(p0z - p1z) < 0.002 && Math.abs(p1z - p2z) < 0.002);
+
+                const nz = isZAxis 
+                    ? Math.abs((norm.getZ(i) + norm.getZ(i+1) + norm.getZ(i+2)) / 3.0)
+                    : Math.abs((norm.getX(i) + norm.getX(i+1) + norm.getX(i+2)) / 3.0);
+
+                // Если это плоский поперечный полигон и его нормаль смотрит строго вдоль оси тоннеля — это перегородка!
+                const isDiscCap = isCrossSectionFlat && (nz > 0.85);
+
+                if (!isDiscCap) {
+                    for (let k = 0; k < 3; k++) {
+                        newPos.push(pos.getX(i+k), pos.getY(i+k), pos.getZ(i+k));
+                        newNorm.push(norm.getX(i+k), norm.getY(i+k), norm.getZ(i+k));
+                    }
+                }
+            }
+
+            if (newPos.length > 0 && newPos.length < pos.count * 3) {
+                const cleanGeom = new THREE.BufferGeometry();
+                cleanGeom.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+                cleanGeom.setAttribute('normal', new THREE.Float32BufferAttribute(newNorm, 3));
+                return cleanGeom;
+            }
+
+            return nonIndexed;
         }
 
         const scene = new THREE.Scene();
@@ -838,6 +890,8 @@ with col_3d:
                         );
 
                         if (isTunnel) {
+                            // Очищаем свод тоннеля от внутренних поперечных заглушек
+                            child.geometry = removeCapsPreservingTunnel(child.geometry);
                             tunnelMeshes.push(child);
                         } else {
                             child.material = new THREE.MeshStandardMaterial({
@@ -918,7 +972,6 @@ with col_3d:
                 const val = item.val;
 
                 if (hasData || payload.showNoDataRed) {
-                    // Строгое поштучное выделение одного датчика
                     const isSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && sensorName === payload.selectedSensor);
 
                     let sensorColor = 0xFFFFFF; // Белый по умолчанию
