@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
+# Фирменная тема Streamlit
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -422,7 +422,7 @@ with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
     if not model_b64:
-        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile একই klasöre yükleyiniz.")
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
     else:
         payload_data = {
             "activeCategoryValues": active_category_values,
@@ -978,13 +978,8 @@ with col_3d:
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
                     
-                    // =========================================================================
-                    // РАСШИРЕНИЕ ТОЛЬКО В ШИРИНУ И В ТОЛЩИНУ (БЕЗ РАЗДУВАНИЯ ПО ДЛИНЕ ТРАССЫ)
-                    // =========================================================================
-                    detachedMesh.scale.copy(wScale);
-                    detachedMesh.scale.x *= 2.2; // Ширина по дуге свода тоннеля
-                    detachedMesh.scale.y *= 1.1; // Длина вдоль оси тоннеля (аккуратная)
-                    detachedMesh.scale.z *= 4.5; // Толщина и заметный рельефный вылет от стены
+                    // ИСХОДНАЯ ФОРМА + ЛЁГКОЕ АККУРАТНОЕ УТОЛЩЕНИЕ (+25%) БЕЗ ДЕФОРМАЦИЙ
+                    detachedMesh.scale.copy(wScale).multiplyScalar(1.25);
 
                     detachedMesh.userData.sensorName = sensorName;
                     detachedMesh.userData.val = hasData ? val : NaN;
