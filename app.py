@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
+# 1. Фирменная тема Streamlit
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -23,14 +23,14 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
     with open(config_path, "w", encoding="utf-8") as f:
         f.write(target_config)
 
-st.set_page_config(page_title="CATERİNG - THY", layout="wide")
+st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH (все паразитные фильтры hue-rotate удалены)
+# 2. Адаптивный мобильный CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -78,7 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* РАДИОКНОПКИ: ЧИСТЫЙ СИНИЙ БЕЗ ЦВЕТОВЫХ СДВИГОВ */
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -88,13 +88,13 @@ st.markdown("""
 
     div[data-testid="stRadio"] div[role="radiogroup"] label p {
         font-family: 'Chakra Petch', sans-serif !important;
-        font-size: 19px !important;
+        font-size: 17px !important;
         color: #E6F0FA !important;
         font-weight: 600 !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
-        transform: scale(1.2) !important;
+        transform: scale(1.15) !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child div {
@@ -102,7 +102,7 @@ st.markdown("""
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] > label {
-        margin-bottom: 14px !important;
+        margin-bottom: 12px !important;
         cursor: pointer !important;
         display: flex !important;
         align-items: center !important;
@@ -114,7 +114,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* СЛАЙДЕР И ЧЕКБОКСЫ: ЧИСТЫЙ СИНИЙ */
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -137,12 +137,12 @@ st.markdown("""
 
     .destech-badge {
         font-family: 'Syne', sans-serif;
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 800;
         letter-spacing: 2px;
         background: #00C8E6;
         color: #000000;
-        padding: 6px 18px;
+        padding: 5px 14px;
         border-radius: 6px;
         display: inline-block;
     }
@@ -155,7 +155,8 @@ st.markdown("""
         font-weight: 700 !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
-        padding: 9px 20px !important;
+        padding: 8px 18px !important;
+        width: 100% !important;
         transition: background-color 0.2s ease, border-color 0.2s ease !important;
     }
 
@@ -163,6 +164,38 @@ st.markdown("""
         background-color: #132E4C !important;
         border-color: #00C8E6 !important;
         color: #FFFFFF !important;
+    }
+
+    /* =========================================================================
+       МОБИЛЬНАЯ АДАПТАЦИЯ (ЭКРАНЫ МЕНЬШЕ 768px)
+       ========================================================================= */
+    @media (max-width: 768px) {
+        /* Перестраиваем колонки в вертикальный стек */
+        [data-testid="stHorizontalBlock"] {
+            flex-direction: column-reverse !important;
+            gap: 16px !important;
+        }
+
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+
+        /* Заголовок на мобильных */
+        h1 {
+            font-size: 24px !important;
+        }
+        
+        .header-container {
+            margin-top: -10px !important;
+            margin-bottom: 12px !important;
+        }
+
+        /* Уменьшаем отступы между блоками */
+        .stSlider, .stCheckbox, .stRadio {
+            margin-bottom: 10px !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -172,13 +205,13 @@ if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         LOGO_B64 = base64.b64encode(f.read()).decode()
 
-LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 200px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
+LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 140px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
 
 st.markdown(f"""
-<div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
+<div class="header-container" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 32px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 28px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 12px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -399,13 +432,13 @@ with col_nav:
 
     st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 16px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 20px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
     
     st.write("**Skala Limitleri (Gerçek Min / Maks):**")
-    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]:+.1f} | Maks: {clim[1]:+.1f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.1f} | Maks: {clim[1]:+.1f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
@@ -417,7 +450,7 @@ with col_nav:
             value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
         )
 
-# --- 3B THREE.JS ОБЛАСТЬ ---
+# --- 3B THREE.JS ОБЛАСТЬ (АДАПТИВНАЯ ПОД МОБИЛЬНЫЕ) ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -440,13 +473,19 @@ with col_3d:
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
         body {
             margin: 0;
             padding: 0;
             overflow: hidden;
             background-color: #0A0E17;
             font-family: 'Chakra Petch', sans-serif;
+            touch-action: none; /* Предотвращает дергание страницы при вращении модели */
         }
         #canvas-container {
             width: 100vw;
@@ -459,39 +498,43 @@ with col_3d:
             background: rgba(14, 24, 42, 0.95);
             border: 1px solid #00C8E6;
             color: #FFFFFF;
-            padding: 8px 14px;
+            padding: 6px 12px;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             pointer-events: none;
             z-index: 100;
-            box-shadow: 0 6px 18px rgba(0, 200, 230, 0.35);
+            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.35);
         }
         #selected-hud {
             position: absolute;
-            top: 24px;
-            left: 24px;
+            top: 14px;
+            left: 14px;
             display: none;
             background: rgba(10, 14, 23, 0.92);
             border: 1px solid #00C8E6;
-            padding: 12px 18px;
+            padding: 8px 14px;
             border-radius: 8px;
             z-index: 95;
-            box-shadow: 0 4px 20px rgba(0, 200, 230, 0.3);
+            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3);
+            max-width: 220px;
         }
         #selected-hud .hud-title {
-            font-size: 12px;
+            font-size: 11px;
             color: #8397AD;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.8px;
         }
         #selected-hud .hud-name {
-            font-size: 18px;
+            font-size: 15px;
             color: #FFFFFF;
             font-weight: 700;
-            margin: 2px 0 6px 0;
+            margin: 1px 0 3px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         #selected-hud .hud-val {
-            font-size: 22px;
+            font-size: 18px;
             color: #00E5FF;
             font-weight: 700;
         }
@@ -501,51 +544,85 @@ with col_3d:
             left: 50%;
             transform: translate(-50%, -50%);
             color: #00C8E6;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
             letter-spacing: 1px;
+            text-align: center;
+            width: 80%;
         }
         #color-legend {
             position: absolute;
-            top: 24px;
-            right: 28px;
+            top: 14px;
+            right: 14px;
             display: flex;
             flex-direction: column;
             align-items: center;
             background: rgba(10, 14, 23, 0.92);
-            padding: 14px 16px;
+            padding: 10px 12px;
             border: 1px solid rgba(0, 200, 230, 0.55);
-            box-shadow: 0 0 18px rgba(0, 200, 230, 0.25);
+            box-shadow: 0 0 16px rgba(0, 200, 230, 0.25);
             border-radius: 6px;
             z-index: 90;
             user-select: none;
         }
         #legend-title {
             color: #00E5FF;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 700;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             text-transform: none !important;
             letter-spacing: 0.5px;
         }
         .legend-bar-container {
             display: flex;
             align-items: stretch;
-            height: 240px;
+            height: 180px;
         }
         #legend-bar {
-            width: 20px;
+            width: 16px;
             border-radius: 4px;
             border: 1px solid rgba(255, 255, 255, 0.35);
-            margin-right: 10px;
+            margin-right: 8px;
         }
         .legend-labels {
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             color: #FFFFFF;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 700;
+        }
+
+        /* Оптимизация плашек под мобильные экраны */
+        @media (max-width: 600px) {
+            #color-legend {
+                padding: 6px 8px;
+                top: 10px;
+                right: 10px;
+            }
+            .legend-bar-container {
+                height: 130px;
+            }
+            #legend-bar {
+                width: 12px;
+            }
+            #legend-title {
+                font-size: 10px;
+            }
+            .legend-labels {
+                font-size: 9px;
+            }
+            #selected-hud {
+                top: 10px;
+                left: 10px;
+                padding: 6px 10px;
+            }
+            #selected-hud .hud-name {
+                font-size: 13px;
+            }
+            #selected-hud .hud-val {
+                font-size: 15px;
+            }
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -678,7 +755,7 @@ with col_3d:
 
         const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.autoClear = false;
@@ -689,6 +766,10 @@ with col_3d:
         controls.dampingFactor = 0.05;
         controls.minDistance = 0.5;
         controls.maxDistance = 2500;
+        controls.touches = {
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_PAN
+        };
 
         controls.addEventListener('change', () => {
             const camState = {
@@ -713,8 +794,8 @@ with col_3d:
         const tunnelMeshes = [];
         
         const raycaster = new THREE.Raycaster();
-        raycaster.params.Line = { threshold: 1.0 };
-        raycaster.params.Points = { threshold: 1.0 };
+        raycaster.params.Line = { threshold: 1.5 };
+        raycaster.params.Points = { threshold: 1.5 };
         
         const mouse = new THREE.Vector2();
 
@@ -977,7 +1058,9 @@ with col_3d:
                     const detachedMesh = new THREE.Mesh(item.mesh.geometry.clone(), sensorMat);
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
-                    detachedMesh.scale.copy(wScale);
+                    
+                    // Лёгкое аккуратное утолщение маркеров (+25%)
+                    detachedMesh.scale.copy(wScale).multiplyScalar(1.25);
 
                     detachedMesh.userData.sensorName = sensorName;
                     detachedMesh.userData.val = hasData ? val : NaN;
@@ -1318,8 +1401,11 @@ with col_3d:
 
         function getIntersectedSensor(e) {
             const rect = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : (e.changedTouches ? e.changedTouches[0].clientX : 0));
+            const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches ? e.changedTouches[0].clientY : 0));
+
+            mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(interactiveSensors, true);
@@ -1334,25 +1420,44 @@ with col_3d:
             return null;
         }
 
+        function handleSensorSelection(sensorMesh) {
+            if (!sensorMesh) return;
+            const sensorName = sensorMesh.userData.sensorName;
+            const sensorVal = sensorMesh.userData.val;
+            const isUsable = sensorMesh.userData.isUsable;
+            
+            interactiveSensors.forEach(m => {
+                if (m === sensorMesh) {
+                    m.material.color.setHex(0xFFD700);
+                } else if (m.userData.isUsable) {
+                    m.material.color.setHex(0xFFFFFF);
+                } else {
+                    m.material.color.setHex(0xFF0033);
+                }
+            });
+
+            flyCameraTo(sensorMesh, true);
+            updateHud(sensorName, sensorVal, isUsable);
+        }
+
+        // Поддержка и клика мыши, и тач-нажатия на смартфонах
         window.addEventListener('click', function(e) {
             const sensorMesh = getIntersectedSensor(e);
-            if (sensorMesh) {
-                const sensorName = sensorMesh.userData.sensorName;
-                const sensorVal = sensorMesh.userData.val;
-                const isUsable = sensorMesh.userData.isUsable;
-                
-                interactiveSensors.forEach(m => {
-                    if (m === sensorMesh) {
-                        m.material.color.setHex(0xFFD700);
-                    } else if (m.userData.isUsable) {
-                        m.material.color.setHex(0xFFFFFF);
-                    } else {
-                        m.material.color.setHex(0xFF0033);
-                    }
-                });
+            if (sensorMesh) handleSensorSelection(sensorMesh);
+        });
 
-                flyCameraTo(sensorMesh, true);
-                updateHud(sensorName, sensorVal, isUsable);
+        let touchStartTime = 0;
+        window.addEventListener('touchstart', function() {
+            touchStartTime = Date.now();
+        }, { passive: true });
+
+        window.addEventListener('touchend', function(e) {
+            // Если это был короткий тап, а не долгое вращение модели
+            if (Date.now() - touchStartTime < 250) {
+                const sensorMesh = getIntersectedSensor(e);
+                if (sensorMesh) {
+                    handleSensorSelection(sensorMesh);
+                }
             }
         });
 
@@ -1405,4 +1510,6 @@ with col_3d:
 </html>"""
 
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
-        st.components.v1.html(final_html, height=760, scrolling=False)
+        
+        # На мобильных отводится 520px для комфортного скролла, на ПК - 760px
+        st.components.v1.html(final_html, height=620, scrolling=False)
