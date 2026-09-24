@@ -95,6 +95,29 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
+    /* ПЕРЕКРАШИВАНИЕ СЛАЙДЕРА В ФИРМЕННЫЙ СИНИЙ/ЦИАН */
+    div[data-baseweb="slider"] div[role="slider"] {
+        background-color: #00C8E6 !important;
+        border-color: #00C8E6 !important;
+        box-shadow: 0 0 12px rgba(0, 200, 230, 0.6) !important;
+    }
+    div[data-baseweb="slider"] > div > div:first-child > div {
+        background: #00C8E6 !important;
+    }
+
+    /* ПЕРЕКРАШИВАНИЕ ЧЕКБОКСОВ В ФИРМЕННЫЙ СИНИЙ/ЦИАН */
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] span:first-child {
+        border-color: #00C8E6 !important;
+    }
+    div[data-testid="stCheckbox"] label input:checked ~ span[data-baseweb="checkbox"] {
+        background-color: #00C8E6 !important;
+        border-color: #00C8E6 !important;
+        box-shadow: 0 0 8px rgba(0, 200, 230, 0.4) !important;
+    }
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] svg {
+        fill: #0A0E17 !important;
+    }
+
     .destech-badge {
         font-family: 'Syne', sans-serif;
         font-size: 16px;
@@ -355,7 +378,7 @@ with col_nav:
     st.subheader("GÖRÜNÜM AYARLARI")
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
-    show_no_data_red = st.checkbox("Verisi Olmayan Sensörleri Göster", value=False)
+    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster (Parlak Kırmızı)", value=False)
 
     st.markdown("---")
     st.write("**En Son Veri Zamanı:**")
@@ -547,7 +570,7 @@ with col_3d:
         const legendBar = document.getElementById('legend-bar');
         const legendTitle = document.getElementById('legend-title');
         const lblMax = document.getElementById('lbl-max');
-        const lblMid = document.getElementById('lbl-mid');
+        const lblMid = document.getElementById('lbl-min');
         const lblMin = document.getElementById('lbl-min');
 
         const selectedHud = document.getElementById('selected-hud');
@@ -722,20 +745,18 @@ with col_3d:
             return { found: false, key: sensorId, val: NaN };
         }
 
-        // ШРИФТ И РАЗМЕР СПРАЙТА УВЕЛИЧЕНЫ РОВНО В 4 РАЗА
         function createPortalMarker(text) {
             const canvas = document.createElement('canvas');
-            canvas.width = 2048; // Увеличенное разрешение холста в 4 раза
+            canvas.width = 2048;
             canvas.height = 1024;
             const ctx = canvas.getContext('2d');
 
             ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
             ctx.strokeStyle = '#00C8E6';
-            ctx.lineWidth = 56; // 14 * 4
+            ctx.lineWidth = 56;
             ctx.strokeRect(40, 40, 1968, 944);
             ctx.fillRect(40, 40, 1968, 944);
 
-            // 135px * 4 = 540px
             ctx.font = '900 540px Syne, Chakra Petch, sans-serif';
             ctx.fillStyle = '#00E5FF';
             ctx.shadowColor = '#00C8E6';
@@ -747,7 +768,6 @@ with col_3d:
             const texture = new THREE.CanvasTexture(canvas);
             const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
             const sprite = new THREE.Sprite(mat);
-            // Масштаб увеличен в 4 раза: 6.0 * 4 = 24.0, 3.0 * 4 = 12.0
             sprite.scale.set(24.0, 12.0, 1);
             return sprite;
         }
@@ -841,7 +861,6 @@ with col_3d:
                 }
             });
 
-            // 1. СТРОГИЙ ОТБОР СЕНСОРОВ ПО КАТЕГОРИИ
             const targetMeshes = [];
 
             rawSensors.forEach(child => {
@@ -880,7 +899,6 @@ with col_3d:
                 });
             });
 
-            // 2. ДЕДУПЛИКАЦИЯ
             const finalSensors = [];
             targetMeshes.forEach(item => {
                 let duplicate = null;
@@ -903,7 +921,6 @@ with col_3d:
                 }
             });
 
-            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (СТРОГО ОДИН ВЫБРАННЫЙ СЕНСОР)
             let alreadyHighlightedOne = false;
 
             finalSensors.forEach(item => {
@@ -919,11 +936,11 @@ with col_3d:
                         alreadyHighlightedOne = true;
                     }
 
-                    let sensorColor = 0xFFFFFF; // Белый по умолчанию
+                    let sensorColor = 0xFFFFFF;
                     if (isSelected) {
-                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для одного выбранного
+                        sensorColor = 0xFFD700;
                     } else if (!hasData) {
-                        sensorColor = 0xFF0033; // Красный при отсутствии данных
+                        sensorColor = 0xFF0033;
                     }
 
                     const sensorMat = new THREE.MeshBasicMaterial({
@@ -960,7 +977,6 @@ with col_3d:
                 }
             });
 
-            // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
             const validVals = interactiveSensors
                 .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                 .map(s => s.userData.val);
@@ -1003,7 +1019,6 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
-            // ИНТЕРПОЛЯЦИЯ И АЛЬТЕРНАТИВНОЕ РЕШЕНИЕ: ПРЯМАЯ ПРОЗРАЧНОСТЬ И ЧИСТЫЙ СВОД
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -1116,11 +1131,9 @@ with col_3d:
 
             const portalsGroup = new THREE.Group();
 
-            // ПОЗИЦИОНИРОВАНИЕ УВЕЛИЧЕННЫХ ПОРТАЛОВ
             if (hasTA) {
                 const cA = boxTA.getCenter(new THREE.Vector3());
                 const spriteTA = createPortalMarker("TA");
-                // Поднят выше с учетом увеличенного размера (24x12)
                 spriteTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0);
                 portalsGroup.add(spriteTA);
             }
@@ -1197,7 +1210,6 @@ with col_3d:
                 }
             }
 
-            // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
             const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1240,7 +1252,6 @@ with col_3d:
             console.error(err);
         });
 
-        // ПЛАШКА ВЫБРАННОГО ДАТЧИКА: И ДЛЯ РАБОЧИХ, И ДЛЯ НЕРАБОЧИХ
         function updateHud(name, val, isUsable) {
             selectedHud.style.display = 'block';
             hudName.innerText = name;
@@ -1306,7 +1317,6 @@ with col_3d:
             return null;
         }
 
-        // ВЫДЕЛЕНИЕ СТРОГО ОДНОГО СЕНСОРА ПРИ КЛИКЕ
         window.addEventListener('click', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) {
@@ -1316,11 +1326,11 @@ with col_3d:
                 
                 interactiveSensors.forEach(m => {
                     if (m === sensorMesh) {
-                        m.material.color.setHex(0xFFD700); // Только он окрасится в желтый
+                        m.material.color.setHex(0xFFD700);
                     } else if (m.userData.isUsable) {
-                        m.material.color.setHex(0xFFFFFF); // Все остальные рабочие - белые
+                        m.material.color.setHex(0xFFFFFF);
                     } else {
-                        m.material.color.setHex(0xFF0033); // Нерабочие - красные
+                        m.material.color.setHex(0xFF0033);
                     }
                 });
 
@@ -1361,7 +1371,6 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
-        // ДВУХПРОХОДНЫЙ РЕНДЕР
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
