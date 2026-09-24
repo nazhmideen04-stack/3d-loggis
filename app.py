@@ -288,10 +288,6 @@ def get_model_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# --- СЧИТЫВАНИЕ URL ПАРАМЕТРА ПРИ КЛИКЕ ИЗ 3D ---
-query_params = st.query_params
-selected_sensor_from_url = query_params.get("sensor", "Seçiniz...")
-
 col_nav, col_3d = st.columns([1, 4])
 
 with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
@@ -325,7 +321,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Расчет границ шкалы строго по реальным экстремумам
+# Расчет диапазона строго по фактическим минимумам и максимумам
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -356,31 +352,19 @@ with col_nav:
 
     st.markdown("---")
     
-    # Синхронизированный выбор сенсора
+    # Выпадающий список для ручного выбора
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
-    default_idx = 0
-    if selected_sensor_from_url in sensor_options:
-        default_idx = sensor_options.index(selected_sensor_from_url)
 
     selected_sensor = st.selectbox(
         "Sensör Değerini İncele:",
         options=sensor_options,
-        index=default_idx,
         key="sensor_selector_box"
     )
 
-    # При ручном изменении в выпадающем списке обновляем query params
-    if selected_sensor != "Seçiniz..." and selected_sensor != selected_sensor_from_url:
-        st.query_params["sensor"] = selected_sensor
-        st.rerun()
-    elif selected_sensor == "Seçiniz..." and "sensor" in st.query_params:
-        del st.query_params["sensor"]
-        st.rerun()
-
-    # ПОКАЗ ЗНАЧЕНИЯ ВЫБРАННОГО ДАТЧИКА В ЛЕВОЙ КОЛОНКЕ
+    # Отображение значения в левой панели
     if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
         st.metric(
-            label=f"Seçilen: {selected_sensor}",
+            label=f"Seçilen Sensör: {selected_sensor}",
             value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
         )
 
@@ -433,6 +417,35 @@ with col_3d:
                     pointer-events: none;
                     z-index: 100;
                     box-shadow: 0 6px 18px rgba(0, 200, 230, 0.35);
+                }}
+                #selected-hud {{
+                    position: absolute;
+                    top: 24px;
+                    left: 24px;
+                    display: none;
+                    background: rgba(10, 14, 23, 0.92);
+                    border: 1px solid #00C8E6;
+                    padding: 12px 18px;
+                    border-radius: 8px;
+                    z-index: 95;
+                    box-shadow: 0 4px 20px rgba(0, 200, 230, 0.3);
+                }}
+                #selected-hud .hud-title {{
+                    font-size: 12px;
+                    color: #8397AD;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }}
+                #selected-hud .hud-name {{
+                    font-size: 18px;
+                    color: #FFFFFF;
+                    font-weight: 700;
+                    margin: 2px 0 6px 0;
+                }}
+                #selected-hud .hud-val {{
+                    font-size: 22px;
+                    color: #00E5FF;
+                    font-weight: 700;
                 }}
                 #loader {{
                     position: absolute;
@@ -497,6 +510,12 @@ with col_3d:
                 <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
                 <div id="sensor-tooltip"></div>
                 
+                <div id="selected-hud">
+                    <div class="hud-title">Seçilen Sensör</div>
+                    <div id="hud-sensor-name" class="hud-name">--</div>
+                    <div id="hud-sensor-val" class="hud-val">--</div>
+                </div>
+
                 <div id="color-legend">
                     <div id="legend-title"></div>
                     <div class="legend-bar-container">
@@ -522,6 +541,10 @@ with col_3d:
                 const lblMax = document.getElementById('lbl-max');
                 const lblMid = document.getElementById('lbl-mid');
                 const lblMin = document.getElementById('lbl-min');
+
+                const selectedHud = document.getElementById('selected-hud');
+                const hudName = document.getElementById('hud-sensor-name');
+                const hudVal = document.getElementById('hud-sensor-val');
 
                 // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
@@ -596,7 +619,6 @@ with col_3d:
                 const interactiveSensors = [];
                 const tunnelMeshes = [];
                 
-                // РАСШИРЕННЫЙ ЛУЧ RAYCASTER ДЛЯ БЕЗОШИБОЧНОГО ЗАХВАТА КЛИКА
                 const raycaster = new THREE.Raycaster();
                 raycaster.params.Line = {{ threshold: 0.8 }};
                 raycaster.params.Points = {{ threshold: 0.8 }};
@@ -788,7 +810,7 @@ with col_3d:
                         }}
                     }});
 
-                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА СТРОГО ПО СЕНСОРАМ
+                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -814,11 +836,12 @@ with col_3d:
                     lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
                     lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
 
-                    // СВЕТЛЫЕ НЕЙТРАЛЬНЫЕ ДАТЧИКИ (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
+                    // НЕЙТРАЛЬНЫЙ БЕЛЫЙ ЦВЕТ ДАТЧИКОВ (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
                     interactiveSensors.forEach(child => {{
                         if (child.userData.isUsable) {{
                             const sensorId = child.userData.sensorName;
                             const isSelected = (sensorId === payload.selectedSensor);
+                            
                             const sensorColor = isSelected ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
 
                             child.material = new THREE.MeshStandardMaterial({{
@@ -834,6 +857,7 @@ with col_3d:
 
                             if (isSelected) {{
                                 selectedMeshRef = child;
+                                updateHud(sensorId, child.userData.val);
                             }}
                         }}
                     }});
@@ -855,7 +879,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ВЫРАЗИТЕЛЬНАЯ ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ
+                    // ШИРОКАЯ И ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ
                     const R_INFLUENCE = 45.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -1077,6 +1101,15 @@ with col_3d:
                     console.error(err);
                 }});
 
+                function updateHud(name, val) {{
+                    if (val !== undefined && !isNaN(val)) {{
+                        selectedHud.style.display = 'block';
+                        hudName.innerText = name;
+                        const valTxt = (val > 0 ? "+" + val.toFixed(2) : val.toFixed(2)) + " " + payload.unit;
+                        hudVal.innerText = valTxt;
+                    }}
+                }}
+
                 function flyCameraTo(targetMesh, animate = true) {{
                     const targetPos = new THREE.Vector3();
                     targetMesh.getWorldPosition(targetPos);
@@ -1112,7 +1145,6 @@ with col_3d:
                         .start();
                 }}
 
-                // НАДЕЖНЫЙ КЛИК ПО ДАТЧИКУ И МГНОВЕННАЯ ПЕРЕДАЧА ВЫБОРА В СИСТЕМУ
                 function getIntersectedSensor(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1131,12 +1163,13 @@ with col_3d:
                     return null;
                 }}
 
+                // КЛИК В 3D: МГНОВЕННОЕ ВЫДЕЛЕНИЕ, ПОКАЗ В КАРТОЧКЕ И ПОДЛЕТ
                 window.addEventListener('click', function(e) {{
                     const sensorMesh = getIntersectedSensor(e);
                     if (sensorMesh) {{
                         const sensorName = sensorMesh.userData.sensorName;
+                        const sensorVal = sensorMesh.userData.val;
                         
-                        // Мгновенная подсветка золотым
                         interactiveSensors.forEach(m => {{
                             if (m.userData.isUsable) {{
                                 const isSel = (m.userData.sensorName === sensorName);
@@ -1148,17 +1181,7 @@ with col_3d:
                         }});
 
                         flyCameraTo(sensorMesh, true);
-                        
-                        // ПРЯМАЯ ПЕРЕДАЧА В СТРОКУ URL ДЛЯ ОБНОВЛЕНИЯ STREAMLIT
-                        try {{
-                            const pUrl = new URL(window.parent.location.href);
-                            if (pUrl.searchParams.get('sensor') !== sensorName) {{
-                                pUrl.searchParams.set('sensor', sensorName);
-                                window.parent.location.href = pUrl.toString();
-                            }}
-                        }} catch(err) {{
-                            console.error('Ошибка синхронизации:', err);
-                        }}
+                        updateHud(sensorName, sensorVal);
                     }}
                 }});
 
