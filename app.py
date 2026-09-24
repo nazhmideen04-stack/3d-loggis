@@ -440,7 +440,6 @@ with col_nav:
 
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
-    # --- ВЕРХНЯЯ ПАНЕЛЬ ВЫБОРА ДАТЧИКА ПРЯМО НАД 3D СЦЕНОЙ ---
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
     
     sel_col1, sel_col2 = st.columns([3, 1])
@@ -698,15 +697,14 @@ with col_3d:
             new THREE.Color("#BD0026")
         ];
 
-        // ВЫРАЗИТЕЛЬНАЯ ТЕПЛОВИЗИОННАЯ ПАЛИТРА
+        // ВЫРАЗИТЕЛЬНАЯ ТЕПЛОВАЯ ПАЛИТРА
         const tempStops = [
-            new THREE.Color("#001144"),
-            new THREE.Color("#0077FF"),
-            new THREE.Color("#00E5FF"),
-            new THREE.Color("#00FF66"),
-            new THREE.Color("#FFDD00"),
-            new THREE.Color("#FF5500"),
-            new THREE.Color("#FF0022")
+            new THREE.Color("#0022FF"), // Насыщенный синий (холод)
+            new THREE.Color("#00C8E6"), // Фирменный циан
+            new THREE.Color("#00FF44"), // Чистый зеленый (норма)
+            new THREE.Color("#FFE600"), // Желтый
+            new THREE.Color("#FF5500"), // Оранжевый
+            new THREE.Color("#FF0022")  // Ярко-красный (нагрев)
         ];
 
         let currentStops = hoopStops;
@@ -735,22 +733,19 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
-        // ПЕРЦЕПТИВНО ЧИСТАЯ ИНТЕРПОЛЯЦИЯ В HSL С ПЛАВНЫМ ПЕРЕХОДОМ
         function sampleColorRamp(stops, t) {
             t = Math.max(0, Math.min(1, t));
             const scaled = t * (stops.length - 1);
             const idx = Math.floor(scaled);
             const fract = scaled - idx;
             if (idx >= stops.length - 1) return stops[stops.length - 1].clone();
-            
-            const smoothT = fract * fract * (3 - 2 * fract);
             const c = new THREE.Color();
-            c.lerpHSL(stops[idx], stops[idx + 1], smoothT);
+            c.lerpColors(stops[idx], stops[idx + 1], fract);
             return c;
         }
 
         function getColorForValue(val, clim) {
-            if (val === undefined || isNaN(val)) return new THREE.Color(0x334455);
+            if (val === undefined || isNaN(val)) return new THREE.Color(0x141E2D);
             const min = clim[0], max = clim[1];
             let t = (val - min) / ((max - min) || 1.0);
             t = Math.max(0, Math.min(1, t));
@@ -1118,9 +1113,9 @@ with col_3d:
             });
 
             // =========================================================================
-            // ТОЧНАЯ И ВЫРАЗИТЕЛЬНАЯ ИНТЕРПОЛЯЦИЯ НА СВОДЕ ТОННЕЛЯ
+            // НАДЕЖНАЯ И КОНТРАСТНАЯ ИНТЕРПОЛЯЦИЯ (ЦВЕТА ГАРАНТИРОВАННО ОТОБРАЖАЮТСЯ)
             // =========================================================================
-            const R_INFLUENCE = 18.0; // Сфокусированный радиус влияния
+            const R_INFLUENCE = 45.0; // Рабочий радиус, гарантирующий сплошное покрытие тоннеля
 
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
@@ -1143,7 +1138,7 @@ with col_3d:
                 if (pool.length === 0) {
                     for (let i = 0; i < posAttr.count; i++) {
                         const idx = i * 3;
-                        colors[idx] = 0.05; colors[idx + 1] = 0.08; colors[idx + 2] = 0.12;
+                        colors[idx] = 0.08; colors[idx + 1] = 0.11; colors[idx + 2] = 0.16;
                     }
                 } else {
                     for (let i = 0; i < posAttr.count; i++) {
@@ -1151,31 +1146,35 @@ with col_3d:
                         worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
 
                         let totalWeight = 0;
-                        let accumVal = 0;
+                        let accumR = 0, accumG = 0, accumB = 0;
 
                         for (let j = 0; j < pool.length; j++) {
                             const s = pool[j];
                             const d = worldV.distanceTo(s.pos);
                             
                             if (d < R_INFLUENCE) {
-                                // Косинусно-сглаженная весовая функция для четких изотерм
-                                const w = 0.5 * (1.0 + Math.cos(Math.PI * (d / R_INFLUENCE))) / (d + 0.1);
-                                accumVal += s.val * w;
+                                // Параболический весовой фильтр: четкий контраст у датчиков и плавный градиент между ними
+                                const normD = d / R_INFLUENCE;
+                                const w = Math.pow(1.0 - normD, 2.0) / (Math.pow(d, 1.2) + 0.2);
+
+                                const c = getColorForValue(s.val, dynamicClim);
+                                accumR += c.r * w;
+                                accumG += c.g * w;
+                                accumB += c.b * w;
                                 totalWeight += w;
                             }
                         }
 
                         const idx = i * 3;
-                        if (totalWeight > 0.00001) {
-                            const finalSensorVal = accumVal / totalWeight;
-                            const c = getColorForValue(finalSensorVal, dynamicClim);
-                            colors[idx] = c.r;
-                            colors[idx + 1] = c.g;
-                            colors[idx + 2] = c.b;
+                        if (totalWeight > 0.000001) {
+                            colors[idx] = accumR / totalWeight;
+                            colors[idx + 1] = accumG / totalWeight;
+                            colors[idx + 2] = accumB / totalWeight;
                         } else {
-                            colors[idx] = 0.05;
-                            colors[idx + 1] = 0.08;
-                            colors[idx + 2] = 0.12;
+                            // Если точка дальше R_INFLUENCE, окрашиваем в ближайший базовый цвет
+                            colors[idx] = 0.08;
+                            colors[idx + 1] = 0.11;
+                            colors[idx + 2] = 0.16;
                         }
                     }
                 }
