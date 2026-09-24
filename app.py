@@ -4,7 +4,6 @@ import sys
 import json
 import base64
 import subprocess
-import csv
 from datetime import datetime
 import numpy as np
 import streamlit as st
@@ -31,6 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
+# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -78,6 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -113,6 +114,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -177,7 +179,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ (CSV INTEGRATION)</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & TAM CSV VERİTABANI</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -204,22 +206,19 @@ def ensure_playwright_installed():
     except Exception:
         pass
 
-@st.cache_data(ttl=300)
-def fetch_data_via_csv(target_date_str=None):
+@st.cache_data(ttl=1800)
+def fetch_full_csv_database():
     """
-    ПОЛНОСТЬЮ НА ОСНОВЕ ТВОЕГО КОДА PLAYWRIGHT:
-    Использует скачивание CSV для точного получения всех колонок (100% данных).
+    Полностью считывает базу LoggIS: заходит -> выбирает ALL -> скачивает CSV для каждой категории.
+    Сохраняет 100% данных и формирует точный список дат.
     """
-    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
-    available_dates = []
+    historical_db = {k: {} for k in CATEGORIES}
+    dates_set = set()
 
     with sync_playwright() as p:
         browser_args = [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--window-size=1920,1080",
+            "--no-sandbox", "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
@@ -227,124 +226,104 @@ def fetch_data_via_csv(target_date_str=None):
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
 
-        # accept_downloads=True - критически важно для облака!
+        # accept_downloads ОБЯЗАТЕЛЕН для загрузки файлов!
         context = browser.new_context(
             accept_downloads=True,
             viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul",
-            locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            timezone_id="Europe/Istanbul", locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
+            page.wait_for_timeout(4000)
 
-            # --- ТВОЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ИЗ СКРИПТА ---
+            # 1. Открываем Types
             try:
                 page.get_by_text("Types").click(timeout=8000)
-            except Exception:
-                pass
+            except: pass
             page.wait_for_timeout(1000)
 
-            try:
-                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
-            except Exception:
-                pass
-            page.wait_for_timeout(800)
-
+            # 2. Выбираем ALL для подгрузки всей истории
             try:
                 page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
-            except Exception:
-                pass
-            page.wait_for_timeout(1500)
+            except: pass
+            page.wait_for_timeout(2000)
 
-            # Собираем исторические даты для интерфейса
-            try:
-                date_combo = page.get_by_role("combobox").nth(1)
-                opts = date_combo.locator("option").all_inner_texts()
-                available_dates = [o.strip() for o in opts if o.strip() and o.strip() != "TABLE_ROW_DATE"]
-            except Exception:
-                pass
-
-            # Если пользователь выбрал историческую дату, переключаем на нее
-            if target_date_str and target_date_str != "En Son (Güncel)":
-                try:
-                    page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
-                except Exception:
-                    try:
-                        page.get_by_role("combobox").nth(1).select_option(target_date_str, timeout=3000)
-                    except Exception:
-                        pass
-                page.wait_for_timeout(1500)
-
+            # 3. Скачиваем CSV для каждой категории
             for cat_key, cat_cfg in CATEGORIES.items():
                 try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
-                except Exception:
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
+                except:
                     try:
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
-                    except Exception:
-                        pass
-                page.wait_for_timeout(3000)
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
+                    except: pass
+                
+                # Ждем 4 секунды, чтобы таблица и кнопка CSV успели появиться после смены категории!
+                page.wait_for_timeout(4000)
 
-                val_map = {}
-                found_date = ""
-
-                # --- ТВОЙ СКРИПТ СКАЧИВАНИЯ CSV (ДВОЙНОЙ КЛИК) ---
+                csv_path = None
+                
+                # Ищем кнопку CSV гибким локатором и ждем её видимости
+                csv_btn = page.locator("text=CSV").first
                 try:
-                    # Первый подготовительный клик
-                    page.get_by_text("🠋CSV").first.click(timeout=8000)
-                    page.wait_for_timeout(1000)
-                    
-                    with page.expect_download(timeout=25000) as download_info:
-                        with page.expect_popup(timeout=15000) as page1_info:
-                            # Второй клик для запуска popup и сохранения
-                            page.get_by_text("🠋CSV").first.click()
-                        page1 = page1_info.value
-                    
-                    download = download_info.value
-                    page1.close()
-                    csv_path = download.path()
+                    csv_btn.wait_for(state="visible", timeout=20000)
+                except Exception:
+                    print(f"Warning: CSV button not visible for {cat_key}")
 
-                    if csv_path and os.path.exists(csv_path):
-                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                            lines = f.readlines()
+                # Твой двойной клик с защитой от ошибок popup
+                try:
+                    csv_btn.click(force=True, timeout=5000)
+                    page.wait_for_timeout(2000)
 
-                        if len(lines) > 2:
-                            header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                    with page.expect_download(timeout=30000) as d_info:
+                        try:
+                            with page.expect_popup(timeout=5000) as p_info:
+                                csv_btn.click(force=True)
+                            p_info.value.close()
+                        except:
+                            # Если popup не вылез, просто жмём еще раз
+                            csv_btn.click(force=True)
                             
-                            rows_data = []
-                            for line in lines[2:]:
-                                parts = [p.strip() for p in line.strip().split(';')]
-                                if len(parts) == len(header):
-                                    rows_data.append(parts)
+                    csv_path = d_info.value.path()
+                except Exception as e:
+                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
 
-                            # Берём последнюю строку из выгруженного CSV (это самая свежая дата)
-                            if rows_data:
-                                target_row = rows_data[-1]
-                                found_date = target_row[0]
+                # Читаем скачанный CSV файл (100% данных)
+                if csv_path and os.path.exists(csv_path):
+                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                        lines = f.readlines()
+                    
+                    if len(lines) > 2:
+                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                        
+                        for line in lines[2:]:
+                            parts = [p.strip() for p in line.strip().split(';')]
+                            if len(parts) == len(header):
+                                d_str = parts[0]
+                                if d_str: 
+                                    dates_set.add(d_str)
                                 
-                                for h, v_str in zip(header[1:], target_row[1:]):
+                                val_map = {}
+                                for h, v_str in zip(header[1:], parts[1:]):
                                     if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
                                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                         s_name = m.group(1) if m else h.split()[0].strip()
                                         v = clean_num(v_str)
                                         if not np.isnan(v):
                                             val_map[s_name] = v
-                except Exception as e:
-                    st.warning(f"CSV İndirme Hatası ({cat_key}): {e}")
-
-                all_results[cat_key] = {"values": val_map, "date": found_date}
+                                            
+                                historical_db[cat_key][d_str] = val_map
 
         except Exception as e:
             st.warning(f"LoggIS bağlantı hatası: {e}")
         finally:
             browser.close()
 
-    return available_dates, all_results
+    # Сортируем даты от новых к старым
+    sorted_dates = sorted(list(dates_set), reverse=True)
+    return sorted_dates, historical_db
 
 @st.cache_data
 def get_model_b64(path):
@@ -355,8 +334,9 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-with st.spinner("LoggIS CSV veritabanına bağlanılıyor..."):
-    available_dates, current_data = fetch_data_via_csv(None)
+# ОДИН ЗАПРОС ПРИ СТАРТЕ - скачиваем всё и кэшируем в память
+with st.spinner("LoggIS veritabanı indiriliyor ve senkronize ediliyor (15-30 saniye sürebilir)..."):
+    all_dates, full_db = fetch_full_csv_database()
 
 with col_nav:
     st.subheader("KONTROL PANELİ")
@@ -367,39 +347,39 @@ with col_nav:
     )
 
     st.markdown("---")
-    st.subheader("⏱️ Zaman Seçimi (CSV Veritabanı)")
+    st.subheader("⏱️ Zaman Seçimi (Tüm Arşiv)")
     
-    # Динамический список дат, скачанный с сайта
-    date_options = ["En Son (Güncel)"] + (available_dates if available_dates else [])
-    selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_options)
+    # Сразу выводим все доступные даты, верхняя будет самой актуальной
+    if not all_dates:
+        st.error("Veri bulunamadı. Lütfen 'Verileri Yenile' butonuna basınız.")
+        selected_date = ""
+    else:
+        selected_date = st.selectbox("Tarih ve Saat Seç:", options=all_dates)
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# Если выбрана дата из архива - подгружаем ее через переключение на сайте
-if selected_date_choice != "En Son (Güncel)":
-    with st.spinner(f"Geçmiş veriler indiriliyor ({selected_date_choice})..."):
-        _, current_data = fetch_data_via_csv(selected_date_choice)
-
-cat_cfg = CATEGORIES[selected_comp]
-cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
-raw_v_map = cur_layer["values"]
-
+# Извлекаем данные из памяти (мгновенно)
 active_category_values = {}
-for s_name, val in raw_v_map.items():
-    if val is None or np.isnan(val):
-        continue
-    u_name = s_name.upper()
-    if selected_comp == "hoop" and "-CS" in u_name:
-        active_category_values[s_name] = float(val)
-    elif selected_comp == "axial":
-        if ("-S" in u_name) and ("-CS" not in u_name):
-            active_category_values[s_name] = float(val)
-    elif selected_comp == "temp" and "-TP" in u_name:
-        active_category_values[s_name] = float(val)
+date_label = selected_date
+cat_cfg = CATEGORIES[selected_comp]
 
-# Точный расчет без отступов (лимиты полностью соответствуют CSV данным)
+if selected_date and full_db.get(selected_comp):
+    raw_v_map = full_db[selected_comp].get(selected_date, {})
+    for s_name, val in raw_v_map.items():
+        if val is None or np.isnan(val):
+            continue
+        u_name = s_name.upper()
+        if selected_comp == "hoop" and "-CS" in u_name:
+            active_category_values[s_name] = float(val)
+        elif selected_comp == "axial":
+            if ("-S" in u_name) and ("-CS" not in u_name):
+                active_category_values[s_name] = float(val)
+        elif selected_comp == "temp" and "-TP" in u_name:
+            active_category_values[s_name] = float(val)
+
+# Расчет лимитов СТРОГО по текущим данным (без буферов)
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -422,7 +402,7 @@ with col_nav:
 
     st.markdown("---")
     st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{cur_layer['date'] if cur_layer['date'] else selected_date_choice}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{date_label}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
@@ -638,12 +618,10 @@ with col_3d:
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
             new THREE.Color("#00FF66"), new THREE.Color("#FFEE00"), new THREE.Color("#FF7700"), new THREE.Color("#FF0022")
         ];
-
         const axialStops = [
             new THREE.Color("#080038"), new THREE.Color("#2A0A5E"), new THREE.Color("#630F78"),
             new THREE.Color("#9E1B7F"), new THREE.Color("#D32B6E"), new THREE.Color("#F55447"), new THREE.Color("#FF9500") 
         ];
-
         const temperatureStops = [
             new THREE.Color("#020024"), new THREE.Color("#0033FF"), new THREE.Color("#00D8FF"),
             new THREE.Color("#00FF44"), new THREE.Color("#B4FF00"), new THREE.Color("#FFDD00"),
@@ -651,25 +629,15 @@ with col_3d:
         ];
 
         let currentStops = hoopStops;
-        if (payload.comp === "axial") {
-            currentStops = axialStops;
-            legendTitle.innerText = "Boyuna [µm/m]";
-        } else if (payload.comp === "temp") {
-            currentStops = temperatureStops;
-            legendTitle.innerText = "Sıcaklık [°C]";
-        } else {
-            currentStops = hoopStops;
-            legendTitle.innerText = "Çevresel [µm/m]";
-        }
+        if (payload.comp === "axial") { currentStops = axialStops; legendTitle.innerText = "Boyuna [µm/m]"; }
+        else if (payload.comp === "temp") { currentStops = temperatureStops; legendTitle.innerText = "Sıcaklık [°C]"; }
+        else { currentStops = hoopStops; legendTitle.innerText = "Çevresel [µm/m]"; }
 
         function buildExactLegendGradient(stops) {
-            const n = stops.length;
-            const items = [];
+            const n = stops.length; const items = [];
             for (let i = 0; i < n; i++) {
                 const colorObj = stops[n - 1 - i];
-                const hex = '#' + colorObj.getHexString();
-                const percent = ((i / (n - 1)) * 100).toFixed(1);
-                items.push(hex + ' ' + percent + '%');
+                items.push('#' + colorObj.getHexString() + ' ' + ((i / (n - 1)) * 100).toFixed(1) + '%');
             }
             return 'linear-gradient(to bottom, ' + items.join(', ') + ')';
         }
@@ -678,81 +646,52 @@ with col_3d:
         function sampleColorRamp(stops, t) {
             t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
-            const idx = Math.floor(scaled);
-            const fract = scaled - idx;
+            const idx = Math.floor(scaled); const fract = scaled - idx;
             if (idx >= stops.length - 1) return stops[stops.length - 1].clone();
-            const c = new THREE.Color();
-            c.lerpColors(stops[idx], stops[idx + 1], fract);
+            const c = new THREE.Color(); c.lerpColors(stops[idx], stops[idx + 1], fract);
             return c;
         }
 
         function getColorForValue(val, clim) {
             if (val === undefined || isNaN(val)) return new THREE.Color(0x08111e);
-            const min = clim[0], max = clim[1];
-            let t = (val - min) / ((max - min) || 1.0);
+            const min = clim[0], max = clim[1]; let t = (val - min) / ((max - min) || 1.0);
             return sampleColorRamp(currentStops, t);
         }
 
-        const finalMin = payload.clim[0];
-        const finalMax = payload.clim[1];
-        const finalMid = (finalMin + finalMax) / 2.0;
-
+        const finalMin = payload.clim[0]; const finalMax = payload.clim[1]; const finalMid = (finalMin + finalMax) / 2.0;
         lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(2);
         lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(2);
         lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(2);
 
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0A0E17);
-
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
         const sensorScene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.autoClear = false;
-        container.appendChild(renderer.domElement);
+        renderer.autoClear = false; container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.minDistance = 0.5;
-        controls.maxDistance = 2500;
+        controls.enableDamping = true; controls.dampingFactor = 0.05;
+        controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
         controls.addEventListener('change', () => {
-            const camState = {
-                pos: [camera.position.x, camera.position.y, camera.position.z],
-                target: [controls.target.x, controls.target.y, controls.target.z]
-            };
+            const camState = { pos: [camera.position.x, camera.position.y, camera.position.z], target: [controls.target.x, controls.target.y, controls.target.z] };
             sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
         });
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
-        scene.add(ambientLight);
-        const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6);
-        dirLight1.position.set(60, 100, 80);
-        scene.add(dirLight1);
-        const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
-        dirLight2.position.set(-60, -40, -80);
-        scene.add(dirLight2);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
+        const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0); dirLight2.position.set(-60, -40, -80); scene.add(dirLight2);
 
-        const interactiveSensors = [];
-        const tunnelMeshes = [];
-        const raycaster = new THREE.Raycaster();
-        raycaster.params.Line = { threshold: 1.5 };
-        raycaster.params.Points = { threshold: 1.5 };
+        const interactiveSensors = []; const tunnelMeshes = [];
+        const raycaster = new THREE.Raycaster(); raycaster.params.Line = { threshold: 1.5 }; raycaster.params.Points = { threshold: 1.5 };
         const mouse = new THREE.Vector2();
 
-        function extractSensorId(name) {
-            const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
-            return m ? m[0] : name;
-        }
-
-        function normalizeKey(str) {
-            return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
-        }
-
+        function extractSensorId(name) { const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i); return m ? m[0] : name; }
+        function normalizeKey(str) { return String(str).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
         function getCanonicalSensorId(name) {
             const m = name.match(/(T[AB])-([A-Za-z]+)0*(\d+)-([A-Za-z0-9]+)/i);
             if (m) return (m[1] + '-' + m[2] + parseInt(m[3], 10) + '-' + m[4]).toUpperCase();
@@ -776,51 +715,31 @@ with col_3d:
         }
 
         function createPortalMarker(text) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 2048; canvas.height = 1024;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
-            ctx.strokeStyle = '#00C8E6'; ctx.lineWidth = 56;
+            const canvas = document.createElement('canvas'); canvas.width = 2048; canvas.height = 1024; const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(10, 14, 23, 0.95)'; ctx.strokeStyle = '#00C8E6'; ctx.lineWidth = 56;
             ctx.strokeRect(40, 40, 1968, 944); ctx.fillRect(40, 40, 1968, 944);
-            ctx.font = '900 540px Syne, Chakra Petch, sans-serif';
-            ctx.fillStyle = '#00E5FF'; ctx.shadowColor = '#00C8E6'; ctx.shadowBlur = 72;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(text, 1024, 512);
-            const texture = new THREE.CanvasTexture(canvas);
-            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-            const sprite = new THREE.Sprite(mat);
-            sprite.scale.set(24.0, 12.0, 1);
-            return sprite;
+            ctx.font = '900 540px Syne, Chakra Petch, sans-serif'; ctx.fillStyle = '#00E5FF'; ctx.shadowColor = '#00C8E6'; ctx.shadowBlur = 72;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 1024, 512);
+            const texture = new THREE.CanvasTexture(canvas); const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat); sprite.scale.set(24.0, 12.0, 1); return sprite;
         }
 
         function createRulerLabel(text) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 256; canvas.height = 128;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(10, 14, 23, 0.9)';
-            ctx.strokeStyle = 'rgba(0, 229, 255, 0.85)'; ctx.lineWidth = 5;
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128; const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(10, 14, 23, 0.9)'; ctx.strokeStyle = 'rgba(0, 229, 255, 0.85)'; ctx.lineWidth = 5;
             ctx.strokeRect(6, 6, 244, 116); ctx.fillRect(6, 6, 244, 116);
-            ctx.font = '700 48px Chakra Petch, sans-serif'; ctx.fillStyle = '#FFFFFF';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(text, 128, 64);
-            const texture = new THREE.CanvasTexture(canvas);
-            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-            const sprite = new THREE.Sprite(mat);
-            sprite.scale.set(2.4, 1.2, 1);
-            return sprite;
+            ctx.font = '700 48px Chakra Petch, sans-serif'; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 128, 64);
+            const texture = new THREE.CanvasTexture(canvas); const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat); sprite.scale.set(2.4, 1.2, 1); return sprite;
         }
 
-        const binaryStr = atob(modelB64);
-        const bytes = new Uint8Array(binaryStr.length);
+        const binaryStr = atob(modelB64); const bytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-
         let selectedMeshRef = null;
 
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.parse(bytes.buffer, '', function(gltf) {
-            const model = gltf.scene; scene.add(model);
-            model.updateMatrixWorld(true);
-            loaderText.style.display = 'none';
+            const model = gltf.scene; scene.add(model); model.updateMatrixWorld(true); loaderText.style.display = 'none';
 
             const rawSensors = [];
             model.traverse(function(child) {
@@ -830,15 +749,11 @@ with col_3d:
                     if (uName.includes("BOX001")) { child.visible = false; return; }
 
                     const isSensorObject = (uName.startsWith("TA-") || uName.startsWith("TB-") || uName.includes("-CS") || uName.includes("-S") || uName.includes("-TP"));
-                    if (isSensorObject) {
-                        rawSensors.push(child);
-                    } else {
+                    if (isSensorObject) rawSensors.push(child);
+                    else {
                         const isTunnel = (uName.includes("TUNNEL") || uName.includes("TÜNEL") || uName === "TA" || uName === "TB" || uName.startsWith("TA_") || uName.startsWith("TB_"));
-                        if (isTunnel) {
-                            tunnelMeshes.push(child);
-                        } else {
-                            child.material = new THREE.MeshStandardMaterial({ color: 0x141E2D, roughness: 0.8 });
-                        }
+                        if (isTunnel) tunnelMeshes.push(child);
+                        else child.material = new THREE.MeshStandardMaterial({ color: 0x141E2D, roughness: 0.8 });
                     }
                 }
             });
@@ -846,36 +761,23 @@ with col_3d:
             const targetMeshes = [];
             rawSensors.forEach(child => {
                 child.visible = false;
-                const name = child.name; const uName = name.toUpperCase();
-                const sensorId = extractSensorId(name);
-
+                const name = child.name; const uName = name.toUpperCase(); const sensorId = extractSensorId(name);
                 let isCategory = false;
                 if (payload.comp === "hoop" && uName.includes("-CS")) isCategory = true;
-                else if (payload.comp === "axial") {
-                    if (uName.includes("-CS")) isCategory = false;
-                    else if (uName.includes("-S") || checkSensorData(sensorId, "axial").found) isCategory = true;
-                } else if (payload.comp === "temp" && uName.includes("-TP")) isCategory = true;
-
+                else if (payload.comp === "axial") { if (uName.includes("-CS")) isCategory = false; else if (uName.includes("-S") || checkSensorData(sensorId, "axial").found) isCategory = true; }
+                else if (payload.comp === "temp" && uName.includes("-TP")) isCategory = true;
                 if (!isCategory) return;
-
                 const dataInfo = checkSensorData(sensorId, payload.comp);
                 const wPos = new THREE.Vector3(); child.getWorldPosition(wPos);
-
                 targetMeshes.push({ mesh: child, pos: wPos, sensorName: dataInfo.key, hasData: dataInfo.found, val: dataInfo.val });
             });
 
             const finalSensors = [];
             targetMeshes.forEach(item => {
                 let duplicate = null;
-                for (let f of finalSensors) {
-                    if (f.pos.distanceTo(item.pos) < 0.12 && getCanonicalSensorId(f.sensorName) === getCanonicalSensorId(item.sensorName)) {
-                        duplicate = f; break;
-                    }
-                }
+                for (let f of finalSensors) { if (f.pos.distanceTo(item.pos) < 0.12 && getCanonicalSensorId(f.sensorName) === getCanonicalSensorId(item.sensorName)) { duplicate = f; break; } }
                 if (!duplicate) finalSensors.push(item);
-                else if (!duplicate.hasData && item.hasData) {
-                    duplicate.hasData = true; duplicate.val = item.val; duplicate.sensorName = item.sensorName; duplicate.mesh = item.mesh;
-                }
+                else if (!duplicate.hasData && item.hasData) { duplicate.hasData = true; duplicate.val = item.val; duplicate.sensorName = item.sensorName; duplicate.mesh = item.mesh; }
             });
 
             let alreadyHighlightedOne = false;
@@ -886,18 +788,14 @@ with col_3d:
                     if (isSelected) alreadyHighlightedOne = true;
 
                     let sensorColor = 0xFFFFFF;
-                    if (isSelected) sensorColor = 0xFFD700;
-                    else if (!item.hasData) sensorColor = 0xFF0033;
+                    if (isSelected) sensorColor = 0xFFD700; else if (!item.hasData) sensorColor = 0xFF0033;
 
                     const sensorMat = new THREE.MeshBasicMaterial({ color: sensorColor, side: THREE.DoubleSide, transparent: false, opacity: 1.0, depthTest: true, depthWrite: true });
                     const wQuat = new THREE.Quaternion(); const wScale = new THREE.Vector3();
                     item.mesh.getWorldQuaternion(wQuat); item.mesh.getWorldScale(wScale);
-
                     const detachedMesh = new THREE.Mesh(item.mesh.geometry.clone(), sensorMat);
                     detachedMesh.position.copy(item.pos); detachedMesh.quaternion.copy(wQuat); detachedMesh.scale.copy(wScale);
-                    detachedMesh.userData.sensorName = item.sensorName; detachedMesh.userData.val = item.hasData ? item.val : NaN;
-                    detachedMesh.userData.isUsable = item.hasData; detachedMesh.userData.isNoData = !item.hasData;
-
+                    detachedMesh.userData.sensorName = item.sensorName; detachedMesh.userData.val = item.hasData ? item.val : NaN; detachedMesh.userData.isUsable = item.hasData; detachedMesh.userData.isNoData = !item.hasData;
                     sensorScene.add(detachedMesh); interactiveSensors.push(detachedMesh);
                     if (isSelected) { selectedMeshRef = detachedMesh; updateHud(item.sensorName, item.val, item.hasData); }
                 }
@@ -914,68 +812,46 @@ with col_3d:
 
             const R_SENSOR = 60.0; 
             tunnelMeshes.forEach(tMesh => {
-                const geom = tMesh.geometry;
-                if (!geom || !geom.attributes || !geom.attributes.position) return;
-                const posAttr = geom.attributes.position;
-                const colors = new Float32Array(posAttr.count * 3);
+                const geom = tMesh.geometry; if (!geom || !geom.attributes || !geom.attributes.position) return;
+                const posAttr = geom.attributes.position; const colors = new Float32Array(posAttr.count * 3);
                 const localV = new THREE.Vector3(); const worldV = new THREE.Vector3();
-
-                const uName = tMesh.name.toUpperCase();
-                const isTB = uName.includes("TB"); const activeTun = isTB ? "TB" : "TA";
+                const uName = tMesh.name.toUpperCase(); const isTB = uName.includes("TB"); const activeTun = isTB ? "TB" : "TA";
                 let pool = interpolationSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
                 if (pool.length === 0) pool = interpolationSensors;
 
                 tMesh.updateMatrixWorld(true);
 
                 if (pool.length === 0) {
-                    for (let i = 0; i < posAttr.count; i++) {
-                        const idx = i * 3; colors[idx] = 0.08; colors[idx + 1] = 0.11; colors[idx + 2] = 0.16;
-                    }
+                    for (let i = 0; i < posAttr.count; i++) { const idx = i * 3; colors[idx] = 0.08; colors[idx + 1] = 0.11; colors[idx + 2] = 0.16; }
                 } else {
                     for (let i = 0; i < posAttr.count; i++) {
-                        localV.fromBufferAttribute(posAttr, i);
-                        worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
-
+                        localV.fromBufferAttribute(posAttr, i); worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
                         let totalWeight = 0; let accumulatedVal = 0;
                         for (let j = 0; j < pool.length; j++) {
                             const s = pool[j]; const d = worldV.distanceTo(s.pos);
-                            if (d < R_SENSOR) {
-                                const normD = d / R_SENSOR; const w = Math.pow(1.0 - normD, 1.3) / (Math.pow(d, 0.85) + 0.1);
-                                accumulatedVal += s.val * w; totalWeight += w;
-                            }
+                            if (d < R_SENSOR) { const normD = d / R_SENSOR; const w = Math.pow(1.0 - normD, 1.3) / (Math.pow(d, 0.85) + 0.1); accumulatedVal += s.val * w; totalWeight += w; }
                         }
-
                         const idx = i * 3;
                         if (totalWeight > 0.00001) {
-                            const interpolatedVal = accumulatedVal / totalWeight;
-                            const c = getColorForValue(interpolatedVal, payload.clim);
+                            const interpolatedVal = accumulatedVal / totalWeight; const c = getColorForValue(interpolatedVal, payload.clim);
                             colors[idx] = c.r; colors[idx + 1] = c.g; colors[idx + 2] = c.b;
-                        } else {
-                            colors[idx] = 0.08; colors[idx + 1] = 0.11; colors[idx + 2] = 0.16;
-                        }
+                        } else { colors[idx] = 0.08; colors[idx + 1] = 0.11; colors[idx + 2] = 0.16; }
                     }
                 }
-
-                geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-                geom.attributes.color.needsUpdate = true;
+                geom.setAttribute('color', new THREE.BufferAttribute(colors, 3)); geom.attributes.color.needsUpdate = true;
                 const isTransparent = payload.tunnelOpacity < 0.98;
-
                 if (isTransparent) {
                     const depthMaskMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, side: THREE.FrontSide });
                     const depthMaskMesh = new THREE.Mesh(geom, depthMaskMat); depthMaskMesh.renderOrder = 0; tMesh.add(depthMaskMesh);
                 }
-
                 tMesh.material = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, transparent: isTransparent, opacity: payload.tunnelOpacity, roughness: 0.20, metalness: 0.02, depthWrite: !isTransparent, side: THREE.FrontSide });
                 tMesh.renderOrder = 1; tMesh.material.needsUpdate = true;
             });
 
-            const boxTA = new THREE.Box3(); const boxTB = new THREE.Box3();
-            let hasTA = false, hasTB = false;
-
+            const boxTA = new THREE.Box3(); const boxTB = new THREE.Box3(); let hasTA = false, hasTB = false;
             tunnelMeshes.forEach(tm => {
                 const u = tm.name.toUpperCase();
-                if (u.includes("TB")) { boxTB.expandByObject(tm); hasTB = true; }
-                else if (u.includes("TA")) { boxTA.expandByObject(tm); hasTA = true; }
+                if (u.includes("TB")) { boxTB.expandByObject(tm); hasTB = true; } else if (u.includes("TA")) { boxTA.expandByObject(tm); hasTA = true; }
             });
 
             const portalsGroup = new THREE.Group();
@@ -991,7 +867,6 @@ with col_3d:
                     const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x; const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
                     const step = 10.0; const stepsCount = Math.floor(lengthM / step); const totalDistanceM = stepsCount * step;
                     const yRuler = overallBox.min.y - 0.2; const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
-
                     const linePoints = [];
                     if (isZAxis) { linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord)); linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord)); }
                     else { linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos)); linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos)); }
@@ -1013,16 +888,12 @@ with col_3d:
 
             const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
-
-            if (selectedMeshRef && isNewSensorSelected) {
-                sessionStorage.setItem('threejs_last_selected', payload.selectedSensor); flyCameraTo(selectedMeshRef, true);
-            } else {
+            if (selectedMeshRef && isNewSensorSelected) { sessionStorage.setItem('threejs_last_selected', payload.selectedSensor); flyCameraTo(selectedMeshRef, true); }
+            else {
                 const savedStateStr = sessionStorage.getItem('threejs_camera_state');
-                if (savedStateStr) {
-                    try { const st = JSON.parse(savedStateStr); camera.position.set(st.pos[0], st.pos[1], st.pos[2]); controls.target.set(st.target[0], st.target[1], st.target[2]); controls.update(); } catch(e) {}
-                } else {
-                    const tunnelBox = new THREE.Box3();
-                    if (tunnelMeshes.length > 0) tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm)); else tunnelBox.setFromObject(model);
+                if (savedStateStr) { try { const st = JSON.parse(savedStateStr); camera.position.set(st.pos[0], st.pos[1], st.pos[2]); controls.target.set(st.target[0], st.target[1], st.target[2]); controls.update(); } catch(e) {} }
+                else {
+                    const tunnelBox = new THREE.Box3(); if (tunnelMeshes.length > 0) tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm)); else tunnelBox.setFromObject(model);
                     const center = tunnelBox.getCenter(new THREE.Vector3()); const size = tunnelBox.getSize(new THREE.Vector3()); const maxDim = Math.max(size.x, size.y, size.z, 20.0);
                     controls.target.copy(center); camera.position.set(center.x - maxDim * 0.40, center.y + maxDim * 0.45, center.z + maxDim * 0.55); controls.update();
                 }
@@ -1040,13 +911,10 @@ with col_3d:
             const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
             if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
-
             if (!animate) { camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); return; }
-
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
             new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update()).onComplete(() => {
-                const camState = { pos: [camera.position.x, camera.position.y, camera.position.z], target: [controls.target.x, controls.target.y, controls.target.z] };
-                sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+                const camState = { pos: [camera.position.x, camera.position.y, camera.position.z], target: [controls.target.x, controls.target.y, controls.target.z] }; sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
             }).start();
         }
 
@@ -1055,8 +923,7 @@ with col_3d:
             const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : (e.changedTouches ? e.changedTouches[0].clientX : 0));
             const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches ? e.changedTouches[0].clientY : 0));
             mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1; mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(interactiveSensors, true);
+            raycaster.setFromCamera(mouse, camera); const intersects = raycaster.intersectObjects(interactiveSensors, true);
             if (intersects.length > 0) { let obj = intersects[0].object; while (obj && !obj.userData.sensorName && obj.parent) { obj = obj.parent; } return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null; }
             return null;
         }
@@ -1064,11 +931,7 @@ with col_3d:
         function handleSensorSelection(sensorMesh) {
             if (!sensorMesh) return;
             const sensorName = sensorMesh.userData.sensorName; const sensorVal = sensorMesh.userData.val; const isUsable = sensorMesh.userData.isUsable;
-            interactiveSensors.forEach(m => {
-                if (m === sensorMesh) m.material.color.setHex(0xFFD700);
-                else if (m.userData.isUsable) m.material.color.setHex(0xFFFFFF);
-                else m.material.color.setHex(0xFF0033);
-            });
+            interactiveSensors.forEach(m => { if (m === sensorMesh) m.material.color.setHex(0xFFD700); else if (m.userData.isUsable) m.material.color.setHex(0xFFFFFF); else m.material.color.setHex(0xFF0033); });
             flyCameraTo(sensorMesh, true); updateHud(sensorName, sensorVal, isUsable);
         }
 
