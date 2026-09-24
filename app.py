@@ -465,7 +465,7 @@ with col_nav:
     
     data_mode = st.radio(
         "Veri Modu Seçimi:",
-        options=["🔴 Canlı (Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
+        options=["Canlı (Güncel) Veriler", "Geçmiş (Arşiv) Verileri"]
     )
 
     selected_comp = st.radio(
@@ -474,7 +474,7 @@ with col_nav:
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    if st.button("🔄 Ekranı Yenile"):
+    if st.button("Ekranı Yenile"):
         st.cache_data.clear()
         st.rerun()
 
@@ -485,7 +485,7 @@ target_timestamp = None
 active_category_values = {}
 cat_cfg = CATEGORIES[selected_comp]
 
-if data_mode == "🔴 Canlı (Güncel) Veriler":
+if data_mode == "Canlı (Güncel) Veriler":
     with st.spinner("En yeni canlı veriler alınıyor..."):
         all_data = fetch_current_data()
         cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
@@ -511,7 +511,7 @@ else:
         st.error("Veri bulunamadı. Lütfen 'Ekranı Yenile' butonuna basınız.")
     else:
         st.markdown("---")
-        st.subheader("⏱️ Zaman Seçimi")
+        st.subheader("Zaman Seçimi")
         
         date_tree = {}
         for d_str in all_dates:
@@ -528,9 +528,9 @@ else:
         
         col_d, col_t = st.columns(2)
         with col_d:
-            sel_date = st.selectbox("📅 Tarih Seç:", options=unique_dates)
+            sel_date = st.selectbox("Tarih Seç:", options=unique_dates)
         with col_t:
-            sel_time = st.selectbox("⏱️ Saat Seç:", options=date_tree[sel_date])
+            sel_time = st.selectbox("Saat Seç:", options=date_tree[sel_date])
         
         if sel_date and sel_time:
             target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
@@ -565,7 +565,7 @@ with col_nav:
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
-    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
+    show_no_data_red = st.checkbox("Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
     st.write("**Aktif Periyot:**")
