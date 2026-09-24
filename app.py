@@ -77,7 +77,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -124,6 +123,15 @@ st.markdown("""
         border-color: #00C8E6 !important;
     }
 
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+        border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] svg path {
+        fill: #0A0E17 !important;
+        stroke: #0A0E17 !important;
+    }
+
     .destech-badge {
         font-family: 'Syne', sans-serif;
         font-size: 15px;
@@ -153,6 +161,26 @@ st.markdown("""
         background-color: #132E4C !important;
         border-color: #00C8E6 !important;
         color: #FFFFFF !important;
+    }
+
+    @media (max-width: 820px) {
+        .main .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            padding-top: 1.5rem !important;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: column-reverse !important;
+            gap: 1.2rem !important;
+        }
+
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -196,7 +224,7 @@ def ensure_playwright_installed():
         pass
 
 # =========================================================================
-# 1. ТЕКУЩИЕ ДАННЫЕ (Твой 100% стабильный оригинальный DOM парсер)
+# 1. ТЕКУЩИЕ ДАННЫЕ (Усиленный DOM парсер с защитой от смены таблиц)
 # =========================================================================
 @st.cache_data(ttl=300)
 def fetch_current_data():
@@ -225,94 +253,102 @@ def fetch_current_data():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            try:
-                page.get_by_text("Types").click(timeout=8000)
+            try: page.get_by_text("Types").click(timeout=8000)
             except: pass
             page.wait_for_timeout(1000)
 
-            try:
-                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            try: page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
             except: pass
             page.wait_for_timeout(800)
 
-            try:
-                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+            try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
             except: pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                target_tag = cat_cfg["tag"]
+                
+                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
                 except:
-                    try:
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
                     except: pass
                 
-                page.wait_for_timeout(3000)
+                # Даем время таблице обновиться
+                page.wait_for_timeout(2500)
 
                 val_map = {}
                 latest_date_str = ""
 
                 for _ in range(15):
                     try:
-                        extracted = page.evaluate("""() => {
-                            try {
+                        # В JS парсер передается нужный тег, чтобы мы не брали чужую таблицу!
+                        extracted = page.evaluate(f"""() => {{
+                            try {{
                                 const table = document.querySelector('table');
                                 if (!table) return null;
-
+                                
                                 const trs = Array.from(table.querySelectorAll('tr'));
                                 let headerCells = [];
-                                for (const tr of trs) {
+                                const targetTag = '{target_tag}';
+                                
+                                for (const tr of trs) {{
                                     const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
-                                        headerCells = cells; break;
-                                    }
-                                }
-
-                                if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                }
-
+                                    // Жесткая проверка: таблица должна содержать нужный тег!
+                                    if (cells.some(c => c.includes(targetTag) && (targetTag !== '-S' || !c.includes('-CS')))) {{
+                                        headerCells = cells; 
+                                        break;
+                                    }}
+                                }}
+                                
+                                if (headerCells.length === 0) return null; // Таблица еще грузится
+                                
                                 const tbody = table.querySelector('tbody') || table;
                                 const rows = Array.from(tbody.querySelectorAll('tr'));
                                 let dataCells = [];
-
-                                for (const r of rows) {
+                                
+                                for (const r of rows) {{
                                     const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{4}/.test(cells[0]))) {
-                                        dataCells = cells; // Всегда перезаписываем, чтобы получить последнюю строку
-                                    }
-                                }
-
-                                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                                return { headers: headerCells, values: dataCells };
-                            } catch(e) { return null; }
-                        }""")
-
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{{4}}/.test(cells[0]))) {{
+                                        dataCells = cells; // Оставляем последнюю строку (самую свежую)
+                                    }}
+                                }}
+                                
+                                if (dataCells.length === 0) return null;
+                                return {{ headers: headerCells, values: dataCells }};
+                            }} catch(e) {{ return null; }}
+                        }}""")
+                        
                         if extracted and extracted.get("values"):
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
+                            
                             for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                if ("TA-" in h or "TB-" in h) and (target_tag in h):
+                                    if target_tag == "-S" and "-CS" in h:
+                                        continue # Защита от смешивания
                                     m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                     s_name = m.group(1) if m else h.split()[0].strip()
                                     v = clean_num(v_str)
                                     if not np.isnan(v):
                                         val_map[s_name] = v
+                            
                             if len(val_map) > 0:
                                 break
-                    except: pass
-                    page.wait_for_timeout(600)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(800)
+                    
                 all_results[cat_key] = {"values": val_map, "date": latest_date_str}
         except Exception as e:
             st.warning(f"Güncel veri alınırken hata oluştu: {e}")
         finally:
             browser.close()
+            
     return all_results
 
 # =========================================================================
-# 2. ИСТОРИЧЕСКИЕ ДАННЫЕ (Скачивание CSV)
+# 2. АРХИВНЫЕ ДАННЫЕ (Скачивание CSV)
 # =========================================================================
 @st.cache_data(ttl=3600)
 def fetch_historical_csv_data():
@@ -351,8 +387,8 @@ def fetch_historical_csv_data():
             page.wait_for_timeout(2000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
+                target_tag = cat_cfg["tag"]
+                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
                 except:
                     try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
                     except: pass
@@ -361,13 +397,12 @@ def fetch_historical_csv_data():
 
                 csv_path = None
                 csv_btn = page.locator("text=CSV").first
-                try: csv_btn.wait_for(state="visible", timeout=20000)
+                try: csv_btn.wait_for(state="visible", timeout=15000)
                 except: pass
 
                 try:
                     csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(2000)
-
+                    page.wait_for_timeout(1500)
                     with page.expect_download(timeout=30000) as d_info:
                         try:
                             with page.expect_popup(timeout=8000) as p_info:
@@ -375,7 +410,6 @@ def fetch_historical_csv_data():
                             p_info.value.close()
                         except:
                             csv_btn.click(force=True)
-                            
                     csv_path = d_info.value.path()
                 except Exception as e:
                     print(f"CSV İndirme Hatası ({cat_key}): {e}")
@@ -383,26 +417,23 @@ def fetch_historical_csv_data():
                 if csv_path and os.path.exists(csv_path):
                     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                         lines = f.readlines()
-                    
                     if len(lines) > 2:
                         header = [h.replace('\ufeff', '').strip() for h in lines[0].strip().split(';')]
-                        
                         for line in lines[2:]:
                             parts = [p.strip() for p in line.strip().split(';')]
                             if len(parts) == len(header):
                                 d_str = parts[0]
-                                if d_str: 
-                                    dates_set.add(d_str)
-                                
+                                if d_str: dates_set.add(d_str)
                                 val_map = {}
                                 for h, v_str in zip(header[1:], parts[1:]):
-                                    if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                    if ("TA-" in h or "TB-" in h) and (target_tag in h):
+                                        if target_tag == "-S" and "-CS" in h:
+                                            continue
                                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                         s_name = m.group(1) if m else h.split()[0].strip()
                                         v = clean_num(v_str)
                                         if not np.isnan(v):
                                             val_map[s_name] = v
-                                            
                                 historical_db[cat_key][d_str] = val_map
 
         except Exception as e:
@@ -425,7 +456,6 @@ col_nav, col_3d = st.columns([1, 4])
 with col_nav:
     st.subheader("KONTROL PANELİ")
     
-    # ПЕРЕКЛЮЧАТЕЛЬ РЕЖИМОВ
     data_mode = st.radio(
         "Veri Modu Seçimi:",
         options=["🔴 Canlı (Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
@@ -476,7 +506,6 @@ else:
         st.markdown("---")
         st.subheader("⏱️ Zaman Seçimi")
         
-        # Разделяем даты и время для удобства выбора
         date_tree = {}
         for d_str in all_dates:
             if " " in d_str:
@@ -511,7 +540,6 @@ else:
                 elif selected_comp == "temp" and "-TP" in u_name:
                     active_category_values[s_name] = float(val)
 
-# Точный расчет без отступов (лимиты полностью соответствуют данным)
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -706,11 +734,6 @@ with col_3d:
         controls.enableDamping = true; controls.dampingFactor = 0.05;
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-
-        controls.addEventListener('change', () => {
-            const camState = { pos: [camera.position.x, camera.position.y, camera.position.z], target: [controls.target.x, controls.target.y, controls.target.z] };
-            sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
-        });
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -920,40 +943,36 @@ with col_3d:
                 }
             }
 
-            // ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ ПРИ СТАРТЕ
-            const lastSelected = sessionStorage.getItem('threejs_last_selected');
-            const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
-
-            if (selectedMeshRef && isNewSensorSelected) {
-                sessionStorage.setItem('threejs_last_selected', payload.selectedSensor); flyCameraTo(selectedMeshRef, true);
+            // ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ КАМЕРЫ (Полностью переписано без sessionStorage)
+            if (selectedMeshRef && payload.selectedSensor && payload.selectedSensor !== "Seçiniz...") {
+                flyCameraTo(selectedMeshRef, true);
             } else {
-                const savedStateStr = sessionStorage.getItem('threejs_camera_state');
-                let stateRestored = false;
-                if (savedStateStr) {
-                    try { 
-                        const st = JSON.parse(savedStateStr); 
-                        if (st.pos && st.pos.length === 3 && !isNaN(st.pos[0])) {
-                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]); 
-                            controls.target.set(st.target[0], st.target[1], st.target[2]); 
-                            controls.update(); 
-                            stateRestored = true;
-                        }
-                    } catch(e) {}
+                const tunnelBox = new THREE.Box3(); 
+                if (tunnelMeshes.length > 0) {
+                    tunnelMeshes.forEach(tm => {
+                        if(tm.geometry) tm.geometry.computeBoundingBox();
+                        tunnelBox.expandByObject(tm);
+                    });
+                } else { 
+                    model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
+                    tunnelBox.setFromObject(model); 
                 }
                 
-                if (!stateRestored) {
-                    model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
-                    const tunnelBox = new THREE.Box3().setFromObject(model);
-                    if (!tunnelBox.isEmpty()) {
-                        const center = tunnelBox.getCenter(new THREE.Vector3()); 
-                        const size = tunnelBox.getSize(new THREE.Vector3()); 
-                        const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                        controls.target.copy(center); 
-                        camera.position.set(center.x - maxDim * 0.4, center.y + maxDim * 0.6, center.z + maxDim * 0.8); 
-                        controls.update();
-                    }
+                if (!tunnelBox.isEmpty()) {
+                    const center = tunnelBox.getCenter(new THREE.Vector3()); 
+                    const size = tunnelBox.getSize(new THREE.Vector3()); 
+                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                    controls.target.copy(center); 
+                    
+                    // Вычисляем оптимальную дистанцию по FOV камеры
+                    const fov = camera.fov * (Math.PI / 180);
+                    let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.8;
+                    
+                    camera.position.set(center.x - maxDim * 0.4, center.y + maxDim * 0.5, center.z + cameraZ); 
+                    controls.update();
                 }
             }
+
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
 
         function updateHud(name, val, isUsable) {
@@ -969,9 +988,7 @@ with col_3d:
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
             if (!animate) { camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); return; }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
-            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update()).onComplete(() => {
-                const camState = { pos: [camera.position.x, camera.position.y, camera.position.z], target: [controls.target.x, controls.target.y, controls.target.z] }; sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
-            }).start();
+            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update()).start();
         }
 
         function getIntersectedSensor(e) {
