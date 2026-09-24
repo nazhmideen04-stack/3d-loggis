@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -78,7 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* РАДИОКНОПКИ */
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -114,7 +114,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* СЛАЙДЕР И ЧЕКБОКСЫ */
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -422,7 +422,7 @@ with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
     if not model_b64:
-        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile একই klasöre yükleyiniz.")
     else:
         payload_data = {
             "activeCategoryValues": active_category_values,
@@ -978,8 +978,13 @@ with col_3d:
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
                     
-                    // УВЕЛИЧЕНИЕ ТОЛЩИНЫ И РАЗМЕРА СЕНСОРОВ В 2.5 РАЗА
-                    detachedMesh.scale.copy(wScale).multiplyScalar(2.5);
+                    // =========================================================================
+                    // РАСШИРЕНИЕ ТОЛЬКО В ШИРИНУ И В ТОЛЩИНУ (БЕЗ РАЗДУВАНИЯ ПО ДЛИНЕ ТРАССЫ)
+                    // =========================================================================
+                    detachedMesh.scale.copy(wScale);
+                    detachedMesh.scale.x *= 2.2; // Ширина по дуге свода тоннеля
+                    detachedMesh.scale.y *= 1.1; // Длина вдоль оси тоннеля (аккуратная)
+                    detachedMesh.scale.z *= 4.5; // Толщина и заметный рельефный вылет от стены
 
                     detachedMesh.userData.sensorName = sensorName;
                     detachedMesh.userData.val = hasData ? val : NaN;
