@@ -288,9 +288,8 @@ def get_model_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# --- СЧИТЫВАНИЕ URL ПАРАМЕТРА ДЛЯ СИНХРОНИЗАЦИИ КЛИКА ИЗ 3D ---
-query_params = st.query_params
-url_selected_sensor = query_params.get("sensor", "Seçiniz...")
+# --- СИНХРОНИЗАЦИЯ: СЧИТЫВАНИЕ СЕНСОРА ИЗ URL ---
+selected_sensor_from_url = st.query_params.get("sensor", "Seçiniz...")
 
 col_nav, col_3d = st.columns([1, 4])
 
@@ -325,7 +324,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Расчет диапазона строго по фактическим минимумам и максимумам
+# Расчет точных границ диапазона
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -356,25 +355,33 @@ with col_nav:
 
     st.markdown("---")
     
-    # Автоматическая синхронизация выпадающего списка при клике на 3D сцене
+    # Синхронизированный выпадающий список
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
     default_idx = 0
-    if url_selected_sensor in sensor_options:
-        default_idx = sensor_options.index(url_selected_sensor)
+    if selected_sensor_from_url in sensor_options:
+        default_idx = sensor_options.index(selected_sensor_from_url)
 
     selected_sensor = st.selectbox(
         "Sensör Değerini İncele:",
         options=sensor_options,
-        index=default_idx
+        index=default_idx,
+        key="sensor_selector_box"
     )
 
-    if selected_sensor != "Seçiniz..." and selected_sensor != url_selected_sensor:
+    # При ручном изменении в selectbox обновляем параметр в URL
+    if selected_sensor != "Seçiniz..." and selected_sensor != selected_sensor_from_url:
         st.query_params["sensor"] = selected_sensor
+        st.rerun()
     elif selected_sensor == "Seçiniz..." and "sensor" in st.query_params:
         del st.query_params["sensor"]
+        st.rerun()
 
+    # ОТОБРАЖЕНИЕ ЗНАЧЕНИЯ ВЫБРАННОГО ДАТЧИКА СЛЕВА
     if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
-        st.metric(label=selected_sensor, value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}")
+        st.metric(
+            label=f"Seçilen: {selected_sensor}",
+            value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
+        )
 
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
@@ -517,13 +524,13 @@ with col_3d:
 
                 // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
-                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
-                    new THREE.Color("#00E5FF"), // 0.16: Циан
-                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
-                    new THREE.Color("#FFE600"), // 0.50: Желтый
-                    new THREE.Color("#FFAA00"), // 0.67: Янтарный оранжевый
-                    new THREE.Color("#FF5500"), // 0.83: Оранжево-красный
-                    new THREE.Color("#FF0022")  // 1.00: Алый красный
+                    new THREE.Color("#0022FF"), // Глубокий синий
+                    new THREE.Color("#00E5FF"), // Циан
+                    new THREE.Color("#00FF44"), // Чистый зеленый
+                    new THREE.Color("#FFE600"), // Желтый
+                    new THREE.Color("#FFAA00"), // Янтарный
+                    new THREE.Color("#FF5500"), // Оранжевый
+                    new THREE.Color("#FF0022")  // Алый красный
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -775,7 +782,7 @@ with col_3d:
                         }}
                     }});
 
-                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА ПО СЕНСОРАМ
+                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -807,16 +814,15 @@ with col_3d:
                             const sensorId = child.userData.sensorName;
                             const isSelected = (sensorId === payload.selectedSensor);
                             
-                            const sensorBaseColor = isSelected ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
-                            const sensorEmissiveColor = isSelected ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
+                            const sensorColor = isSelected ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
 
                             child.material = new THREE.MeshStandardMaterial({{
-                                color: sensorBaseColor,
-                                emissive: sensorEmissiveColor,
+                                color: sensorColor,
+                                emissive: sensorColor,
                                 emissiveIntensity: isSelected ? 2.5 : 1.6,
                                 roughness: 0.1,
                                 metalness: 0.1,
-                                depthTest: false, // Всегда виден поверх свода
+                                depthTest: false,
                                 depthWrite: false
                             }});
                             child.renderOrder = 9999;
@@ -1023,7 +1029,7 @@ with col_3d:
                         }}
                     }}
 
-                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
+                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (ПРИБЛИЖЕННЫЙ РАКУРС)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1053,9 +1059,9 @@ with col_3d:
 
                             controls.target.copy(center);
                             camera.position.set(
-                                center.x - maxDim * 0.40,
-                                center.y + maxDim * 0.45,
-                                center.z + maxDim * 0.55
+                                center.x - maxDim * 0.35,
+                                center.y + maxDim * 0.38,
+                                center.z + maxDim * 0.48
                             );
                             controls.update();
                         }}
@@ -1073,7 +1079,7 @@ with col_3d:
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.5)).add(new THREE.Vector3(0, 1.8, 0));
+                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
 
                     if (!animate) {{
                         camera.position.copy(endCamPos);
@@ -1101,7 +1107,7 @@ with col_3d:
                         .start();
                 }}
 
-                // КЛИК В 3D: ПЕРЕДАЧА СЕНСОРА В SELECTBOX STREAMLIT
+                // КЛИК В 3D: АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ И ОБНОВЛЕНИЕ ВЫБОРА СЛЕВА
                 window.addEventListener('click', function(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1116,13 +1122,12 @@ with col_3d:
                         if (mesh.userData.isUsable || mesh.userData.isNoData) {{
                             flyCameraTo(mesh, true);
                             
-                            // Автоматический выбор в Streamlit через URL
+                            // Мгновенная передача выбора родителю Streamlit
                             try {{
                                 const currentUrl = new URL(window.parent.location.href);
                                 if (currentUrl.searchParams.get('sensor') !== sensorName) {{
                                     currentUrl.searchParams.set('sensor', sensorName);
-                                    window.parent.history.pushState({{}}, '', currentUrl);
-                                    window.parent.dispatchEvent(new Event('popstate'));
+                                    window.parent.location.assign(currentUrl.toString());
                                 }}
                             }} catch(err) {{
                                 console.log('Синхронизация URL:', err);
