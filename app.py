@@ -11,7 +11,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -80,6 +80,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -102,12 +103,20 @@ st.markdown("""
         background-color: #00C8E6 !important;
     }
 
+    div[data-testid="stRadio"] div[role="radiogroup"] > label {
+        margin-bottom: 12px !important;
+        cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+
     div[data-baseweb="select"] {
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
     }
 
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -117,6 +126,15 @@ st.markdown("""
     div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+        border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] svg path {
+        fill: #0A0E17 !important;
+        stroke: #0A0E17 !important;
     }
 
     .destech-badge {
@@ -150,6 +168,7 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1rem !important;
@@ -191,7 +210,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & CSV PARSER</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & CSV INTEGRATION</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -219,13 +238,13 @@ def ensure_playwright_installed():
         pass
 
 @st.cache_data(ttl=300)
-def fetch_loggis_data_via_csv(target_timestamp=None):
+def fetch_data_via_csv(target_timestamp=None):
     """
-    Использует твой точный сценарий Playwright:
-    Types -> ALL -> Выбор категории -> Клик по кнопке загрузки CSV -> Чтение файла.
+    Скачивает CSV таблицы по вашему сценарию Playwright (Types -> ALL -> категория -> 🠋CSV),
+    обрабатывает pop-up и download, читает файл и возвращает список всех дат и значения сенсоров.
     """
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
-    all_timestamps = []
+    timestamps_list = []
 
     with sync_playwright() as p:
         browser_args = [
@@ -260,7 +279,7 @@ def fetch_loggis_data_via_csv(target_timestamp=None):
                 pass
             page.wait_for_timeout(1000)
 
-            # Выбор ALL по твоему скрипту
+            # Выбор ALL в первом комбобоксе по вашему скрипту
             try:
                 page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except Exception:
@@ -279,15 +298,22 @@ def fetch_loggis_data_via_csv(target_timestamp=None):
                         except Exception:
                             pass
 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(2500)
 
                 val_map = {}
                 found_date = ""
 
-                # Скачиваем CSV таблицу по кнопке 🠋CSV
+                # Скачивание CSV по вашему сценарию с обработкой popup и download
                 try:
-                    with page.expect_download(timeout=15000) as download_info:
-                        page.get_by_text("🠋CSV").click()
+                    with page.expect_download(timeout=20000) as download_info:
+                        try:
+                            with page.expect_popup(timeout=4000) as popup_info:
+                                page.get_by_text("🠋CSV").click()
+                            popup = popup_info.value
+                            popup.close()
+                        except Exception:
+                            page.get_by_text("🠋CSV").click()
+
                     download = download_info.value
                     csv_path = download.path()
 
@@ -297,17 +323,17 @@ def fetch_loggis_data_via_csv(target_timestamp=None):
 
                         if len(lines) > 2:
                             header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                            
                             rows_data = []
-                            for line in lines[2:]: # Пропускаем строку единиц измерения
+                            for line in lines[2:]:
                                 parts = [p.strip() for p in line.strip().split(';')]
                                 if len(parts) == len(header):
                                     rows_data.append(parts)
 
+                            # Сохраняем все таймстампы из первой категории (hoop)
                             if cat_key == "hoop":
-                                all_timestamps = [r[0] for r in rows_data if len(r) > 0]
+                                timestamps_list = [r[0] for r in rows_data if len(r) > 0]
 
-                            # Выбираем нужную строку по таймстампу или самую последнюю
+                            # Ищем нужную строку по выбранному времени или берем последнюю
                             selected_row = None
                             if target_timestamp and target_timestamp != "En Son (Güncel)":
                                 for r in rows_data:
@@ -330,7 +356,7 @@ def fetch_loggis_data_via_csv(target_timestamp=None):
                                         if not np.isnan(v):
                                             val_map[s_name] = v
                 except Exception as e:
-                    st.warning(f"CSV İndirme/Okuma Hatası ({cat_key}): {e}")
+                    st.warning(f"CSV İndirme Hatası ({cat_key}): {e}")
 
                 all_results[cat_key] = {"values": val_map, "date": found_date}
 
@@ -339,7 +365,7 @@ def fetch_loggis_data_via_csv(target_timestamp=None):
         finally:
             browser.close()
 
-    return all_timestamps, all_results
+    return timestamps_list, all_results
 
 @st.cache_data
 def get_model_b64(path):
@@ -350,9 +376,9 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Первичный запуск: скачиваем CSV и автоматически собираем все таймстампы из колонки Timestamp
-with st.spinner("LoggIS verileri ve CSV tabloları yükleniyor..."):
-    timestamps_list, current_data = fetch_loggis_data_via_csv(None)
+# Первичный запуск: скачиваем CSV и автоматически извлекаем все даты из колонки Timestamp
+with st.spinner("LoggIS CSV verileri yükleniyor..."):
+    timestamps_list, current_data = fetch_data_via_csv(None)
 
 with col_nav:
     st.subheader("KONTROL PANELİ")
@@ -365,7 +391,7 @@ with col_nav:
     st.markdown("---")
     st.subheader("⏱️ Zaman Seçimi (CSV)")
     
-    # Динамический список дат из CSV-файла (от самых ранних до свежих)
+    # Динамический список из колонки Timestamp скачанного CSV файла
     date_options = ["En Son (Güncel)"] + (timestamps_list if timestamps_list else [])
     selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_options)
 
@@ -373,10 +399,10 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-# Если выбрана историческая дата из CSV, загружаем данные для неё
+# Если выбрана дата/время из архива CSV, загружаем данные для неё
 if selected_date_choice != "En Son (Güncel)":
     with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
-        _, current_data = fetch_loggis_data_via_csv(selected_date_choice)
+        _, current_data = fetch_data_via_csv(selected_date_choice)
 
 cat_cfg = CATEGORIES[selected_comp]
 cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
