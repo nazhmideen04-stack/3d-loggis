@@ -4,7 +4,7 @@ import sys
 import json
 import base64
 import subprocess
-from datetime import datetime
+from datetime import date, datetime
 import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
@@ -756,7 +756,7 @@ else:
 
     selected_history_date = st.date_input(
         "Tarih:",
-        value=datetime.date.today(),
+        value=date.today(),
         format="DD.MM.YYYY",
         help="LoggIS içindeki eski kayıtlardan alınacak tarihi seçin."
     )
