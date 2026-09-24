@@ -698,15 +698,15 @@ with col_3d:
             new THREE.Color("#BD0026")
         ];
 
+        // НОВАЯ ЯРКАЯ ТЕПЛОВИЗИОННАЯ ПАЛИТРА ДЛЯ ТЕМПЕРАТУРЫ
         const tempStops = [
-            new THREE.Color("#000004"),
-            new THREE.Color("#2C105C"),
-            new THREE.Color("#711F81"),
-            new THREE.Color("#B5367A"),
-            new THREE.Color("#F1605D"),
-            new THREE.Color("#FEA066"),
-            new THREE.Color("#FEDA8B"),
-            new THREE.Color("#FCFDBF")
+            new THREE.Color("#001144"), // Ледяной глубокий индиго (холод)
+            new THREE.Color("#0077FF"), // Синий
+            new THREE.Color("#00E5FF"), // Фирменный циан
+            new THREE.Color("#00FF66"), // Зеленый (норма)
+            new THREE.Color("#FFDD00"), // Желтый
+            new THREE.Color("#FF5500"), // Огненно-оранжевый
+            new THREE.Color("#FF0022")  // Раскаленный красный (жар)
         ];
 
         let currentStops = hoopStops;
@@ -968,7 +968,6 @@ with col_3d:
                 const uName = name.toUpperCase();
                 const sensorId = extractSensorId(name);
 
-                // Строгая фильтрация: в температуре ТОЛЬКО датчики -TP
                 let isCategory = false;
                 if (payload.comp === "hoop") {
                     if (uName.includes("-CS")) isCategory = true;
@@ -1058,8 +1057,6 @@ with col_3d:
                     const detachedMesh = new THREE.Mesh(item.mesh.geometry.clone(), sensorMat);
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
-                    
-                    // Исходный масштаб без изменений
                     detachedMesh.scale.copy(wScale);
 
                     detachedMesh.userData.sensorName = sensorName;
