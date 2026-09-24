@@ -16,14 +16,13 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Базовый фирменный стиль
+# Фирменный стиль DESTECH
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
 
     :root {
         --primary-color: #00C8E6 !important;
-        accent-color: #00C8E6 !important;
     }
 
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -64,7 +63,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -80,7 +78,7 @@ st.markdown("""
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
-        filter: hue-rotate(185deg) saturate(3) brightness(1.2) !important;
+        filter: hue-rotate(185deg) saturate(2) !important;
         transform: scale(1.2) !important;
     }
 
@@ -355,27 +353,43 @@ with col_nav:
     st.markdown("---")
     st.subheader("GÖRÜNÜM AYARLARI")
     
-    # ТОЧЕЧНАЯ ИНЪЕКЦИЯ СТИЛЕЙ ДЛЯ GÖRÜNÜM AYARLARI (СЛАЙДЕР И ЧЕКБОКСЫ В ЦИАН)
+    # ЖЕСТКОЕ ВЫЖИГАНИЕ КРАСНОГО ЦВЕТА ИЗ СЛАЙДЕРА И ЧЕКБОКСОВ
     st.markdown("""
     <style>
-        /* 1. Ползунок и заполненная дорожка слайдера */
-        div[data-testid="stSlider"] [data-baseweb="slider"] {
-            filter: hue-rotate(185deg) saturate(3.5) brightness(1.1) !important;
-        }
+        /* 1. ШАРИК-ПОЛЗУНОК СЛАЙДЕРА */
         div[data-testid="stSlider"] div[role="slider"] {
             background-color: #00C8E6 !important;
             border-color: #00C8E6 !important;
-            box-shadow: 0 0 12px #00C8E6 !important;
+            box-shadow: 0 0 14px #00C8E6 !important;
         }
-        
-        /* 2. Чекбоксы: коробка и галочка */
-        div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
-            filter: hue-rotate(185deg) saturate(3.5) brightness(1.1) !important;
-            border-color: #00C8E6 !important;
+
+        /* 2. КРАСНАЯ ПОЛОСА СЛАЙДЕРА (ПЕРЕБИВАЕТ INLINE RGB СТИЛИ BASEWEB) */
+        div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="rgb(255, 75, 75)"],
+        div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="255, 75, 75"],
+        div[data-testid="stSlider"] [data-baseweb="slider"] > div > div:first-child > div {
+            background-color: #00C8E6 !important;
+            background: #00C8E6 !important;
         }
+
+        /* 3. ЧЕКБОКС: КВАДРАТ И ФОН ГАЛОЧКИ */
+        div[data-testid="stCheckbox"] span[style*="rgb(255, 75, 75)"],
+        div[data-testid="stCheckbox"] span[style*="255, 75, 75"],
+        div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"]:has(svg),
         div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
             background-color: #00C8E6 !important;
             border-color: #00C8E6 !important;
+            box-shadow: 0 0 8px rgba(0, 200, 230, 0.6) !important;
+        }
+
+        /* 4. ПУСТОЙ ЧЕКБОКС (РАМКА) */
+        div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+            border-color: #00C8E6 !important;
+        }
+
+        /* 5. САМА ГАЛОЧКА (ДЕЛАЕМ ТЕМНОЙ ЧТОБЫ ЧЕТКО ВЫДЕЛЯЛАСЬ НА СИНЕМ ФОНЕ) */
+        div[data-testid="stCheckbox"] svg path {
+            fill: #0A0E17 !important;
+            stroke: #0A0E17 !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -403,7 +417,6 @@ with col_nav:
             label=f"Seçilen: {selected_sensor}",
             value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
         )
-
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
@@ -749,16 +762,16 @@ with col_3d:
             return { found: false, key: sensorId, val: NaN };
         }
 
-        // ШРИФТ И РАЗМЕР СПРАЙТА УВЕЛИЧЕНЫ В 4 РАЗА
+        // ШРИФТ И РАЗМЕР СПРАЙТА УВЕЛИЧЕНЫ РОВНО В 4 РАЗА
         function createPortalMarker(text) {
             const canvas = document.createElement('canvas');
-            canvas.width = 2048;
+            canvas.width = 2048; // Увеличенное разрешение холста в 4 раза
             canvas.height = 1024;
             const ctx = canvas.getContext('2d');
 
             ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
             ctx.strokeStyle = '#00C8E6';
-            ctx.lineWidth = 56;
+            ctx.lineWidth = 56; // 14 * 4
             ctx.strokeRect(40, 40, 1968, 944);
             ctx.fillRect(40, 40, 1968, 944);
 
@@ -774,7 +787,7 @@ with col_3d:
             const texture = new THREE.CanvasTexture(canvas);
             const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
             const sprite = new THREE.Sprite(mat);
-            // 6.0 * 4 = 24.0, 3.0 * 4 = 12.0
+            // Масштаб увеличен в 4 раза: 6.0 * 4 = 24.0, 3.0 * 4 = 12.0
             sprite.scale.set(24.0, 12.0, 1);
             return sprite;
         }
@@ -868,6 +881,7 @@ with col_3d:
                 }
             });
 
+            // 1. СТРОГИЙ ОТБОР СЕНСОРОВ ПО КАТЕГОРИИ
             const targetMeshes = [];
 
             rawSensors.forEach(child => {
@@ -906,6 +920,7 @@ with col_3d:
                 });
             });
 
+            // 2. ДЕДУПЛИКАЦИЯ
             const finalSensors = [];
             targetMeshes.forEach(item => {
                 let duplicate = null;
@@ -928,6 +943,7 @@ with col_3d:
                 }
             });
 
+            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (СТРОГО ОДИН ВЫБРАННЫЙ СЕНСОР)
             let alreadyHighlightedOne = false;
 
             finalSensors.forEach(item => {
@@ -943,11 +959,11 @@ with col_3d:
                         alreadyHighlightedOne = true;
                     }
 
-                    let sensorColor = 0xFFFFFF;
+                    let sensorColor = 0xFFFFFF; // Белый по умолчанию
                     if (isSelected) {
-                        sensorColor = 0xFFD700;
+                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для одного выбранного
                     } else if (!hasData) {
-                        sensorColor = 0xFF0033;
+                        sensorColor = 0xFF0033; // Красный при отсутствии данных
                     }
 
                     const sensorMat = new THREE.MeshBasicMaterial({
@@ -984,6 +1000,7 @@ with col_3d:
                 }
             });
 
+            // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
             const validVals = interactiveSensors
                 .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                 .map(s => s.userData.val);
@@ -1026,6 +1043,7 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
+            // ИНТЕРПОЛЯЦИЯ И АЛЬТЕРНАТИВНОЕ РЕШЕНИЕ: ПРЯМАЯ ПРОЗРАЧНОСТЬ И ЧИСТЫЙ СВОД
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -1138,9 +1156,11 @@ with col_3d:
 
             const portalsGroup = new THREE.Group();
 
+            // ПОЗИЦИОНИРОВАНИЕ УВЕЛИЧЕННЫХ ПОРТАЛОВ
             if (hasTA) {
                 const cA = boxTA.getCenter(new THREE.Vector3());
                 const spriteTA = createPortalMarker("TA");
+                // Поднят выше с учетом увеличенного размера (24x12)
                 spriteTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0);
                 portalsGroup.add(spriteTA);
             }
@@ -1217,6 +1237,7 @@ with col_3d:
                 }
             }
 
+            // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
             const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1259,6 +1280,7 @@ with col_3d:
             console.error(err);
         });
 
+        // ПЛАШКА ВЫБРАННОГО ДАТЧИКА: И ДЛЯ РАБОЧИХ, И ДЛЯ НЕРАБОЧИХ
         function updateHud(name, val, isUsable) {
             selectedHud.style.display = 'block';
             hudName.innerText = name;
@@ -1324,6 +1346,7 @@ with col_3d:
             return null;
         }
 
+        // ВЫДЕЛЕНИЕ СТРОГО ОДНОГО СЕНСОРА ПРИ КЛИКЕ
         window.addEventListener('click', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) {
@@ -1333,11 +1356,11 @@ with col_3d:
                 
                 interactiveSensors.forEach(m => {
                     if (m === sensorMesh) {
-                        m.material.color.setHex(0xFFD700);
+                        m.material.color.setHex(0xFFD700); // Только он окрасится в желтый
                     } else if (m.userData.isUsable) {
-                        m.material.color.setHex(0xFFFFFF);
+                        m.material.color.setHex(0xFFFFFF); // Все остальные рабочие - белые
                     } else {
-                        m.material.color.setHex(0xFF0033);
+                        m.material.color.setHex(0xFF0033); // Нерабочие - красные
                     }
                 });
 
@@ -1378,6 +1401,7 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
+        // ДВУХПРОХОДНЫЙ РЕНДЕР
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
