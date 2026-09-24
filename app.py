@@ -554,7 +554,7 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // 1. ПАЛИТРА ДЛЯ ÇEVRESEL GERİNİM (CS) - Турбо Радуга
+        // Палитры для каждого типа
         const hoopStops = [
             new THREE.Color("#0022FF"),
             new THREE.Color("#00E5FF"),
@@ -565,7 +565,6 @@ with col_3d:
             new THREE.Color("#FF0022")
         ];
 
-        // 2. ПАЛИТРА ДЛЯ BOYUNA GERİNİM (S) - Осевая деформация
         const axialStops = [
             new THREE.Color("#081D58"),
             new THREE.Color("#253494"),
@@ -577,7 +576,6 @@ with col_3d:
             new THREE.Color("#BD0026")
         ];
 
-        // 3. ПАЛИТРА ДЛЯ SICAKLIK (TP) - Термографическая шкала
         const tempStops = [
             new THREE.Color("#000004"),
             new THREE.Color("#2C105C"),
@@ -795,6 +793,7 @@ with col_3d:
             const rawSensors = [];
 
             model.traverse(function(child) {
+                // Прячем все линии и вспомогательные сплайны Max
                 if (child.isLine || child.isLineSegments) {
                     child.visible = false;
                     return;
@@ -805,6 +804,30 @@ with col_3d:
                     const uName = name.toUpperCase();
 
                     if (uName.includes("BOX001")) {
+                        child.visible = false;
+                        return;
+                    }
+
+                    // ТОЧНЫЙ СПИСОК ПАРАЗИТНЫХ ОБЪЕКТОВ ИЗ ПРОШЛОГО РАБОЧЕГО ШАГА:
+                    // Отсекает только вспомогательные диски, кольца и швы Max, не трогая основное тело тоннеля
+                    const isParasiticRing = (
+                        uName.includes("RING") ||
+                        uName.includes("SEGMENT") ||
+                        uName.includes("JOINT") ||
+                        uName.includes("SEAM") ||
+                        uName.includes("BORDER") ||
+                        uName.includes("EDGE") ||
+                        uName.includes("FRAME") ||
+                        uName.includes("CIRCLE") ||
+                        uName.includes("DISC") ||
+                        uName.includes("DISK") ||
+                        uName.includes("CAP") ||
+                        uName.includes("CONTOUR") ||
+                        uName.includes("PLUG") ||
+                        uName.includes("COVER")
+                    );
+
+                    if (isParasiticRing && !uName.startsWith("TA-") && !uName.startsWith("TB-") && uName !== "TA" && uName !== "TB") {
                         child.visible = false;
                         return;
                     }
@@ -830,7 +853,7 @@ with col_3d:
                         );
 
                         if (isTunnel) {
-                            // ОРИГИНАЛЬНАЯ ГЕОМЕТРИЯ СВОДА — БЕЗ ИЗМЕНЕНИЙ И БЕЗ СРЕЗКИ
+                            // ОРИГИНАЛЬНАЯ ГЕОМЕТРИЯ СВОДА — НИКАКИХ СРЕЗОК И МОДИФИКАЦИЙ ВЕРШИН
                             tunnelMeshes.push(child);
                         } else {
                             child.material = new THREE.MeshStandardMaterial({
@@ -997,7 +1020,7 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
-            // ИНТЕРПОЛЯЦИЯ СВОДА ТОННЕЛЯ — НАДЕЖНО И БЕЗ ЛОМАЮЩИХ ПЕРЕСТРОЕНИЙ
+            // ИНТЕРПОЛЯЦИЯ СВОДА ТОННЕЛЯ
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -1065,6 +1088,8 @@ with col_3d:
                 geom.attributes.color.needsUpdate = true;
                 
                 const isTransparent = payload.tunnelOpacity < 0.98;
+
+                // СВОД ТОННЕЛЯ: БЕЗ ВНУТРЕННИХ ДИСКОВ И НАЛОЖЕНИЯ ГРАНЕЙ
                 tMesh.material = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
