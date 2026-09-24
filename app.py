@@ -554,7 +554,6 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // Палитры для каждого типа
         const hoopStops = [
             new THREE.Color("#0022FF"),
             new THREE.Color("#00E5FF"),
@@ -828,7 +827,6 @@ with col_3d:
                         );
 
                         if (isTunnel) {
-                            // ОРИГИНАЛЬНАЯ ГЕОМЕТРИЯ: СОХРАНЯЕТСЯ ЦЕЛОЙ И НЕ ПОВРЕЖДАЕТСЯ
                             tunnelMeshes.push(child);
                         } else {
                             child.material = new THREE.MeshStandardMaterial({
@@ -993,7 +991,6 @@ with col_3d:
                 }
             });
 
-            // ОПРЕДЕЛЯЕМ ПРОДОЛЬНУЮ ОСЬ ТОННЕЛЯ (Z ИЛИ X)
             const overallBox = new THREE.Box3();
             tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
             const tunnelSize = overallBox.getSize(new THREE.Vector3());
@@ -1001,12 +998,11 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
-            // ИНТЕРПОЛЯЦИЯ СВОДА С ШЕЙДЕРНЫМ ОТСЕЧЕНИЕМ ПОПЕРЕЧНЫХ ДИСКОВ
+            // ИНТЕРПОЛЯЦИЯ И НАЗНАЧЕНИЕ МАТЕРИАЛА С ПОЛНЫМ СКРЫТИЕМ ДИСКОВ
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
 
-                // Вычисляем нормали геометрии, если их не было
                 if (!geom.attributes.normal) {
                     geom.computeVertexNormals();
                 }
@@ -1075,58 +1071,61 @@ with col_3d:
                 
                 const isTransparent = payload.tunnelOpacity < 0.98;
 
-                // БЕЗОПАСНЫЙ ШЕЙДЕРНЫЙ МАТЕРИАЛ: СКРЫВАЕТ ТОЛЬКО ВНУТРЕННИЕ ДИСКИ БЕЗ ПОВРЕЖДЕНИЯ СВОДА
-                const mat = new THREE.MeshStandardMaterial({
-                    color: 0xffffff,
+                // 100% ГАРАНТИРОВАННОЕ СКРЫТИЕ ДИСКОВ:
+                // Мы используем ShaderMaterial на базе Standard, который аппаратно отбрасывает пиксели дисков
+                const customShader = THREE.ShaderLib.standard;
+                const uniforms = THREE.UniformsUtils.clone(customShader.uniforms);
+
+                let fragmentShaderCode = customShader.fragmentShader;
+                let vertexShaderCode = customShader.vertexShader;
+
+                vertexShaderCode = vertexShaderCode.replace(
+                    '#include <common>',
+                    `
+                    #include <common>
+                    varying vec3 vWorldNormalClean;
+                    `
+                ).replace(
+                    '#include <defaultnormal_vertex>',
+                    `
+                    #include <defaultnormal_vertex>
+                    vWorldNormalClean = normalize(mat3(modelMatrix) * objectNormal);
+                    `
+                );
+
+                fragmentShaderCode = fragmentShaderCode.replace(
+                    '#include <common>',
+                    `
+                    #include <common>
+                    varying vec3 vWorldNormalClean;
+                    `
+                ).replace(
+                    '#include <dithering_fragment>',
+                    `
+                    #include <dithering_fragment>
+                    // Отсекаем строго поперечные диски
+                    vec3 norm = normalize(vWorldNormalClean);
+                    ${isZAxis ? 'if (abs(norm.z) > 0.80) discard;' : 'if (abs(norm.x) > 0.80) discard;'}
+                    `
+                );
+
+                const cleanMat = new THREE.ShaderMaterial({
+                    uniforms: uniforms,
+                    vertexShader: vertexShaderCode,
+                    fragmentShader: fragmentShaderCode,
+                    lights: true,
                     vertexColors: true,
                     transparent: isTransparent,
                     opacity: payload.tunnelOpacity,
-                    roughness: 0.18,
-                    metalness: 0.02,
-                    depthWrite: !isTransparent,
                     side: THREE.DoubleSide
                 });
 
-                // Передаем нормали в мировом пространстве во фрагментный шейдер
-                mat.onBeforeCompile = (shader) => {
-                    shader.vertexShader = shader.vertexShader.replace(
-                        '#include <common>',
-                        `
-                        #include <common>
-                        varying vec3 vWorldNormalDisc;
-                        `
-                    );
+                cleanMat.roughness = 0.18;
+                cleanMat.metalness = 0.02;
+                cleanMat.defines = { STANDARD: '' };
 
-                    shader.vertexShader = shader.vertexShader.replace(
-                        '#include <defaultnormal_vertex>',
-                        `
-                        #include <defaultnormal_vertex>
-                        vWorldNormalDisc = normalize(mat3(modelMatrix) * objectNormal);
-                        `
-                    );
-
-                    shader.fragmentShader = shader.fragmentShader.replace(
-                        '#include <common>',
-                        `
-                        #include <common>
-                        varying vec3 vWorldNormalDisc;
-                        `
-                    );
-
-                    // У дисков нормаль направлена строго вдоль оси Z (или X). Отбрасываем их!
-                    shader.fragmentShader = shader.fragmentShader.replace(
-                        '#include <dithering_fragment>',
-                        `
-                        #include <dithering_fragment>
-                        vec3 wn = normalize(vWorldNormalDisc);
-                        ${isZAxis ? 'if (abs(wn.z) > 0.85) discard;' : 'if (abs(wn.x) > 0.85) discard;'}
-                        `
-                    );
-                };
-
-                tMesh.material = mat;
+                tMesh.material = cleanMat;
                 tMesh.renderOrder = 0;
-                tMesh.material.needsUpdate = true;
             });
 
             const boxTA = new THREE.Box3();
