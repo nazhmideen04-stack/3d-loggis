@@ -538,15 +538,15 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // СОЧНАЯ ИНЖЕНЕРНАЯ 7-СТУПЕНЧАТАЯ РАДУГА
+                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const strainStops = [
-                    new THREE.Color("#0022FF"), // Глубокий синий
-                    new THREE.Color("#00E5FF"), // Циан
-                    new THREE.Color("#00FF44"), // Зеленый
-                    new THREE.Color("#FFE600"), // Желтый
-                    new THREE.Color("#FFAA00"), // Оранжевый
-                    new THREE.Color("#FF5500"), // Красно-оранжевый
-                    new THREE.Color("#FF0022")  // Алый красный
+                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
+                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
+                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
+                    new THREE.Color("#FFE600"), // 0.50: Желтый
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
+                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжевый
+                    new THREE.Color("#FF0022")  // 1.00: Алый красный
                 ];
 
                 const tempStops = [
@@ -707,6 +707,52 @@ with col_3d:
                     return sprite;
                 }}
 
+                // ФУНКЦИЯ ДЛЯ УДАЛЕНИЯ ВНУТРЕННИХ КРУГЛЫХ ЗАГЛУШЕК И ДИСКОВ ИЗ ТОННЕЛЯ
+                function removeTunnelCaps(geometry) {{
+                    if (!geometry) return geometry;
+                    const nonIndexed = geometry.toNonIndexed ? geometry.toNonIndexed() : geometry.clone();
+                    if (!nonIndexed.attributes.position) return geometry;
+                    
+                    if (!nonIndexed.attributes.normal) {{
+                        nonIndexed.computeVertexNormals();
+                    }}
+
+                    const pos = nonIndexed.attributes.position;
+                    const norm = nonIndexed.attributes.normal;
+                    const box = new THREE.Box3().setFromBufferAttribute(pos);
+                    const size = box.getSize(new THREE.Vector3());
+                    const isZAxis = size.z >= size.x;
+
+                    const newPos = [];
+                    const newNorm = [];
+
+                    for (let i = 0; i < pos.count; i += 3) {{
+                        // Средняя нормаль треугольника
+                        const nx = (norm.getX(i) + norm.getX(i+1) + norm.getX(i+2)) / 3.0;
+                        const ny = (norm.getY(i) + norm.getY(i+1) + norm.getY(i+2)) / 3.0;
+                        const nz = (norm.getZ(i) + norm.getZ(i+1) + norm.getZ(i+2)) / 3.0;
+
+                        // Если нормаль направлена вдоль тоннеля — это внутренний круг/заглушка! Срезаем его!
+                        const isCap = isZAxis ? (Math.abs(nz) > 0.65) : (Math.abs(nx) > 0.65);
+
+                        if (!isCap) {{
+                            for (let k = 0; k < 3; k++) {{
+                                newPos.push(pos.getX(i+k), pos.getY(i+k), pos.getZ(i+k));
+                                newNorm.push(norm.getX(i+k), norm.getY(i+k), norm.getZ(i+k));
+                            }}
+                        }}
+                    }}
+
+                    if (newPos.length > 0 && newPos.length < pos.count * 3) {{
+                        const cleanGeom = new THREE.BufferGeometry();
+                        cleanGeom.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+                        cleanGeom.setAttribute('normal', new THREE.Float32BufferAttribute(newNorm, 3));
+                        return cleanGeom;
+                    }}
+
+                    return nonIndexed;
+                }}
+
                 const binaryStr = atob(modelB64);
                 const bytes = new Uint8Array(binaryStr.length);
                 for (let i = 0; i < binaryStr.length; i++) {{
@@ -725,7 +771,6 @@ with col_3d:
                     const rawSensors = [];
 
                     model.traverse(function(child) {{
-                        // СКРЫВАЕМ ЛЮБЫЕ ЛИНИИ, КАРКАСЫ И РЕБРА
                         if (child.isLine || child.isLineSegments) {{
                             child.visible = false;
                             return;
@@ -735,13 +780,12 @@ with col_3d:
                             const name = child.name;
                             const uName = name.toUpperCase();
 
-                            // СКРЫВАЕМ КОРОБКУ
                             if (uName.includes("BOX001")) {{
                                 child.visible = false;
                                 return;
                             }}
 
-                            // СКРЫВАЕМ ПОЛУВИДИМЫЕ КРУГИ СЕГМЕНТОВ И СТЫКОВ
+                            // СКРЫВАЕМ ОТДЕЛЬНЫЕ КРУГИ И ПЛОСКИЕ ДИСКОВЫЕ МЕШИ
                             const isParasiticRing = (
                                 uName.includes("RING") ||
                                 uName.includes("SEGMENT") ||
@@ -751,6 +795,9 @@ with col_3d:
                                 uName.includes("EDGE") ||
                                 uName.includes("FRAME") ||
                                 uName.includes("CIRCLE") ||
+                                uName.includes("DISC") ||
+                                uName.includes("DISK") ||
+                                uName.includes("CAP") ||
                                 uName.includes("CONTOUR")
                             );
 
@@ -780,6 +827,8 @@ with col_3d:
                                 );
 
                                 if (isTunnel) {{
+                                    // ОЧИЩАЕМ ТОННЕЛЬ ОТ ВНУТРЕННИХ ДИСКОВ И КРУГОВ
+                                    child.geometry = removeTunnelCaps(child.geometry);
                                     tunnelMeshes.push(child);
                                 }} else {{
                                     child.material = new THREE.MeshStandardMaterial({{
@@ -791,7 +840,7 @@ with col_3d:
                         }}
                     }});
 
-                    // СЕНСОРЫ: ПЕРЕНОС В ОТДЕЛЬНЫЙ СЛОЙ, ЧИСТЫЙ НЕПРОЗРАЧНЫЙ БЕЛЫЙ ЦВЕТ
+                    // ПЕРЕНОСИМ ДАТЧИКИ В ОТДЕЛЬНЫЙ СЛОЙ (ЧИСТЫЙ БЕЛЫЙ ЦВЕТ)
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
@@ -896,7 +945,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ЧИСТАЯ НЕПРЕРЫВНАЯ ИНТЕРПОЛЯЦИЯ СВОДА
+                    // ЧИСТАЯ ПОЛАЯ ИНТЕРПОЛЯЦИЯ СВОДА БЕЗ ВНУТРЕННИХ ДИСКОВ
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -976,6 +1025,7 @@ with col_3d:
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
+                        tMesh.renderOrder = 0;
                         tMesh.material.needsUpdate = true;
                     }});
 
@@ -1230,6 +1280,7 @@ with col_3d:
                     renderer.setSize(container.clientWidth, container.clientHeight);
                 }});
 
+                // ДВУХПРОХОДНЫЙ РЕНДЕР
                 function animate(time) {{
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
