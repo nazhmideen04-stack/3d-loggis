@@ -665,7 +665,6 @@ with col_3d:
                     }};
                 }}
 
-                // СТРОГАЯ ИДЕНТИФИКАЦИЯ ТИПА ПО НАЗВАНИЮ МЕША
                 function getSensorTypeByName(name) {{
                     const u = name.toUpperCase();
                     if (u.includes("-CS")) return "hoop";
@@ -674,9 +673,7 @@ with col_3d:
                     return "unknown";
                 }}
 
-                // ПРОВЕРКА НАЛИЧИЯ ДАННЫХ ДЛЯ ДАТЧИКА
                 function checkSensorData(sensorId, comp) {{
-                    // 1. Прямое совпадение
                     if (payload.activeCategoryValues.hasOwnProperty(sensorId)) {{
                         const v = payload.activeCategoryValues[sensorId];
                         if (v !== undefined && v !== null && !isNaN(v)) {{
@@ -684,7 +681,6 @@ with col_3d:
                         }}
                     }}
 
-                    // 2. Для температуры: если меш называется базовым именем без -TP
                     if (comp === "temp" && !sensorId.toUpperCase().includes("-TP")) {{
                         const tpCandidate = sensorId.toUpperCase().replace("-CS", "-TP").replace("-S", "-TP");
                         if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
@@ -695,7 +691,6 @@ with col_3d:
                         }}
                     }}
 
-                    // 3. Нормализованный поиск
                     const nId = normalizeKey(sensorId);
                     if (normalizedDataMap.hasOwnProperty(nId)) {{
                         const item = normalizedDataMap[nId];
@@ -845,23 +840,20 @@ with col_3d:
                         }}
                     }});
 
-                    // СТРОГИЙ ОТБОР СЕНСОРОВ ПО ОТКРЫТОМУ ТИПУ
                     const targetMeshes = [];
 
                     rawSensors.forEach(child => {{
-                        child.visible = false; // Скрываем оригиналы в модели
+                        child.visible = false;
 
                         const name = child.name;
                         const sensorId = extractSensorId(name);
                         const sType = getSensorTypeByName(sensorId);
 
-                        // Проверка соответствия активной категории:
                         let isCategory = false;
                         if (payload.comp === "hoop" && sType === "hoop") isCategory = true;
                         if (payload.comp === "axial" && sType === "axial") isCategory = true;
                         if (payload.comp === "temp") {{
                             if (sType === "temp") isCategory = true;
-                            // Для температуры разрешаем базовые узлы, если найден их -TP аналог
                             else if (checkSensorData(sensorId, "temp").found) isCategory = true;
                         }}
 
@@ -884,7 +876,6 @@ with col_3d:
                         }});
                     }});
 
-                    // ДЕДУПЛИКАЦИЯ ТОЛЬКО ДЛЯ ОДНОИМЕННЫХ ДАТЧИКОВ В ОДНОЙ ТОЧКЕ
                     const finalSensors = [];
                     targetMeshes.forEach(item => {{
                         let duplicate = null;
@@ -897,32 +888,28 @@ with col_3d:
 
                         if (!duplicate) {{
                             finalSensors.push(item);
-                        }} else {
+                        }} else {{
                             if (!duplicate.hasData && item.hasData) {{
                                 duplicate.hasData = true;
                                 duplicate.val = item.val;
                                 duplicate.mesh = item.mesh;
                             }}
-                        }
+                        }}
                     }});
 
-                    // РЕНДЕРИНГ В ОТДЕЛЬНОМ НЕЗАВИСИМОМ СЛОЕ
                     finalSensors.forEach(item => {{
                         const hasData = item.hasData;
                         const sensorName = item.sensorName;
                         const val = item.val;
 
-                        // Показываем:
-                        // 1. Все рабочие сенсоры текущего типа (БЕЛЫЕ)
-                        // 2. Все нерабочие сенсоры текущего типа, если включен чекбокс (КРАСНЫЕ)
                         if (hasData || payload.showNoDataRed) {{
                             const isSelected = (sensorName === payload.selectedSensor);
 
-                            let sensorColor = 0xFFFFFF; // Белый по умолчанию
+                            let sensorColor = 0xFFFFFF;
                             if (isSelected) {{
-                                sensorColor = 0xFFD700; // Золотой
+                                sensorColor = 0xFFD700;
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033; // Красный
+                                sensorColor = 0xFF0033;
                             }}
 
                             const sensorMat = new THREE.MeshBasicMaterial({{
@@ -959,7 +946,6 @@ with col_3d:
                         }}
                     }});
 
-                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -1000,7 +986,6 @@ with col_3d:
                         }}
                     }});
 
-                    // ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
