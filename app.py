@@ -9,9 +9,9 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
-os.makedirs(".streamlit", exist_ok=True)
-config_path = os.path.join(".streamlit", "config.toml")
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)[cite: 1]
+os.makedirs(".streamlit", exist_ok=True)[cite: 1]
+config_path = os.path.join(".streamlit", "config.toml")[cite: 1]
 target_config = """[theme]
 primaryColor = "#00C8E6"
 backgroundColor = "#0A0E17"
@@ -19,17 +19,80 @@ secondaryBackgroundColor = "#0E182A"
 textColor = "#D2DEEC"
 font = "sans serif"
 """
-if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").read() != target_config:
-    with open(config_path, "w", encoding="utf-8") as f:
-        f.write(target_config)
+if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").read() != target_config:[cite: 1]
+    with open(config_path, "w", encoding="utf-8") as f:[cite: 1]
+        f.write(target_config)[cite: 1]
 
-st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")[cite: 1]
 
-URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
+URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"[cite: 1]
 
-LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
-MODEL_PATH = "tunnel_model.glb"
+LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"[cite: 1]
+MODEL_PATH = "tunnel_model.glb"[cite: 1]
 
+# Полный список доступных временных меток для исторической команды
+AVAILABLE_DATES = [
+    "08.09.2025 17:00", "08.09.2025 18:00", "08.09.2025 20:00", "08.09.2025 21:00", "08.09.2025 22:00", "08.09.2025 23:00",
+    "09.09.2025 00:00", "09.09.2025 01:00", "09.09.2025 02:00", "09.09.2025 03:00", "09.09.2025 04:00", "09.09.2025 05:00",
+    "09.09.2025 14:00", "09.09.2025 15:00", "09.09.2025 16:00", "09.09.2025 17:00", "09.09.2025 18:00", "09.09.2025 19:00",
+    "09.09.2025 20:00", "09.09.2025 21:00", "09.09.2025 22:00", "09.09.2025 23:00", "10.09.2025 00:00", "10.09.2025 01:00",
+    "10.09.2025 02:00", "10.09.2025 03:00", "10.09.2025 04:00", "10.09.2025 05:00", "10.09.2025 06:00", "10.09.2025 07:00",
+    "10.09.2025 08:00", "10.09.2025 09:00", "10.09.2025 10:00", "10.09.2025 11:00", "10.09.2025 12:00", "10.09.2025 13:00",
+    "10.09.2025 14:00", "10.09.2025 15:00", "10.09.2025 16:00", "10.09.2025 17:00", "10.09.2025 18:00", "10.09.2025 19:00",
+    "10.09.2025 20:00", "10.09.2025 21:00", "10.09.2025 22:00", "10.09.2025 23:00", "11.09.2025 00:00", "11.09.2025 01:00",
+    "11.09.2025 02:00", "11.09.2025 03:00", "11.09.2025 04:00", "11.09.2025 05:00", "11.09.2025 06:00", "11.09.2025 07:00",
+    "11.09.2025 08:00", "11.09.2025 09:00", "11.09.2025 10:00", "11.09.2025 11:00", "11.09.2025 12:00", "11.09.2025 13:00",
+    "11.09.2025 14:00", "11.09.2025 15:00", "11.09.2025 16:00", "11.09.2025 17:00", "11.09.2025 18:00", "11.09.2025 19:00",
+    "11.09.2025 20:00", "11.09.2025 21:00", "11.09.2025 22:00", "11.09.2025 23:00", "12.09.2025 00:00", "12.09.2025 01:00",
+    "12.09.2025 02:00", "12.09.2025 03:00", "12.09.2025 11:00", "12.09.2025 12:00", "12.09.2025 13:00", "12.09.2025 14:00",
+    "12.09.2025 15:00", "12.09.2025 16:00", "13.09.2025 06:00", "13.09.2025 07:00", "13.09.2025 08:00", "13.09.2025 09:00",
+    "13.09.2025 10:00", "13.09.2025 11:00", "13.09.2025 12:00", "13.09.2025 13:00", "13.09.2025 14:00", "13.09.2025 15:00",
+    "14.09.2025 05:00", "14.09.2025 06:00", "14.09.2025 07:00", "14.09.2025 08:00", "14.09.2025 09:00", "14.09.2025 10:00",
+    "14.09.2025 11:00", "14.09.2025 12:00", "14.09.2025 13:00", "14.09.2025 14:00", "14.09.2025 15:00", "14.09.2025 16:00",
+    "14.09.2025 17:00", "14.09.2025 18:00", "14.09.2025 19:00", "14.09.2025 20:00", "14.09.2025 21:00", "14.09.2025 22:00",
+    "14.09.2025 23:00", "15.09.2025 00:00", "15.09.2025 01:00", "15.09.2025 02:00", "15.09.2025 03:00", "15.09.2025 04:00",
+    "15.09.2025 05:00", "15.09.2025 06:00", "15.09.2025 07:00", "15.09.2025 08:00", "15.09.2025 09:00", "15.09.2025 10:00",
+    "15.09.2025 11:00", "15.09.2025 12:00", "15.09.2025 13:00", "15.09.2025 14:00", "15.09.2025 15:00", "15.09.2025 16:00",
+    "15.09.2025 17:00", "15.09.2025 18:00", "15.09.2025 19:00", "15.09.2025 20:00", "15.09.2025 21:00", "15.09.2025 22:00",
+    "15.09.2025 23:00", "16.09.2025 00:00", "16.09.2025 01:00", "16.09.2025 02:00", "16.09.2025 03:00", "16.09.2025 04:00",
+    "16.09.2025 05:00", "16.09.2025 06:00", "16.09.2025 07:00", "16.09.2025 08:00", "16.09.2025 09:00", "16.09.2025 10:00",
+    "16.09.2025 11:00", "16.09.2025 12:00", "16.09.2025 13:00", "16.09.2025 14:00", "16.09.2025 15:00", "16.09.2025 16:00",
+    "16.09.2025 17:00", "16.09.2025 18:00", "16.09.2025 19:00", "16.09.2025 20:00", "16.09.2025 21:00", "16.09.2025 22:00",
+    "16.09.2025 23:00", "17.09.2025 00:00", "17.09.2025 01:00", "17.09.2025 02:00", "17.09.2025 03:00", "17.09.2025 04:00",
+    "17.09.2025 05:00", "17.09.2025 06:00", "17.09.2025 07:00", "17.09.2025 08:00", "17.09.2025 09:00", "17.09.2025 10:00",
+    "17.09.2025 13:00", "17.09.2025 14:00", "17.09.2025 15:00", "17.09.2025 16:00", "17.09.2025 17:00", "17.09.2025 18:00",
+    "17.09.2025 19:00", "17.09.2025 20:00", "17.09.2025 21:00", "17.09.2025 22:00", "17.09.2025 23:00", "18.09.2025 00:00",
+    "18.09.2025 01:00", "18.09.2025 02:00", "18.09.2025 03:00", "18.09.2025 04:00", "18.09.2025 05:00", "18.09.2025 06:00",
+    "18.09.2025 07:00", "18.09.2025 08:00", "18.09.2025 09:00", "18.09.2025 10:00", "18.09.2025 11:00", "18.09.2025 12:00",
+    "18.09.2025 13:00", "18.09.2025 14:00", "18.09.2025 15:00", "18.09.2025 16:00", "18.09.2025 17:00", "18.09.2025 18:00",
+    "18.09.2025 19:00", "18.09.2025 20:00", "18.09.2025 21:00", "18.09.2025 22:00", "18.09.2025 23:00", "19.09.2025 00:00",
+    "19.09.2025 01:00", "19.09.2025 02:00", "19.09.2025 03:00", "19.09.2025 04:00", "19.09.2025 05:00", "19.09.2025 06:00",
+    "19.09.2025 07:00", "19.09.2025 08:00", "19.09.2025 09:00", "19.09.2025 10:00", "19.09.2025 11:00", "19.09.2025 12:00",
+    "19.09.2025 13:00", "19.09.2025 14:00", "19.09.2025 15:00", "19.09.2025 16:00", "19.09.2025 17:00", "19.09.2025 18:00",
+    "19.09.2025 19:00", "19.09.2025 20:00", "19.09.2025 21:00", "19.09.2025 22:00", "19.09.2025 23:00", "20.09.2025 00:00",
+    "20.09.2025 01:00", "20.09.2025 02:00", "20.09.2025 03:00", "20.09.2025 04:00", "20.09.2025 05:00", "20.09.2025 06:00",
+    "20.09.2025 07:00", "20.09.2025 08:00", "20.09.2025 09:00", "20.09.2025 10:00", "20.09.2025 11:00", "20.09.2025 12:00",
+    "20.09.2025 13:00", "20.09.2025 14:00", "20.09.2025 15:00", "20.09.2025 16:00", "20.09.2025 17:00", "20.09.2025 18:00",
+    "20.09.2025 19:00", "20.09.2025 20:00", "20.09.2025 21:00", "20.09.2025 22:00", "20.09.2025 23:00", "21.09.2025 00:00",
+    "21.09.2025 01:00", "21.09.2025 02:00", "21.09.2025 03:00", "21.09.2025 04:00", "21.09.2025 05:00", "21.09.2025 06:00",
+    "21.09.2025 07:00", "21.09.2025 08:00", "21.09.2025 09:00", "21.09.2025 10:00", "21.09.2025 11:00", "21.09.2025 12:00",
+    "21.09.2025 13:00", "21.09.2025 14:00", "21.09.2025 15:00", "21.09.2025 16:00", "21.09.2025 17:00", "21.09.2025 18:00",
+    "21.09.2025 19:00", "21.09.2025 20:00", "21.09.2025 21:00", "21.09.2025 22:00", "21.09.2025 23:00", "22.09.2025 00:00",
+    "22.09.2025 01:00", "22.09.2025 02:00", "22.09.2025 03:00", "22.09.2025 04:00", "22.09.2025 05:00", "22.09.2025 06:00",
+    "22.09.2025 07:00", "22.09.2025 08:00", "22.09.2025 09:00", "22.09.2025 10:00", "22.09.2025 11:00", "22.09.2025 12:00",
+    "22.09.2025 13:00", "22.09.2025 14:00", "22.09.2025 15:00", "22.09.2025 16:00", "22.09.2025 17:00", "22.09.2025 18:00",
+    "22.09.2025 19:00", "22.09.2025 20:00", "22.09.2025 21:00", "22.09.2025 22:00", "22.09.2025 23:00", "23.09.2025 00:00",
+    "23.09.2025 01:00", "23.09.2025 02:00", "23.09.2025 03:00", "23.09.2025 04:00", "23.09.2025 05:00", "23.09.2025 06:00",
+    "23.09.2025 07:00", "23.09.2025 08:00", "23.09.2025 09:00", "23.09.2025 10:00", "23.09.2025 11:00", "23.09.2025 12:00",
+    "23.09.2025 13:00", "23.09.2025 14:00", "23.09.2025 15:00", "23.09.2025 16:00", "23.09.2025 17:00", "23.09.2025 18:00",
+    "23.09.2025 19:00", "23.09.2025 20:00", "23.09.2025 21:00", "23.09.2025 22:00", "23.09.2025 23:00", "24.09.2025 00:00",
+    "24.09.2025 01:00", "24.09.2025 02:00", "24.09.2025 03:00", "24.09.2025 04:00", "24.09.2025 05:00", "24.09.2025 06:00",
+    "24.09.2025 07:00", "24.09.2025 08:00", "24.09.2025 09:00", "24.09.2025 10:00", "24.09.2025 11:00", "24.09.2025 12:00",
+    "24.09.2025 13:00", "24.09.2025 14:00", "24.09.2025 15:00", "24.09.2025 16:00", "24.09.2025 17:00", "24.09.2025 18:00",
+    "24.09.2025 19:00", "24.09.2025 20:00", "24.09.2025 21:00", "24.09.2025 22:00", "24.09.2025 23:00"
+]
+
+# Фирменный стиль DESTECH с мобильной адаптацией[cite: 1]
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -77,6 +140,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -99,12 +163,20 @@ st.markdown("""
         background-color: #00C8E6 !important;
     }
 
+    div[data-testid="stRadio"] div[role="radiogroup"] > label {
+        margin-bottom: 12px !important;
+        cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+
     div[data-baseweb="select"] {
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
     }
 
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -114,6 +186,15 @@ st.markdown("""
     div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+        border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] svg path {
+        fill: #0A0E17 !important;
+        stroke: #0A0E17 !important;
     }
 
     .destech-badge {
@@ -147,6 +228,7 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1rem !important;
@@ -175,97 +257,90 @@ st.markdown("""
         }
     }
 </style>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)[cite: 1]
 
-LOGO_B64 = ""
-if os.path.exists(LOGO_PATH):
-    with open(LOGO_PATH, "rb") as f:
-        LOGO_B64 = base64.b64encode(f.read()).decode()
+LOGO_B64 = ""[cite: 1]
+if os.path.exists(LOGO_PATH):[cite: 1]
+    with open(LOGO_PATH, "rb") as f:[cite: 1]
+        LOGO_B64 = base64.b64encode(f.read()).decode()[cite: 1]
 
-LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 180px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
+LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 180px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'[cite: 1]
 
 st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ZAMAN SEÇİMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
     </div>
 </div>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)[cite: 1]
 
 CATEGORIES = {
     "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
     "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
     "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
-}
+}[cite: 1]
 
-def clean_num(s):
-    if not s:
-        return np.nan
-    s = str(s).replace(",", ".").replace(" ", "").strip()
-    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
-    return float(m.group()) if m else np.nan
+def clean_num(s):[cite: 1]
+    if not s:[cite: 1]
+        return np.nan[cite: 1]
+    s = str(s).replace(",", ".").replace(" ", "").strip()[cite: 1]
+    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)[cite: 1]
+    return float(m.group()) if m else np.nan[cite: 1]
 
-def ensure_playwright_installed():
-    try:
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-    except Exception:
-        pass
+def ensure_playwright_installed():[cite: 1]
+    try:[cite: 1]
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)[cite: 1]
+    except Exception:[cite: 1]
+        pass[cite: 1]
 
 @st.cache_data(ttl=300)
 def fetch_loggis_data(target_date_str=None):
-    dates_list = []
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
-    with sync_playwright() as p:
+    with sync_playwright() as p:[cite: 1]
         browser_args = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--window-size=1920,1080",
-        ]
-        try:
-            browser = p.chromium.launch(headless=True, args=browser_args)
-        except Exception:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
+        ][cite: 1]
+        try:[cite: 1]
+            browser = p.chromium.launch(headless=True, args=browser_args)[cite: 1]
+        except Exception:[cite: 1]
+            ensure_playwright_installed()[cite: 1]
+            browser = p.chromium.launch(headless=True, args=browser_args)[cite: 1]
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
+        )[cite: 1]
+        page = context.new_page()[cite: 1]
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())[cite: 1]
 
-        try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
+        try:[cite: 1]
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")[cite: 1]
+            page.wait_for_timeout(3500)[cite: 1]
 
-            try:
-                page.get_by_text("Types").click(timeout=8000)
-            except Exception:
-                pass
-            page.wait_for_timeout(1000)
+            try:[cite: 1]
+                page.get_by_text("Types").click(timeout=8000)[cite: 1]
+            except Exception:[cite: 1]
+                pass[cite: 1]
+            page.wait_for_timeout(1000)[cite: 1]
 
-            try:
-                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
-            except Exception:
-                pass
-            page.wait_for_timeout(800)
+            try:[cite: 1]
+                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)[cite: 1]
+            except Exception:[cite: 1]
+                pass[cite: 1]
+            page.wait_for_timeout(800)[cite: 1]
 
-            try:
-                date_select = page.get_by_role("combobox").nth(1)
-                options = date_select.locator("option").all_inner_texts()
-                dates_list = [opt.strip() for opt in options if opt.strip() and opt.strip() != "TABLE_ROW_DATE"]
-            except Exception:
-                pass
-
+            # Команда времени: если выбрана конкретная дата из списка, выбираем её
             if target_date_str and target_date_str != "En Son (Güncel)":
                 try:
                     page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
@@ -275,31 +350,31 @@ def fetch_loggis_data(target_date_str=None):
                     except Exception:
                         pass
             else:
-                try:
-                    page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
-                except Exception:
-                    pass
-            page.wait_for_timeout(1000)
+                try:[cite: 1]
+                    page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)[cite: 1]
+                except Exception:[cite: 1]
+                    pass[cite: 1]
+            page.wait_for_timeout(1000)[cite: 1]
 
-            for cat_key, cat_cfg in CATEGORIES.items():
-                try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
-                except Exception:
-                    try:
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
-                    except Exception:
-                        try:
-                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
-                        except Exception:
-                            pass
+            for cat_key, cat_cfg in CATEGORIES.items():[cite: 1]
+                try:[cite: 1]
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)[cite: 1]
+                except Exception:[cite: 1]
+                    try:[cite: 1]
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)[cite: 1]
+                    except Exception:[cite: 1]
+                        try:[cite: 1]
+                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)[cite: 1]
+                        except Exception:[cite: 1]
+                            pass[cite: 1]
 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(3000)[cite: 1]
 
-                val_map = {}
-                latest_date_str = ""
+                val_map = {}[cite: 1]
+                latest_date_str = ""[cite: 1]
 
-                for _ in range(15):
-                    try:
+                for _ in range(15):[cite: 1]
+                    try:[cite: 1]
                         extracted = page.evaluate("""() => {
                             try {
                                 const table = document.querySelector('table');
@@ -334,168 +409,175 @@ def fetch_loggis_data(target_date_str=None):
                             } catch(e) {
                                 return null;
                             }
-                        }""")
+                        }""")[cite: 1]
 
-                        if extracted and extracted.get("values") and extracted.get("headers"):
-                            headers = extracted["headers"]
-                            values = extracted["values"]
-                            latest_date_str = values[0]
+                        if extracted and extracted.get("values") and extracted.get("headers"):[cite: 1]
+                            headers = extracted["headers"][cite: 1]
+                            values = extracted["values"][cite: 1]
+                            latest_date_str = values[0][cite: 1]
 
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
-                                    v = clean_num(v_str)
-                                    if not np.isnan(v):
-                                        val_map[s_name] = v
+                            for h, v_str in zip(headers[1:], values[1:]):[cite: 1]
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:[cite: 1]
+                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)[cite: 1]
+                                    s_name = m.group(1) if m else h.split()[0].strip()[cite: 1]
+                                    v = clean_num(v_str)[cite: 1]
+                                    if not np.isnan(v):[cite: 1]
+                                        val_map[s_name] = v[cite: 1]
 
-                            if len(val_map) > 0:
-                                break
-                    except Exception:
-                        pass
+                            if len(val_map) > 0:[cite: 1]
+                                break[cite: 1]
+                    except Exception:[cite: 1]
+                        pass[cite: 1]
 
-                    page.wait_for_timeout(600)
+                    page.wait_for_timeout(600)[cite: 1]
 
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}[cite: 1]
 
-        except Exception as e:
-            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
-        finally:
-            browser.close()
+        except Exception as e:[cite: 1]
+            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")[cite: 1]
+        finally:[cite: 1]
+            browser.close()[cite: 1]
 
-    return dates_list, all_results
+    return all_results
 
 @st.cache_data
-def get_model_b64(path):
-    if not os.path.exists(path):
-        return None
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+def get_model_b64(path):[cite: 1]
+    if not os.path.exists(path):[cite: 1]
+        return None[cite: 1]
+    with open(path, "rb") as f:[cite: 1]
+        return base64.b64encode(f.read()).decode()[cite: 1]
 
-col_nav, col_3d = st.columns([1, 4])
+col_nav, col_3d = st.columns([1, 4])[cite: 1]
 
-with st.spinner("LoggIS zaman etiketleri ve güncel veriler yükleniyor..."):
-    extracted_dates, current_data = fetch_loggis_data(None)
+with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor...") :[cite: 1]
+    current_data = fetch_loggis_data(None)
 
-with col_nav:
-    st.subheader("KONTROL & ZAMAN")
+with col_nav:[cite: 1]
+    st.subheader("KONTROL PANELİ")[cite: 1]
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
-    )
+    )[cite: 1]
 
     st.markdown("---")
-    st.subheader("📅 Veri Dönemi")
+    st.subheader("⏱️ Geçmiş Zaman Seçimi")
     
-    date_options = ["En Son (Güncel)"] + (extracted_dates if extracted_dates else [])
-    selected_date_choice = st.selectbox("İncelemek İstediğiniz Tarih:", options=date_options)
+    # Отдельная команда времени в виде выбора даты
+    date_choices = ["En Son (Güncel)"] + AVAILABLE_DATES
+    selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_choices)
 
-    enable_comparison = st.checkbox("📊 Dönemsel Değişim (Δ) Hesapla", value=False)
+    enable_comparison = st.checkbox("📊 Değişim (Δ) Hesapla", value=False)
     selected_base_choice = "En Son (Güncel)"
     if enable_comparison:
-        selected_base_choice = st.selectbox("Baz Alınacak Tarih:", options=date_options, index=0)
+        selected_base_choice = st.selectbox("Kıyaslanacak Baz Tarih:", options=date_choices, index=0)
 
-    if st.button("🔄 Verileri Güncelle"):
-        st.cache_data.clear()
-        st.rerun()
+    if st.button("Verileri Yenile"):[cite: 1]
+        st.cache_data.clear()[cite: 1]
+        st.rerun()[cite: 1]
 
+# Загрузка данных выбранного периода
 if selected_date_choice != "En Son (Güncel)":
     with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
-        _, current_data = fetch_loggis_data(selected_date_choice)
+        current_data = fetch_loggis_data(selected_date_choice)
 
+# Загрузка базы для сравнения
 if enable_comparison and selected_base_choice != selected_date_choice:
-    with st.spinner(f"Karşılaştırma verisi alınıyor ({selected_base_choice})..."):
-        _, base_data = fetch_loggis_data(selected_base_choice)
+    with st.spinner(f"Baz veriler alınıyor ({selected_base_choice})..."):
+        base_data = fetch_loggis_data(selected_base_choice)
 else:
     base_data = current_data
 
-cat_cfg = CATEGORIES[selected_comp]
-cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
+cat_cfg = CATEGORIES[selected_comp][cite: 1]
+cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})[cite: 1]
 base_layer = base_data.get(selected_comp, {"values": {}, "date": ""})
 
-raw_v_map = cur_layer["values"]
+raw_v_map = cur_layer["values"][cite: 1]
 raw_base_map = base_layer["values"]
 
-active_category_values = {}
+active_category_values = {}[cite: 1]
 active_delta_values = {}
 
-for s_name, val in raw_v_map.items():
-    if val is None or np.isnan(val):
-        continue
-    u_name = s_name.upper()
-    
-    match_type = False
-    if selected_comp == "hoop" and "-CS" in u_name:
-        match_type = True
-    elif selected_comp == "axial" and ("-S" in u_name) and ("-CS" not in u_name):
-        match_type = True
-    elif selected_comp == "temp" and "-TP" in u_name:
-        match_type = True
-
-    if match_type:
+for s_name, val in raw_v_map.items():[cite: 1]
+    if val is None or np.isnan(val):[cite: 1]
+        continue[cite: 1]
+    u_name = s_name.upper()[cite: 1]
+    if selected_comp == "hoop" and "-CS" in u_name:[cite: 1]
         curr_val = float(val)
         active_category_values[s_name] = curr_val
-        
         base_val = raw_base_map.get(s_name, curr_val)
-        if not np.isnan(base_val):
-            active_delta_values[s_name] = round(curr_val - base_val, 2)
-        else:
-            active_delta_values[s_name] = 0.0
+        active_delta_values[s_name] = round(curr_val - base_val, 2) if not np.isnan(base_val) else 0.0
+    elif selected_comp == "axial":[cite: 1]
+        if ("-S" in u_name) and ("-CS" not in u_name):[cite: 1]
+            curr_val = float(val)
+            active_category_values[s_name] = curr_val
+            base_val = raw_base_map.get(s_name, curr_val)
+            active_delta_values[s_name] = round(curr_val - base_val, 2) if not np.isnan(base_val) else 0.0
+    elif selected_comp == "temp" and "-TP" in u_name:[cite: 1]
+        curr_val = float(val)
+        active_category_values[s_name] = curr_val
+        base_val = raw_base_map.get(s_name, curr_val)
+        active_delta_values[s_name] = round(curr_val - base_val, 2) if not np.isnan(base_val) else 0.0
 
-vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
-if not vals:
-    clim = [-1.0, 1.0]
+# Точный расчёт диапазона clim с технологическим буфером
+vals = [float(v) for v in active_category_values.values() if not np.isnan(v)][cite: 1]
+if not vals:[cite: 1]
+    clim = [-1.0, 1.0][cite: 1]
 else:
-    real_min = float(min(vals))
-    real_max = float(max(vals))
-    diff = abs(real_max - real_min)
-    if diff < 0.001:
-        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
+    real_min = float(min(vals))[cite: 1]
+    real_max = float(max(vals))[cite: 1]
+    diff = abs(real_max - real_min)[cite: 1]
+    if diff < 0.001:[cite: 1]
+        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)][cite: 1]
     else:
         buf = diff * 0.02
-        clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
+        clim = [round(real_min - buf, 2), round(real_max + buf, 2)][cite: 1]
 
-with col_nav:
-    st.markdown("---")
-    st.subheader("GÖRÜNÜM AYARLARI")
-    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
-    show_meters = st.checkbox("Metre Cetveli Göster", value=True)
-    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
+with col_nav:[cite: 1]
+    st.markdown("---")[cite: 1]
+    st.subheader("GÖRÜNÜМ AYARLARI")[cite: 1]
 
-    st.markdown("---")
-    st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{selected_date_choice}</span>", unsafe_allow_html=True)
+    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0[cite: 1]
+    show_meters = st.checkbox("Metre Cetveli Göster", value=True)[cite: 1]
+    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)[cite: 1]
+
+    st.markdown("---")[cite: 1]
+    st.write("**Aktif Periyot:**")[cite: 1]
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{selected_date_choice}</span>", unsafe_allow_html=True)[cite: 1]
     if enable_comparison:
         st.write("**Kıyaslanan Baz:**")
         st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500 !important;'>{selected_base_choice}</span>", unsafe_allow_html=True)
     
-    st.write("**Skala Limitleri:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
+    st.write("**Skala Limitleri (Gerçek Min / Maks):**")[cite: 1]
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)[cite: 1]
 
-# --- 3B THREE.JS ОБЛАСТЬ ---
-with col_3d:
-    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
+# --- 3B THREE.JS ОБЛАСТЬ ---[cite: 1]
+with col_3d:[cite: 1]
+    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))[cite: 1]
     
-    sel_col1, sel_col2 = st.columns([3, 1])
-    with sel_col1:
-        selected_sensor = st.selectbox("Sensör İncele:", options=sensor_options)
-    with sel_col2:
-        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
+    sel_col1, sel_col2 = st.columns([3, 1])[cite: 1]
+    with sel_col1:[cite: 1]
+        selected_sensor = st.selectbox(
+            "Sensör Değerini İncele:", [cite: 1]
+            options=sensor_options,
+            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"[cite: 1]
+        )[cite: 1]
+    with sel_col2:[cite: 1]
+        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:[cite: 1]
             val_curr = active_category_values[selected_sensor]
             val_delta = active_delta_values.get(selected_sensor, 0.0)
             st.metric(
-                label="Değer", 
-                value=f"{val_curr:+.2f} {cat_cfg['unit']}", 
+                label=f"Seçilen Sensör Değeri",[cite: 1]
+                value=f"{val_curr:+.2f} {cat_cfg['unit']}",
                 delta=f"{val_delta:+.2f}" if enable_comparison else None
-            )
-        else:
-            st.metric(label="Değer", value="--")
+            )[cite: 1]
+        else:[cite: 1]
+            st.metric(label="Sensör Değeri", value="--")[cite: 1]
 
-    model_b64 = get_model_b64(MODEL_PATH)
+    model_b64 = get_model_b64(MODEL_PATH)[cite: 1]
     
-    if not model_b64:
-        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı!")
+    if not model_b64:[cite: 1]
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")[cite: 1]
     else:
         payload_data = {
             "activeCategoryValues": active_category_values,
@@ -508,8 +590,8 @@ with col_3d:
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red
-        }
-        json_payload = json.dumps(payload_data)
+        }[cite: 1]
+        json_payload = json.dumps(payload_data)[cite: 1]
 
         raw_template = """<!DOCTYPE html>
 <html>
@@ -517,33 +599,159 @@ with col_3d:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #0A0E17; font-family: 'Chakra Petch', sans-serif; touch-action: none; }
-        #canvas-container { width: 100vw; height: 100vh; position: relative; }
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0A0E17;
+            font-family: 'Chakra Petch', sans-serif;
+            touch-action: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
         #sensor-tooltip {
-            position: absolute; display: none; background: rgba(14, 24, 42, 0.95); border: 1px solid #00C8E6;
-            color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-size: 13px; pointer-events: none; z-index: 100;
+            position: absolute;
+            display: none;
+            background: rgba(14, 24, 42, 0.95);
+            border: 1px solid #00C8E6;
+            color: #FFFFFF;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            pointer-events: none;
+            z-index: 100;
             box-shadow: 0 4px 16px rgba(0, 200, 230, 0.35);
         }
         #selected-hud {
-            position: absolute; top: 14px; left: 14px; display: none; background: rgba(10, 14, 23, 0.92);
-            border: 1px solid #00C8E6; padding: 8px 14px; border-radius: 8px; z-index: 95;
-            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3); max-width: 250px;
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            display: none;
+            background: rgba(10, 14, 23, 0.92);
+            border: 1px solid #00C8E6;
+            padding: 8px 14px;
+            border-radius: 8px;
+            z-index: 95;
+            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3);
+            max-width: 250px;
         }
-        #selected-hud .hud-title { font-size: 11px; color: #8397AD; text-transform: uppercase; letter-spacing: 0.8px; }
-        #selected-hud .hud-name { font-size: 15px; color: #FFFFFF; font-weight: 700; margin: 1px 0 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        #selected-hud .hud-val { font-size: 18px; color: #00E5FF; font-weight: 700; }
-        #selected-hud .hud-delta { font-size: 13px; font-weight: 700; margin-top: 3px; }
-        #loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #00C8E6; font-size: 16px; font-weight: 700; text-align: center; width: 80%; }
+        #selected-hud .hud-title {
+            font-size: 11px;
+            color: #8397AD;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        #selected-hud .hud-name {
+            font-size: 15px;
+            color: #FFFFFF;
+            font-weight: 700;
+            margin: 1px 0 3px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #selected-hud .hud-val {
+            font-size: 18px;
+            color: #00E5FF;
+            font-weight: 700;
+        }
+        #selected-hud .hud-delta {
+            font-size: 13px;
+            font-weight: 700;
+            margin-top: 3px;
+        }
+        #loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00C8E6;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-align: center;
+            width: 80%;
+        }
         #color-legend {
-            position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; align-items: center;
-            background: rgba(10, 14, 23, 0.92); padding: 10px 12px; border: 1px solid rgba(0, 200, 230, 0.55);
-            box-shadow: 0 0 16px rgba(0, 200, 230, 0.25); border-radius: 6px; z-index: 90; user-select: none;
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(10, 14, 23, 0.92);
+            padding: 10px 12px;
+            border: 1px solid rgba(0, 200, 230, 0.55);
+            box-shadow: 0 0 16px rgba(0, 200, 230, 0.25);
+            border-radius: 6px;
+            z-index: 90;
+            user-select: none;
         }
-        #legend-title { color: #00E5FF; font-size: 12px; font-weight: 700; margin-bottom: 6px; }
-        .legend-bar-container { display: flex; align-items: stretch; height: 180px; }
-        #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
-        .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
+        #legend-title {
+            color: #00E5FF;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            text-transform: none !important;
+            letter-spacing: 0.5px;
+        }
+        .legend-bar-container {
+            display: flex;
+            align-items: stretch;
+            height: 180px;
+        }
+        #legend-bar {
+            width: 16px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            margin-right: 8px;
+        }
+        .legend-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            color: #FFFFFF;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        @media (max-width: 600px) {
+            #color-legend {
+                padding: 6px 8px;
+                top: 10px;
+                right: 10px;
+            }
+            .legend-bar-container {
+                height: 130px;
+            }
+            #legend-bar {
+                width: 12px;
+            }
+            #legend-title {
+                font-size: 10px;
+            }
+            .legend-labels {
+                font-size: 9px;
+            }
+            #selected-hud {
+                top: 10px;
+                left: 10px;
+                padding: 6px 10px;
+            }
+            #selected-hud .hud-name {
+                font-size: 13px;
+            }
+            #selected-hud .hud-val {
+                font-size: 15px;
+            }
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -552,14 +760,16 @@ with col_3d:
 </head>
 <body>
     <div id="canvas-container">
-        <div id="loader">3B MODEL YÜKLENİYOR...</div>
+        <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
         <div id="sensor-tooltip"></div>
+        
         <div id="selected-hud">
             <div class="hud-title">Seçilen Sensör</div>
             <div id="hud-sensor-name" class="hud-name">--</div>
             <div id="hud-sensor-val" class="hud-val">--</div>
             <div id="hud-sensor-delta" class="hud-delta" style="display:none;">--</div>
         </div>
+
         <div id="color-legend">
             <div id="legend-title"></div>
             <div class="legend-bar-container">
@@ -572,6 +782,7 @@ with col_3d:
             </div>
         </div>
     </div>
+
     <script>
         const payload = __INJECT_PAYLOAD__;
         const modelB64 = "__INJECT_MODEL__";
@@ -590,6 +801,9 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
         const hudDelta = document.getElementById('hud-sensor-delta');
 
+        // =========================================================================
+        // СТАБИЛЬНЫЕ ВЫРАЗИТЕЛЬНЫЕ СПЕКТРЫ ДЛЯ КАЖДОГО ТИПА (СВЕРХУ ВНИЗ: MAX -> MIN)
+        // =========================================================================
         const hoopStops = [
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
             new THREE.Color("#00FF66"), new THREE.Color("#FFEE00"), new THREE.Color("#FF7700"), new THREE.Color("#FF0022")
@@ -680,6 +894,33 @@ with col_3d:
             return { found: false, key: sensorId, val: NaN };
         }
 
+        function createPortalMarker(text) {
+            const canvas = document.createElement('canvas'); canvas.width = 2048; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(10, 14, 23, 0.95)'; ctx.strokeStyle = '#00C8E6'; ctx.lineWidth = 56;
+            ctx.strokeRect(40, 40, 1968, 944); ctx.fillRect(40, 40, 1968, 944);
+            ctx.font = '900 540px Syne, Chakra Petch, sans-serif'; ctx.fillStyle = '#00E5FF';
+            ctx.shadowColor = '#00C8E6'; ctx.shadowBlur = 72; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(text, 1024, 512);
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat); sprite.scale.set(24.0, 12.0, 1);
+            return sprite;
+        }
+
+        function createRulerLabel(text) {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(10, 14, 23, 0.9)'; ctx.strokeStyle = 'rgba(0, 229, 255, 0.85)'; ctx.lineWidth = 5;
+            ctx.strokeRect(6, 6, 244, 116); ctx.fillRect(6, 6, 244, 116);
+            ctx.font = '700 48px Chakra Petch, sans-serif'; ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 128, 64);
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat); sprite.scale.set(2.4, 1.2, 1);
+            return sprite;
+        }
+
         const binaryStr = atob(modelB64); const bytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
 
@@ -687,7 +928,8 @@ with col_3d:
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.parse(bytes.buffer, '', function(gltf) {
             const model = gltf.scene; scene.add(model); loaderText.style.display = 'none';
-            const rawSensors = [];
+            const rawSensors = []; const boxTA = new THREE.Box3(); const boxTB = new THREE.Box3();
+            let hasTA = false, hasTB = false;
 
             model.traverse(function(child) {
                 if (child.isMesh) {
@@ -696,9 +938,57 @@ with col_3d:
                         rawSensors.push(child);
                     } else if (uName.includes("TUNNEL") || uName.includes("TÜNEL") || uName === "TA" || uName === "TB") {
                         tunnelMeshes.push(child);
+                        if (uName.includes("TB")) boxTB.expandByObject(child), hasTB = true;
+                        else if (uName.includes("TA")) boxTA.expandByObject(child), hasTA = true;
                     }
                 }
             });
+
+            // Порталы и линейка
+            const portalsGroup = new THREE.Group();
+            if (hasTA) {
+                const cA = boxTA.getCenter(new THREE.Vector3());
+                const sTA = createPortalMarker("TA"); sTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0);
+                portalsGroup.add(sTA);
+            }
+            if (hasTB) {
+                const cB = boxTB.getCenter(new THREE.Vector3());
+                const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 8.5, boxTB.min.z - 4.0);
+                portalsGroup.add(sTB);
+            }
+            scene.add(portalsGroup);
+
+            if (payload.showMeters && tunnelMeshes.length > 0) {
+                const overallBox = new THREE.Box3();
+                tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
+                const size = overallBox.getSize(new THREE.Vector3());
+                const rulerGroup = new THREE.Group();
+                const isZAxis = size.z >= size.x;
+                const lengthM = isZAxis ? size.z : size.x;
+                const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x;
+                const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
+                const step = 10.0; const stepsCount = Math.floor(lengthM / step);
+                const yRuler = overallBox.min.y - 0.2;
+                const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
+
+                const linePoints = isZAxis ? [new THREE.Vector3(lateralPos, yRuler, startCoord), new THREE.Vector3(lateralPos, yRuler, endCoord)]
+                                           : [new THREE.Vector3(startCoord, yRuler, lateralPos), new THREE.Vector3(endCoord, yRuler, lateralPos)];
+                const axisGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+                const axisMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 });
+                rulerGroup.add(new THREE.Line(axisGeom, axisMat));
+
+                for (let i = 0; i <= stepsCount; i++) {
+                    const curPos = startCoord + i * step;
+                    const distTxt = ((stepsCount * step) - (i * step)).toFixed(0) + " m";
+                    const tickPts = isZAxis ? [new THREE.Vector3(lateralPos - 0.8, yRuler, curPos), new THREE.Vector3(lateralPos + 0.8, yRuler, curPos)]
+                                            : [new THREE.Vector3(curPos, yRuler, lateralPos - 0.8), new THREE.Vector3(curPos, yRuler, lateralPos + 0.8)];
+                    rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPts), axisMat));
+                    const lbl = createRulerLabel(distTxt);
+                    lbl.position.set(isZAxis ? lateralPos + 2.4 : curPos, yRuler + 0.4, isZAxis ? curPos : lateralPos + 2.4);
+                    rulerGroup.add(lbl);
+                }
+                scene.add(rulerGroup);
+            }
 
             const finalSensors = [];
             rawSensors.forEach(child => {
@@ -711,15 +1001,23 @@ with col_3d:
                 }
             });
 
+            let alreadyHighlightedOne = false;
             finalSensors.forEach(item => {
-                const isSelected = (payload.selectedSensor === item.sensorName);
-                const detached = new THREE.Mesh(item.mesh.geometry.clone(), new THREE.MeshBasicMaterial({ color: isSelected ? 0xFFD700 : 0xFFFFFF }));
+                const isCandidate = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && item.sensorName === payload.selectedSensor);
+                const isSelected = isCandidate && !alreadyHighlightedOne;
+                if (isSelected) alreadyHighlightedOne = true;
+
+                const detached = new THREE.Mesh(
+                    item.mesh.geometry.clone(), 
+                    new THREE.MeshBasicMaterial({ color: isSelected ? 0xFFD700 : 0xFFFFFF })
+                );
                 detached.position.copy(item.pos);
                 detached.userData = { sensorName: item.sensorName, val: item.val, isUsable: true };
                 sensorScene.add(detached); interactiveSensors.push(detached);
                 if (isSelected) { selectedMeshRef = detached; updateHud(item.sensorName, item.val); }
             });
 
+            // Стабильная интерполяция без прозрачности модели (исключает белые артефакты)
             const R_SENSOR = 60.0;
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry; if (!geom.attributes.position) return;
