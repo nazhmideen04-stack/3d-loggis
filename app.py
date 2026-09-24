@@ -634,6 +634,56 @@ with col_3d:
             return sampleColorRamp(currentStops, t);
         }
 
+        // БЕЗОПАСНАЯ ОЧИСТКА ГЕОМЕТРИИ ТОННЕЛЯ ОТ ВНУТРЕННИХ ТОРЦЕВЫХ ДИСКОВ
+        function stripTunnelEndCaps(geometry, isZAxis) {
+            if (!geometry) return geometry;
+            const nonIndexed = geometry.toNonIndexed ? geometry.toNonIndexed() : geometry.clone();
+            if (!nonIndexed.attributes.position) return geometry;
+
+            const pos = nonIndexed.attributes.position;
+            const newPos = [];
+            const newColors = [];
+            const hasColors = !!nonIndexed.attributes.color;
+            const col = hasColors ? nonIndexed.attributes.color : null;
+
+            for (let i = 0; i < pos.count; i += 3) {
+                const p0 = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
+                const p1 = new THREE.Vector3(pos.getX(i+1), pos.getY(i+1), pos.getZ(i+1));
+                const p2 = new THREE.Vector3(pos.getX(i+2), pos.getY(i+2), pos.getZ(i+2));
+
+                // Нормаль полигона
+                const vA = new THREE.Vector3().subVectors(p1, p0);
+                const vB = new THREE.Vector3().subVectors(p2, p0);
+                const faceNorm = new THREE.Vector3().crossVectors(vA, vB).normalize();
+
+                // Поперечный диск: все 3 точки имеют одинаковую продольную координату И нормаль направлена вдоль оси
+                const isCrossPlane = isZAxis 
+                    ? (Math.abs(p0.z - p1.z) < 0.005 && Math.abs(p1.z - p2.z) < 0.005 && Math.abs(faceNorm.z) > 0.82)
+                    : (Math.abs(p0.x - p1.x) < 0.005 && Math.abs(p1.x - p2.x) < 0.005 && Math.abs(faceNorm.x) > 0.82);
+
+                if (!isCrossPlane) {
+                    for (let k = 0; k < 3; k++) {
+                        newPos.push(pos.getX(i+k), pos.getY(i+k), pos.getZ(i+k));
+                        if (hasColors && col) {
+                            newColors.push(col.getX(i+k), col.getY(i+k), col.getZ(i+k));
+                        }
+                    }
+                }
+            }
+
+            if (newPos.length > 0 && newPos.length < pos.count * 3) {
+                const cleanGeom = new THREE.BufferGeometry();
+                cleanGeom.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+                if (hasColors && newColors.length > 0) {
+                    cleanGeom.setAttribute('color', new THREE.Float32BufferAttribute(newColors, 3));
+                }
+                cleanGeom.computeVertexNormals();
+                return cleanGeom;
+            }
+
+            return nonIndexed;
+        }
+
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0A0E17);
 
@@ -809,8 +859,8 @@ with col_3d:
                         return;
                     }
 
-                    // Отдельные объекты-заглушки (если есть отдельными мешами)
-                    const isSeparateCapObject = (
+                    // Скрытие явных отдельных заглушек (если они отдельными объектами)
+                    const isSeparateCap = (
                         uName.includes("DISC") ||
                         uName.includes("DISK") ||
                         uName.includes("CAP") ||
@@ -818,7 +868,7 @@ with col_3d:
                         uName.includes("COVER")
                     );
 
-                    if (isSeparateCapObject && !uName.startsWith("TA-") && !uName.startsWith("TB-") && uName !== "TA" && uName !== "TB") {
+                    if (isSeparateCap && !uName.startsWith("TA-") && !uName.startsWith("TB-") && uName !== "TA" && uName !== "TB") {
                         child.visible = false;
                         return;
                     }
@@ -917,7 +967,7 @@ with col_3d:
                 }
             });
 
-            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ
+            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (ПОДСВЕТКА СТРОГО ОДНОГО ВЫБРАННОГО)
             finalSensors.forEach(item => {
                 const hasData = item.hasData;
                 const sensorName = item.sensorName;
@@ -928,7 +978,7 @@ with col_3d:
 
                     let sensorColor = 0xFFFFFF; // Белый по умолчанию
                     if (isSelected) {
-                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для выбранного
+                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для одного выбранного
                     } else if (!hasData) {
                         sensorColor = 0xFF0033; // Красный при отсутствии данных
                     }
@@ -1008,7 +1058,7 @@ with col_3d:
                 }
             });
 
-            // ОПРЕДЕЛЯЕМ ПРОДОЛЬНУЮ ОСЬ ТОННЕЛЯ ДЛЯ ОТСЕЧЕНИЯ ПЕРЕГОРОДОК
+            // ОПРЕДЕЛЯЕМ ПРОДОЛЬНУЮ ОСЬ ТОННЕЛЯ
             const overallBox = new THREE.Box3();
             tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
             const tunnelSize = overallBox.getSize(new THREE.Vector3());
@@ -1016,7 +1066,11 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
+            // ОБРАБОТКА МЕШЕЙ ТОННЕЛЯ: УДАЛЕНИЕ ПОПЕРЕЧНЫХ ДИСКОВ И ИНТЕРПОЛЯЦИЯ СВОДА
             tunnelMeshes.forEach(tMesh => {
+                // 1. Очищаем геометрию от внутренних поперечных перегородок
+                tMesh.geometry = stripTunnelEndCaps(tMesh.geometry, isZAxis);
+
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
 
@@ -1084,33 +1138,17 @@ with col_3d:
                 
                 const isTransparent = payload.tunnelOpacity < 0.98;
                 
-                // МАТЕРИАЛ ТОННЕЛЯ СО СКРЫТИЕМ ТОЛЬКО ПОПЕРЕЧНЫХ ДИСКОВ (БЕЗ ДЕФОРМАЦИИ ГЕОМЕТРИИ)
-                const mat = new THREE.MeshStandardMaterial({
+                // РЕНДЕР С ОДНОСТОРОННЕЙ ВИДИМОСТЬЮ (УСТРАНЯЕТ НАЛОЖЕНИЕ ПРОЗРАЧНЫХ СЛОЕВ)
+                tMesh.material = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
-                    transparent: true,
+                    transparent: isTransparent,
                     opacity: payload.tunnelOpacity,
                     roughness: 0.18,
                     metalness: 0.02,
                     depthWrite: !isTransparent,
-                    side: THREE.DoubleSide
+                    side: isTransparent ? THREE.FrontSide : THREE.DoubleSide
                 });
-
-                // В шейдере отбрасываются только пиксели, нормаль которых смотрит вдоль тоннеля
-                mat.onBeforeCompile = (shader) => {
-                    shader.fragmentShader = shader.fragmentShader.replace(
-                        '#include <dithering_fragment>',
-                        `
-                        #include <dithering_fragment>
-                        // vNormal в Three.js содержит нормаль грани в view-space
-                        // Отбрасываем только поперечные диски-заглушки (Cap-полигоны вдоль оси тоннеля)
-                        vec3 n = normalize(vNormal);
-                        ${isZAxis ? 'if (abs(n.z) > 0.94) discard;' : 'if (abs(n.x) > 0.94) discard;'}
-                        `
-                    );
-                };
-
-                tMesh.material = mat;
                 tMesh.renderOrder = 0;
                 tMesh.material.needsUpdate = true;
             });
@@ -1370,6 +1408,7 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
+        // ДВУХПРОХОДНЫЙ РЕНДЕР
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
