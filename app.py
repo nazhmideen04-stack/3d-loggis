@@ -9,28 +9,28 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
-os.makedirs(".streamlit", exist_ok=True)
-config_path = os.path.join(".streamlit", "config.toml")
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)[cite: 1]
+os.makedirs(".streamlit", exist_ok=True)[cite: 1]
+config_path = os.path.join(".streamlit", "config.toml")[cite: 1]
 target_config = """[theme]
 primaryColor = "#00C8E6"
 backgroundColor = "#0A0E17"
 secondaryBackgroundColor = "#0E182A"
 textColor = "#D2DEEC"
 font = "sans serif"
-"""
-if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").read() != target_config:
-    with open(config_path, "w", encoding="utf-8") as f:
-        f.write(target_config)
+"""[cite: 1]
+if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").read() != target_config:[cite: 1]
+    with open(config_path, "w", encoding="utf-8") as f:[cite: 1]
+        f.write(target_config)[cite: 1]
 
-st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")[cite: 1]
 
-URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
+URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"[cite: 1]
 
-LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
-MODEL_PATH = "tunnel_model.glb"
+LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"[cite: 1]
+MODEL_PATH = "tunnel_model.glb"[cite: 1]
 
-# Фирменный стиль DESTECH с мобильной адаптацией
+# Фирменный стиль DESTECH с мобильной адаптацией[cite: 1]
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -195,14 +195,14 @@ st.markdown("""
         }
     }
 </style>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)[cite: 1]
 
-LOGO_B64 = ""
-if os.path.exists(LOGO_PATH):
-    with open(LOGO_PATH, "rb") as f:
-        LOGO_B64 = base64.b64encode(f.read()).decode()
+LOGO_B64 = ""[cite: 1]
+if os.path.exists(LOGO_PATH):[cite: 1]
+    with open(LOGO_PATH, "rb") as f:[cite: 1]
+        LOGO_B64 = base64.b64encode(f.read()).decode()[cite: 1]
 
-LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 180px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
+LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 180px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'[cite: 1]
 
 st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
@@ -214,95 +214,95 @@ st.markdown(f"""
         {LOGO_TAG}
     </div>
 </div>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)[cite: 1]
 
 CATEGORIES = {
     "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
     "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
     "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
-}
+}[cite: 1]
 
-def clean_num(s):
-    if not s:
-        return np.nan
-    s = str(s).replace(",", ".").replace(" ", "").strip()
-    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
-    return float(m.group()) if m else np.nan
+def clean_num(s):[cite: 1]
+    if not s:[cite: 1]
+        return np.nan[cite: 1]
+    s = str(s).replace(",", ".").replace(" ", "").strip()[cite: 1]
+    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)[cite: 1]
+    return float(m.group()) if m else np.nan[cite: 1]
 
-def ensure_playwright_installed():
-    try:
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-    except Exception:
-        pass
+def ensure_playwright_installed():[cite: 1]
+    try:[cite: 1]
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)[cite: 1]
+    except Exception:[cite: 1]
+        pass[cite: 1]
 
-@st.cache_data(ttl=300)
-def fetch_all_categories_data():
-    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
+@st.cache_data(ttl=300)[cite: 1]
+def fetch_all_categories_data():[cite: 1]
+    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}[cite: 1]
 
-    with sync_playwright() as p:
+    with sync_playwright() as p:[cite: 1]
         browser_args = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--window-size=1920,1080",
-        ]
-        try:
-            browser = p.chromium.launch(headless=True, args=browser_args)
-        except Exception:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
+        ][cite: 1]
+        try:[cite: 1]
+            browser = p.chromium.launch(headless=True, args=browser_args)[cite: 1]
+        except Exception:[cite: 1]
+            ensure_playwright_installed()[cite: 1]
+            browser = p.chromium.launch(headless=True, args=browser_args)[cite: 1]
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
+        )[cite: 1]
+        page = context.new_page()[cite: 1]
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())[cite: 1]
 
-        try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
+        try:[cite: 1]
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")[cite: 1]
+            page.wait_for_timeout(3500)[cite: 1]
 
-            try:
-                page.get_by_text("Types").click(timeout=8000)
-            except Exception:
-                pass
-            page.wait_for_timeout(1000)
+            try:[cite: 1]
+                page.get_by_text("Types").click(timeout=8000)[cite: 1]
+            except Exception:[cite: 1]
+                pass[cite: 1]
+            page.wait_for_timeout(1000)[cite: 1]
 
-            try:
-                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
-            except Exception:
-                pass
-            page.wait_for_timeout(800)
+            try:[cite: 1]
+                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)[cite: 1]
+            except Exception:[cite: 1]
+                pass[cite: 1]
+            page.wait_for_timeout(800)[cite: 1]
 
-            try:
-                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
-            except Exception:
-                pass
-            page.wait_for_timeout(1000)
+            try:[cite: 1]
+                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)[cite: 1]
+            except Exception:[cite: 1]
+                pass[cite: 1]
+            page.wait_for_timeout(1000)[cite: 1]
 
-            for cat_key, cat_cfg in CATEGORIES.items():
-                try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
-                except Exception:
-                    try:
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
-                    except Exception:
-                        try:
-                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
-                        except Exception:
-                            pass
+            for cat_key, cat_cfg in CATEGORIES.items():[cite: 1]
+                try:[cite: 1]
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)[cite: 1]
+                except Exception:[cite: 1]
+                    try:[cite: 1]
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)[cite: 1]
+                    except Exception:[cite: 1]
+                        try:[cite: 1]
+                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)[cite: 1]
+                        except Exception:[cite: 1]
+                            pass[cite: 1]
 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(3000)[cite: 1]
 
-                val_map = {}
-                latest_date_str = ""
+                val_map = {}[cite: 1]
+                latest_date_str = ""[cite: 1]
 
-                for _ in range(15):
-                    try:
+                for _ in range(15):[cite: 1]
+                    try:[cite: 1]
                         extracted = page.evaluate("""() => {
                             try {
                                 const table = document.querySelector('table');
@@ -337,133 +337,133 @@ def fetch_all_categories_data():
                             } catch(e) {
                                 return null;
                             }
-                        }""")
+                        }""")[cite: 1]
 
-                        if extracted and extracted.get("values") and extracted.get("headers"):
-                            headers = extracted["headers"]
-                            values = extracted["values"]
-                            latest_date_str = values[0]
+                        if extracted and extracted.get("values") and extracted.get("headers"):[cite: 1]
+                            headers = extracted["headers"][cite: 1]
+                            values = extracted["values"][cite: 1]
+                            latest_date_str = values[0][cite: 1]
 
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
-                                    v = clean_num(v_str)
-                                    if not np.isnan(v):
-                                        val_map[s_name] = v
+                            for h, v_str in zip(headers[1:], values[1:]):[cite: 1]
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:[cite: 1]
+                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)[cite: 1]
+                                    s_name = m.group(1) if m else h.split()[0].strip()[cite: 1]
+                                    v = clean_num(v_str)[cite: 1]
+                                    if not np.isnan(v):[cite: 1]
+                                        val_map[s_name] = v[cite: 1]
 
-                            if len(val_map) > 0:
-                                break
-                    except Exception:
-                        pass
+                            if len(val_map) > 0:[cite: 1]
+                                break[cite: 1]
+                    except Exception:[cite: 1]
+                        pass[cite: 1]
 
-                    page.wait_for_timeout(600)
+                    page.wait_for_timeout(600)[cite: 1]
 
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}[cite: 1]
 
-        except Exception as e:
-            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
-        finally:
-            browser.close()
+        except Exception as e:[cite: 1]
+            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")[cite: 1]
+        finally:[cite: 1]
+            browser.close()[cite: 1]
 
-    return all_results
+    return all_results[cite: 1]
 
-@st.cache_data
-def get_model_b64(path):
-    if not os.path.exists(path):
-        return None
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+@st.cache_data[cite: 1]
+def get_model_b64(path):[cite: 1]
+    if not os.path.exists(path):[cite: 1]
+        return None[cite: 1]
+    with open(path, "rb") as f:[cite: 1]
+        return base64.b64encode(f.read()).decode()[cite: 1]
 
-col_nav, col_3d = st.columns([1, 4])
+col_nav, col_3d = st.columns([1, 4])[cite: 1]
 
-with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
-    all_data = fetch_all_categories_data()
+with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):[cite: 1]
+    all_data = fetch_all_categories_data()[cite: 1]
 
-with col_nav:
-    st.subheader("KONTROL PANELİ")
+with col_nav:[cite: 1]
+    st.subheader("KONTROL PANELİ")[cite: 1]
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
-    )
+    )[cite: 1]
 
-    if st.button("Verileri Yenile"):
-        st.cache_data.clear()
-        st.rerun()
+    if st.button("Verileri Yenile"):[cite: 1]
+        st.cache_data.clear()[cite: 1]
+        st.rerun()[cite: 1]
 
-cat_cfg = CATEGORIES[selected_comp]
-cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
-raw_v_map = cur_layer["values"]
+cat_cfg = CATEGORIES[selected_comp][cite: 1]
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})[cite: 1]
+raw_v_map = cur_layer["values"][cite: 1]
 
-active_category_values = {}
-for s_name, val in raw_v_map.items():
-    if val is None or np.isnan(val):
-        continue
-    u_name = s_name.upper()
-    if selected_comp == "hoop" and "-CS" in u_name:
-        active_category_values[s_name] = float(val)
-    elif selected_comp == "axial":
-        if ("-S" in u_name) and ("-CS" not in u_name):
-            active_category_values[s_name] = float(val)
-    elif selected_comp == "temp" and "-TP" in u_name:
-        active_category_values[s_name] = float(val)
+active_category_values = {}[cite: 1]
+for s_name, val in raw_v_map.items():[cite: 1]
+    if val is None or np.isnan(val):[cite: 1]
+        continue[cite: 1]
+    u_name = s_name.upper()[cite: 1]
+    if selected_comp == "hoop" and "-CS" in u_name:[cite: 1]
+        active_category_values[s_name] = float(val)[cite: 1]
+    elif selected_comp == "axial":[cite: 1]
+        if ("-S" in u_name) and ("-CS" not in u_name):[cite: 1]
+            active_category_values[s_name] = float(val)[cite: 1]
+    elif selected_comp == "temp" and "-TP" in u_name:[cite: 1]
+        active_category_values[s_name] = float(val)[cite: 1]
 
-# Единый точный расчет динамических границ шкалы
-vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
-if not vals:
-    clim = [-1.0, 1.0]
+# Точный расчёт диапазона clim для шкалы
+vals = [float(v) for v in active_category_values.values() if not np.isnan(v)][cite: 1]
+if not vals:[cite: 1]
+    clim = [-1.0, 1.0][cite: 1]
 else:
-    real_min = float(min(vals))
-    real_max = float(max(vals))
-    diff = abs(real_max - real_min)
-    if diff < 0.001:
-        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
+    real_min = float(min(vals))[cite: 1]
+    real_max = float(max(vals))[cite: 1]
+    diff = abs(real_max - real_min)[cite: 1]
+    if diff < 0.001:[cite: 1]
+        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)][cite: 1]
     else:
-        clim = [round(real_min, 2), round(real_max, 2)]
+        clim = [round(real_min, 2), round(real_max, 2)][cite: 1]
 
-with col_nav:
-    st.markdown("---")
-    st.subheader("GÖRÜNÜM AYARLARI")
+with col_nav:[cite: 1]
+    st.markdown("---")[cite: 1]
+    st.subheader("GÖRÜNÜM AYARLARI")[cite: 1]
 
-    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
-    show_meters = st.checkbox("Metre Cetveli Göster", value=True)
-    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
+    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0[cite: 1]
+    show_meters = st.checkbox("Metre Cetveli Göster", value=True)[cite: 1]
+    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)[cite: 1]
 
-    st.markdown("---")
-    st.write("**En Son Veri Zamanı:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
+    st.markdown("---")[cite: 1]
+    st.write("**En Son Veri Zamanı:**")[cite: 1]
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)[cite: 1]
     
-    st.write("**Aktif Sensör Sayısı:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
+    st.write("**Aktif Sensör Sayısı:**")[cite: 1]
+    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)[cite: 1]
     
-    st.write("**Skala Limitleri (Gerçek Min / Maks):**")
-    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
+    st.write("**Skala Limitleri (Gerçek Min / Maks):**")[cite: 1]
+    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)[cite: 1]
 
-# --- 3B THREE.JS ОБЛАСТЬ ---
-with col_3d:
-    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
+# --- 3B THREE.JS ОБЛАСТЬ ---[cite: 1]
+with col_3d:[cite: 1]
+    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))[cite: 1]
     
-    sel_col1, sel_col2 = st.columns([3, 1])
-    with sel_col1:
+    sel_col1, sel_col2 = st.columns([3, 1])[cite: 1]
+    with sel_col1:[cite: 1]
         selected_sensor = st.selectbox(
             "Sensör Değerini İncele:", 
             options=sensor_options,
             help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
-        )
-    with sel_col2:
-        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
+        )[cite: 1]
+    with sel_col2:[cite: 1]
+        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:[cite: 1]
             st.metric(
                 label=f"Seçilen Sensör Değeri",
                 value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
-            )
-        else:
-            st.metric(label="Sensör Değeri", value="--")
+            )[cite: 1]
+        else:[cite: 1]
+            st.metric(label="Sensör Değeri", value="--")[cite: 1]
 
-    model_b64 = get_model_b64(MODEL_PATH)
+    model_b64 = get_model_b64(MODEL_PATH)[cite: 1]
     
-    if not model_b64:
-        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")
+    if not model_b64:[cite: 1]
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini `app.py` ile aynı klasöre yükleyiniz.")[cite: 1]
     else:
         payload_data = {
             "activeCategoryValues": active_category_values,
@@ -474,8 +474,8 @@ with col_3d:
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red
-        }
-        json_payload = json.dumps(payload_data)
+        }[cite: 1]
+        json_payload = json.dumps(payload_data)[cite: 1]
 
         raw_template = """<!DOCTYPE html>
 <html>
@@ -679,41 +679,41 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // ИНДИВИДУАЛЬНЫЕ СПЕКТРЫ ДЛЯ КАЖДОЙ КАТЕГОРИИ
+        // УНИКАЛЬНЫЕ И ЧЁТКИЕ СПЕКТРЫ ДЛЯ КАЖДОГО ТИПА (СВЕРХУ ВНИЗ В ЛЕГЕНДЕ: MAX -> MIN)
         // =========================================================================
 
-        // 1. Çevresel gerinim (CS): Индиго -> Сапфир -> Циан -> Зеленый -> Желтый -> Оранжевый -> Красный
+        // 1. Çevresel gerinim (CS): Электрический спектр деформации
         const hoopStops = [
-            new THREE.Color("#050833"), // Минимум
-            new THREE.Color("#0044FF"),
-            new THREE.Color("#00D5FF"),
-            new THREE.Color("#00FF66"),
-            new THREE.Color("#FFEE00"),
-            new THREE.Color("#FF7700"),
-            new THREE.Color("#FF0022")  // Максимум
+            new THREE.Color("#050833"), // Индиго (Минимум)
+            new THREE.Color("#0044FF"), // Синий
+            new THREE.Color("#00D5FF"), // Циан
+            new THREE.Color("#00FF66"), // Изумрудно-зеленый
+            new THREE.Color("#FFEE00"), // Желтый
+            new THREE.Color("#FF7700"), // Оранжевый
+            new THREE.Color("#FF0022")  // Насыщенный красный (Максимум)
         ];
 
-        // 2. Boyuna gerinim (S): ТЕМНО-ФИОЛЕТОВЫЙ -> СВЕТЛО-РОЗОВЫЙ (БЕЗ БЕЛОГО)
+        // 2. Boyuna gerinim (S): СТРОГО ТЕМНО-ФИОЛЕТОВЫЙ -> СВЕТЛО-РОЗОВЫЙ (ПОЛНОСТЬЮ БЕЗ БЕЛОГО)
         const axialStops = [
-            new THREE.Color("#20003B"), // Минимум (Глубокий фиолетовый)
-            new THREE.Color("#4A0E68"),
-            new THREE.Color("#801A7A"),
-            new THREE.Color("#BA2E82"),
-            new THREE.Color("#E65C9C"),
-            new THREE.Color("#FF9EC6"),
-            new THREE.Color("#FFCCE1")  // Максимум (Нежно-розовый)
+            new THREE.Color("#1F0038"), // Густой темно-фиолетовый (Минимум)
+            new THREE.Color("#43085E"),
+            new THREE.Color("#76147E"),
+            new THREE.Color("#A8228E"),
+            new THREE.Color("#D84297"),
+            new THREE.Color("#F272B4"),
+            new THREE.Color("#FFAFD3")  // Нежно-светло-розовый (Максимум, без белого)
         ];
 
-        // 3. Sıcaklık (TP): Классический термо-инфракрасный
+        // 3. Sıcaklık (TP): Термо-инфракрасный (Thermal Jet)
         const temperatureStops = [
-            new THREE.Color("#020024"), // Минимум (Холод)
+            new THREE.Color("#020024"), // Ледяной ультрамарин (Минимум)
             new THREE.Color("#0033FF"),
             new THREE.Color("#00D8FF"),
             new THREE.Color("#00FF44"),
             new THREE.Color("#B4FF00"),
             new THREE.Color("#FFDD00"),
             new THREE.Color("#FF4400"),
-            new THREE.Color("#D50000")  // Максимум (Жар)
+            new THREE.Color("#D50000")  // Огненно-алый (Максимум)
         ];
 
         let currentStops = hoopStops;
@@ -728,7 +728,7 @@ with col_3d:
             legendTitle.innerText = "Çevresel [µm/m]";
         }
 
-        // ТОЧНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ (СВЕРХУ ВНИЗ: MAX -> MIN)
+        // ТОЧНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ
         function buildExactLegendGradient(stops) {
             const n = stops.length;
             const items = [];
@@ -743,7 +743,7 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
-        // ЕДИНАЯ ГАРАНТИРОВАННАЯ ФУНКЦИЯ ЦВЕТА
+        // ОБЩАЯ ВЫБОРКА ЦВЕТА
         function sampleColorRamp(stops, t) {
             t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
@@ -763,7 +763,7 @@ with col_3d:
             return sampleColorRamp(currentStops, t);
         }
 
-        // Используем ТОЧНЫЙ диапазон clim из Python
+        // Синхронизация числовых меток шкалы с Python-диапазоном
         const finalMin = payload.clim[0];
         const finalMax = payload.clim[1];
         const finalMid = (finalMin + finalMax) / 2.0;
@@ -1113,9 +1113,9 @@ with col_3d:
             });
 
             // =========================================================================
-            // ТОЧНАЯ ИНТЕРПОЛЯЦИЯ В САМОЙ 3D СЦЕНЕ (СИНХРОН С ШКАЛОЙ payload.clim)
+            // ТОЧНАЯ ИНТЕРПОЛЯЦИЯ С ДИАПАЗОНОМ ДЛЯ КАЖДОГО СЕНСОРА И СВЕДЕНИЕМ К СРЕДНЕМУ
             // =========================================================================
-            const R_INFLUENCE = 45.0; 
+            const R_SENSOR = 32.0; // Диапазон действия каждого сенсора (32м)
 
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
@@ -1148,13 +1148,16 @@ with col_3d:
                         let totalWeight = 0;
                         let accumulatedVal = 0;
 
+                        // Проверяем попадание в диапазон каждого сенсора
                         for (let j = 0; j < pool.length; j++) {
                             const s = pool[j];
                             const d = worldV.distanceTo(s.pos);
                             
-                            if (d < R_INFLUENCE) {
-                                const normD = d / R_INFLUENCE;
-                                const w = Math.pow(1.0 - normD, 1.5) / (d + 0.12);
+                            // Сенсор влияет только в пределах своего диапазона R_SENSOR
+                            if (d < R_SENSOR) {
+                                // Модифицированный вес Шепарда: плавное сведение к среднему в месте пересечения
+                                const q = (R_SENSOR - d) / (R_SENSOR * Math.max(d, 0.2));
+                                const w = q * q;
                                 accumulatedVal += s.val * w;
                                 totalWeight += w;
                             }
@@ -1162,13 +1165,14 @@ with col_3d:
 
                         const idx = i * 3;
                         if (totalWeight > 0.00001) {
+                            // В месте пересечения диапазонов получаем строго средневзвешенное значение
                             const interpolatedVal = accumulatedVal / totalWeight;
-                            // Цвет поверхности строго соответствует переданному диапазону clim
                             const c = getColorForValue(interpolatedVal, payload.clim);
                             colors[idx] = c.r;
                             colors[idx + 1] = c.g;
                             colors[idx + 2] = c.b;
                         } else {
+                            // Вне диапазона сенсоров — нейтральный цвет тоннеля
                             colors[idx] = 0.08;
                             colors[idx + 1] = 0.11;
                             colors[idx + 2] = 0.16;
@@ -1501,5 +1505,5 @@ with col_3d:
 </body>
 </html>"""
 
-        final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
-        st.components.v1.html(final_html, height=600, scrolling=False)
+        final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)[cite: 1]
+        st.components.v1.html(final_html, height=600, scrolling=False)[cite: 1]
