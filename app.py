@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)[cite: 2]
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -30,7 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH с мобильной адаптацией[cite: 2]
+# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -404,7 +404,6 @@ for s_name, val in raw_v_map.items():
     if selected_comp == "hoop" and "-CS" in u_name:
         active_category_values[s_name] = float(val)
     elif selected_comp == "axial":
-        # Улучшенный и надежный захват продольных сенсоров
         if ("-S" in u_name) and ("-CS" not in u_name):
             active_category_values[s_name] = float(val)
     elif selected_comp == "temp" and "-TP" in u_name:
@@ -417,12 +416,10 @@ else:
     real_min = float(min(vals))
     real_max = float(max(vals))
     diff = abs(real_max - real_min)
-    
-    # Для осевых деформаций (axial) разброс часто микроскопический, масштабируем контрастно
     if diff < 0.001:
-        clim = [round(real_min - 0.5, 3), round(real_max + 0.5, 3)]
+        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
     elif diff < 0.1:
-        clim = [round(real_min - (diff * 0.2), 3), round(real_max + (diff * 0.2), 3)]
+        clim = [round(real_min - (diff * 0.15), 2), round(real_max + (diff * 0.15), 2)]
     else:
         clim = [round(real_min, 2), round(real_max, 2)]
 
@@ -682,16 +679,16 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // ЕДИНАЯ ВЫСОКОКОНТРАСТНАЯ ПАЛИТРА ДЛЯ ВСЕХ КАТЕГОРИЙ (MAX СИНХРОНИЗАЦИЯ С ТОННЕЛЕМ)
+        // ВЫСОКОКОНТРАСТНЫЕ ПАЛИТРЫ (СВЕРХУ ВНИЗ В ЛЕГЕНДЕ: ОТ МАКСИМУМА К МИНИМУМУ)
         const temperatureStops = [
-            new THREE.Color("#050833"),
-            new THREE.Color("#0044FF"),
-            new THREE.Color("#00C8E6"),
-            new THREE.Color("#00FF66"),
-            new THREE.Color("#B4FF00"),
-            new THREE.Color("#FFDD00"),
-            new THREE.Color("#FF5500"),
-            new THREE.Color("#FF0022")
+            new THREE.Color("#050833"), // Холод / Минимум
+            new THREE.Color("#0044FF"), 
+            new THREE.Color("#00C8E6"), 
+            new THREE.Color("#00FF66"), 
+            new THREE.Color("#B4FF00"), 
+            new THREE.Color("#FFDD00"), 
+            new THREE.Color("#FF5500"), 
+            new THREE.Color("#FF0022")  // Максимум
         ];
 
         const hoopStops = [
@@ -703,15 +700,14 @@ with col_3d:
             new THREE.Color("#FF0022")
         ];
 
-        // ЯРКИЙ ГРАДИЕНТ ДЛЯ BOYUNA GERINIM (S)
         const axialStops = [
-            new THREE.Color("#081D58"), // Глубокий темно-синий
-            new THREE.Color("#0055FF"), // Яркий синий
-            new THREE.Color("#00C8E6"), // Циан
-            new THREE.Color("#00FF88"), // Неоновый зеленый
-            new THREE.Color("#FFE600"), // Желтый
-            new THREE.Color("#FF5500"), // Оранжевый
-            new THREE.Color("#D50000")  // Красный
+            new THREE.Color("#081D58"),
+            new THREE.Color("#0055FF"),
+            new THREE.Color("#00C8E6"),
+            new THREE.Color("#00FF88"),
+            new THREE.Color("#FFE600"),
+            new THREE.Color("#FF5500"),
+            new THREE.Color("#D50000")
         ];
 
         let currentStops = hoopStops;
@@ -726,6 +722,7 @@ with col_3d:
             legendTitle.innerText = "Çevresel [µm/m]";
         }
 
+        // ТОЧНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С КОНТРОЛЬНЫМИ ТОЧКАМИ
         function buildExactLegendGradient(stops) {
             const n = stops.length;
             const items = [];
@@ -740,6 +737,7 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
+        // ЕДИНАЯ ФУНКЦИЯ ПОЛУЧЕНИЯ ЦВЕТА И ДЛЯ СЕНСОРОВ, И ДЛЯ ТОННЕЛЯ
         function sampleColorRamp(stops, t) {
             t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
@@ -973,12 +971,10 @@ with col_3d:
                 const uName = name.toUpperCase();
                 const sensorId = extractSensorId(name);
 
-                // ТОЧНАЯ ФИЛЬТРАЦИЯ ПО ТИПУ БЕЗ ПОТЕРИ СЕНСОРОВ BOYUNA (S)
                 let isCategory = false;
                 if (payload.comp === "hoop") {
                     if (uName.includes("-CS")) isCategory = true;
                 } else if (payload.comp === "axial") {
-                    // Сенсоры продольной деформации: содержат -S, но не -CS
                     if (uName.includes("-CS")) {
                         isCategory = false;
                     } else if (uName.includes("-S") || checkSensorData(sensorId, "axial").found) {
@@ -1029,6 +1025,36 @@ with col_3d:
                 }
             });
 
+            // РАСЧЁТ ДИНАМИЧЕСКИХ ГРАНИЦ ДЛЯ ПОЛНОЙ СИНХРОНИЗАЦИИ
+            const validVals = finalSensors
+                .filter(s => s.hasData && !isNaN(s.val))
+                .map(s => s.val);
+
+            let dynamicClim = [0.0, 1.0];
+            if (validVals.length > 0) {
+                let dMin = Math.min(...validVals);
+                let dMax = Math.max(...validVals);
+                let diff = Math.abs(dMax - dMin);
+                if (diff < 0.001) {
+                    dMin -= 0.5;
+                    dMax += 0.5;
+                } else if (diff < 0.1) {
+                    dMin -= diff * 0.15;
+                    dMax += diff * 0.15;
+                }
+                dynamicClim = [dMin, dMax];
+            } else if (payload.clim) {
+                dynamicClim = payload.clim;
+            }
+
+            const finalMin = dynamicClim[0];
+            const finalMax = dynamicClim[1];
+            const finalMid = (finalMin + finalMax) / 2.0;
+
+            lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(2);
+            lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(2);
+            lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(2);
+
             let alreadyHighlightedOne = false;
 
             finalSensors.forEach(item => {
@@ -1044,11 +1070,15 @@ with col_3d:
                         alreadyHighlightedOne = true;
                     }
 
+                    // КАЖДЫЙ СЕНСОР ПОЛУЧАЕТ ЦВЕТ ТОЧНО ПО СВОЕМУ ЗНАЧЕНИЮ ИЗ ШКАЛЫ
                     let sensorColor = 0xFFFFFF;
                     if (isSelected) {
-                        sensorColor = 0xFFD700;
+                        sensorColor = 0xFFD700; // Золотой контур для выбранного сенсора
                     } else if (!hasData) {
-                        sensorColor = 0xFF0033;
+                        sensorColor = 0xFF0033; // Красный при отсутствии данных
+                    } else {
+                        const c = getColorForValue(val, dynamicClim);
+                        sensorColor = c.getHex();
                     }
 
                     const sensorMat = new THREE.MeshBasicMaterial({
@@ -1085,35 +1115,6 @@ with col_3d:
                 }
             });
 
-            const validVals = interactiveSensors
-                .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
-                .map(s => s.userData.val);
-
-            let dynamicClim = [0.0, 1.0];
-            if (validVals.length > 0) {
-                let dMin = Math.min(...validVals);
-                let dMax = Math.max(...validVals);
-                let diff = Math.abs(dMax - dMin);
-                if (diff < 0.001) {
-                    dMin -= 0.5;
-                    dMax += 0.5;
-                } else if (diff < 0.1) {
-                    dMin -= diff * 0.2;
-                    dMax += diff * 0.2;
-                }
-                dynamicClim = [dMin, dMax];
-            } else if (payload.clim) {
-                dynamicClim = payload.clim;
-            }
-
-            const finalMin = dynamicClim[0];
-            const finalMax = dynamicClim[1];
-            const finalMid = (finalMin + finalMax) / 2.0;
-
-            lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(2);
-            lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(2);
-            lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(2);
-
             const interpolationSensors = [];
             interactiveSensors.forEach(sMesh => {
                 if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {
@@ -1129,8 +1130,8 @@ with col_3d:
                 }
             });
 
-            // НАДЕЖНАЯ КОНТРАСТНАЯ ИНТЕРПОЛЯЦИЯ ЗНАЧЕНИЙ (IDW)
-            const R_INFLUENCE = 35.0; // Гарантирует покрытие тоннеля без серых провалов
+            // ИНТЕРПОЛЯЦИЯ ЗНАЧЕНИЙ НА ПОВЕРХНОСТИ ТОННЕЛЯ (ВЗАИМНЫЙ ЦВЕТ С ЛЕГЕНДОЙ)
+            const R_INFLUENCE = 35.0;
 
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
@@ -1438,7 +1439,8 @@ with col_3d:
                 if (m === sensorMesh) {
                     m.material.color.setHex(0xFFD700);
                 } else if (m.userData.isUsable) {
-                    m.material.color.setHex(0xFFFFFF);
+                    const c = getColorForValue(m.userData.val, dynamicClim);
+                    m.material.color.setHex(c.getHex());
                 } else {
                     m.material.color.setHex(0xFF0033);
                 }
