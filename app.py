@@ -167,7 +167,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & VERİ ANALİZİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & VERİ ARŞİVİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -175,11 +175,10 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# УМНЫЕ КАТЕГОРИИ: теперь скрипт перебирает все возможные названия (включая опечатки и мн. число)
 CATEGORIES = {
-    "hoop": {"names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
@@ -196,7 +195,7 @@ def ensure_playwright_installed():
         pass
 
 # =========================================================================
-# 1. ТЕКУЩИЕ ДАННЫЕ (Усиленный DOM парсер)
+# 1. ТЕКУЩИЕ ДАННЫЕ (Самые свежие данные через DOM, без выбора старого месяца)
 # =========================================================================
 @st.cache_data(ttl=120)
 def fetch_current_data():
@@ -215,7 +214,7 @@ def fetch_current_data():
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul",
+            timezone_id="Europe/Istanbul", locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
@@ -228,85 +227,66 @@ def fetch_current_data():
             except: pass
             page.wait_for_timeout(1000)
 
+            # ВАЖНО: Мы БОЛЬШЕ НЕ ВЫБИРАЕМ "MONTH_02". 
+            # Оставляем настройки по умолчанию, чтобы получить самые новые данные.
             try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
             except: pass
             page.wait_for_timeout(1000)
 
-            try: page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
-            except: pass
-            page.wait_for_timeout(2000)
-
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
-                # Идеальный выбор категории из выпадающего списка
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try:
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
+                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
+                except:
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
                     except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                            success = True; break
-                        except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                            success = True; break
-                        except: pass
                 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(4000)
 
                 val_map = {}
                 latest_date_str = ""
 
                 for _ in range(15):
                     try:
-                        extracted = page.evaluate(f"""() => {{
-                            try {{
+                        # Используем textContent для парсинга 100% скрытых/широких колонок!
+                        extracted = page.evaluate("""() => {
+                            try {
                                 const table = document.querySelector('table');
                                 if (!table) return null;
 
                                 const trs = Array.from(table.querySelectorAll('tr'));
                                 let headerCells = [];
-                                const targetTag = '{target_tag}';
-
-                                for (const tr of trs) {{
+                                for (const tr of trs) {
                                     const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.textContent || '').trim());
-                                    if (cells.some(c => c.includes(targetTag) && (targetTag !== '-S' || !c.includes('-CS')))) {{
+                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
                                         headerCells = cells; break;
-                                    }}
-                                }}
+                                    }
+                                }
 
-                                if (headerCells.length === 0) return null;
+                                if (headerCells.length === 0 && trs.length > 0) {
+                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.textContent || '').trim());
+                                }
 
                                 const tbody = table.querySelector('tbody') || table;
                                 const rows = Array.from(tbody.querySelectorAll('tr'));
                                 let dataCells = [];
 
-                                for (const r of rows) {{
+                                for (const r of rows) {
                                     const cells = Array.from(r.querySelectorAll('td')).map(c => (c.textContent || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{{4}}/.test(cells[0]))) {{
-                                        dataCells = cells; // Оставляем самую последнюю строку
-                                    }}
-                                }}
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{4}/.test(cells[0]))) {
+                                        dataCells = cells; // Всегда перезаписываем, берем САМУЮ ПОСЛЕДНЮЮ СТРОКУ
+                                    }
+                                }
 
-                                if (dataCells.length === 0) return null;
-                                return {{ headers: headerCells, values: dataCells }};
-                            }} catch(e) {{ return null; }}
-                        }}""")
+                                if (headerCells.length === 0 || dataCells.length === 0) return null;
+                                return { headers: headerCells, values: dataCells };
+                            } catch(e) { return null; }
+                        }""")
 
                         if extracted and extracted.get("values"):
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
                             for h, v_str in zip(headers[1:], values[1:]):
-                                if ("TA-" in h or "TB-" in h) and (target_tag in h):
-                                    if target_tag == "-S" and "-CS" in h: continue
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
                                     m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                     s_name = m.group(1) if m else h.split()[0].strip()
                                     v = clean_num(v_str)
@@ -345,7 +325,7 @@ def fetch_historical_csv_data():
         context = browser.new_context(
             accept_downloads=True,
             viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul",
+            timezone_id="Europe/Istanbul", locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
@@ -365,24 +345,10 @@ def fetch_historical_csv_data():
             for cat_key, cat_cfg in CATEGORIES.items():
                 target_tag = cat_cfg["tag"]
                 
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
+                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
+                except:
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
                     except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                            success = True; break
-                        except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                            success = True; break
-                        except: pass
                 
                 page.wait_for_timeout(4000)
 
@@ -403,7 +369,7 @@ def fetch_historical_csv_data():
                             csv_btn.click(force=True)
                     csv_path = d_info.value.path()
                 except Exception as e:
-                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
+                    pass
 
                 if csv_path and os.path.exists(csv_path):
                     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -426,6 +392,7 @@ def fetch_historical_csv_data():
                                         v = clean_num(v_str)
                                         if not np.isnan(v):
                                             val_map[s_name] = v
+                                            
                                 historical_db[cat_key][d_str] = val_map
 
         except Exception as e:
@@ -464,7 +431,7 @@ with col_nav:
         st.rerun()
 
 # ---------------------------------------------------------
-# ЛОГИКА ЗАГРУЗКИ В ЗАВИСИМОСТИ ОТ РЕЖИМА
+# ЛОГИКА ЗАГРУЗКИ
 # ---------------------------------------------------------
 target_timestamp = None
 active_category_values = {}
@@ -934,7 +901,7 @@ with col_3d:
                 }
             }
 
-            // МАКСИМАЛЬНОЕ ПРИБЛИЖЕНИЕ ЦЕНТРА КАМЕРЫ (X2.5)
+            // МАКСИМАЛЬНОЕ ПРИБЛИЖЕНИЕ ЦЕНТРА КАМЕРЫ
             if (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && selectedMeshRef) {
                 flyCameraTo(selectedMeshRef, true);
             } else {
@@ -956,9 +923,9 @@ with col_3d:
                     controls.target.copy(center); 
                     
                     const fov = camera.fov * (Math.PI / 180);
-                    let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
+                    let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.15;
                     
-                    camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
+                    camera.position.set(center.x - maxDim * 0.05, center.y + maxDim * 0.15, center.z + cameraZ); 
                     controls.update();
                 }
             }
@@ -1011,10 +978,13 @@ with col_3d:
                     tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Ölçüm: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 }
-            } else { tooltip.style.display = 'none'; renderer.domElement.style.cursor = 'default'; }
+            } else {
+                tooltip.style.display = 'none';
+                renderer.domElement.style.cursor = 'default';
+            }
         });
         window.addEventListener('resize', function() { camera.aspect = container.clientWidth / container.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(container.clientWidth, container.clientHeight); });
         (function animate(time) { requestAnimationFrame(animate); TWEEN.update(time); controls.update(); renderer.clear(); renderer.render(scene, camera); renderer.clearDepth(); renderer.render(sensorScene, camera); })();
