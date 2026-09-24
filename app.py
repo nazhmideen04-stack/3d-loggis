@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. АВТОМАТИЧЕСКАЯ УСТАНОВКА ФИРМЕННОЙ ТЕМЫ STREAMLIT (ВЫЖИГАНИЕ ДЕФОЛТНОГО КРАСНОГО)
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -30,7 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH
+# Фирменный стиль DESTECH (все паразитные фильтры hue-rotate удалены)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -78,7 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки */
+    /* РАДИОКНОПКИ: ЧИСТЫЙ СИНИЙ БЕЗ ЦВЕТОВЫХ СДВИГОВ */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -94,8 +94,11 @@ st.markdown("""
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
-        filter: hue-rotate(185deg) saturate(3) brightness(1.2) !important;
         transform: scale(1.2) !important;
+    }
+
+    div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child div {
+        background-color: #00C8E6 !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] > label {
@@ -111,27 +114,16 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* ГАРАНТИРОВАННЫЙ ЦИАН ДЛЯ СЛАЙДЕРА И ЧЕКБОКСОВ */
+    /* СЛАЙДЕР И ЧЕКБОКСЫ: ЧИСТЫЙ СИНИЙ */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
         box-shadow: 0 0 14px #00C8E6 !important;
     }
 
-    div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="rgb(255, 75, 75)"],
-    div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="255, 75, 75"],
-    div[data-testid="stSlider"] [data-baseweb="slider"] > div > div:first-child > div {
-        background-color: #00C8E6 !important;
-        background: #00C8E6 !important;
-    }
-
-    div[data-testid="stCheckbox"] span[style*="rgb(255, 75, 75)"],
-    div[data-testid="stCheckbox"] span[style*="255, 75, 75"],
-    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"]:has(svg),
     div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
-        box-shadow: 0 0 8px rgba(0, 200, 230, 0.6) !important;
     }
 
     div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
