@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. Фирменная тема Streamlit
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -30,7 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# 2. Адаптивный мобильный CSS
+# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -88,13 +88,13 @@ st.markdown("""
 
     div[data-testid="stRadio"] div[role="radiogroup"] label p {
         font-family: 'Chakra Petch', sans-serif !important;
-        font-size: 17px !important;
+        font-size: 18px !important;
         color: #E6F0FA !important;
         font-weight: 600 !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
-        transform: scale(1.15) !important;
+        transform: scale(1.2) !important;
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child div {
@@ -155,7 +155,7 @@ st.markdown("""
         font-weight: 700 !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
-        padding: 8px 18px !important;
+        padding: 9px 20px !important;
         width: 100% !important;
         transition: background-color 0.2s ease, border-color 0.2s ease !important;
     }
@@ -167,13 +167,20 @@ st.markdown("""
     }
 
     /* =========================================================================
-       МОБИЛЬНАЯ АДАПТАЦИЯ (ЭКРАНЫ МЕНЬШЕ 768px)
+       МОБИЛЬНАЯ АДАПТАЦИЯ (ПЕРЕСТРОЕНИЕ КОЛОНОК)
        ========================================================================= */
-    @media (max-width: 768px) {
-        /* Перестраиваем колонки в вертикальный стек */
+    @media (max-width: 820px) {
+        .main .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            padding-top: 1.5rem !important;
+        }
+
+        /* 3D модель сверху, контрольная панель снизу */
         [data-testid="stHorizontalBlock"] {
+            display: flex !important;
             flex-direction: column-reverse !important;
-            gap: 16px !important;
+            gap: 1.2rem !important;
         }
 
         [data-testid="column"] {
@@ -182,19 +189,12 @@ st.markdown("""
             min-width: 100% !important;
         }
 
-        /* Заголовок на мобильных */
-        h1 {
-            font-size: 24px !important;
-        }
-        
-        .header-container {
-            margin-top: -10px !important;
-            margin-bottom: 12px !important;
+        .header-box h1 {
+            font-size: 22px !important;
         }
 
-        /* Уменьшаем отступы между блоками */
-        .stSlider, .stCheckbox, .stRadio {
-            margin-bottom: 10px !important;
+        .header-box img {
+            width: 130px !important;
         }
     }
 </style>
@@ -205,13 +205,13 @@ if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         LOGO_B64 = base64.b64encode(f.read()).decode()
 
-LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 140px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
+LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 180px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
 
 st.markdown(f"""
-<div class="header-container" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
+<div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 28px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 12px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -450,7 +450,7 @@ with col_nav:
             value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
         )
 
-# --- 3B THREE.JS ОБЛАСТЬ (АДАПТИВНАЯ ПОД МОБИЛЬНЫЕ) ---
+# --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -485,7 +485,7 @@ with col_3d:
             overflow: hidden;
             background-color: #0A0E17;
             font-family: 'Chakra Petch', sans-serif;
-            touch-action: none; /* Предотвращает дергание страницы при вращении модели */
+            touch-action: none;
         }
         #canvas-container {
             width: 100vw;
@@ -593,7 +593,7 @@ with col_3d:
             font-weight: 700;
         }
 
-        /* Оптимизация плашек под мобильные экраны */
+        /* Оптимизация плашек на смартфонах */
         @media (max-width: 600px) {
             #color-legend {
                 padding: 6px 8px;
@@ -766,6 +766,8 @@ with col_3d:
         controls.dampingFactor = 0.05;
         controls.minDistance = 0.5;
         controls.maxDistance = 2500;
+        
+        // Оптимизация сенсорного управления для мобильных экранов
         controls.touches = {
             ONE: THREE.TOUCH.ROTATE,
             TWO: THREE.TOUCH.DOLLY_PAN
@@ -1059,7 +1061,7 @@ with col_3d:
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
                     
-                    // Лёгкое аккуратное утолщение маркеров (+25%)
+                    // Исходная форма + лёгкое утолщение (+25%)
                     detachedMesh.scale.copy(wScale).multiplyScalar(1.25);
 
                     detachedMesh.userData.sensorName = sensorName;
@@ -1440,7 +1442,6 @@ with col_3d:
             updateHud(sensorName, sensorVal, isUsable);
         }
 
-        // Поддержка и клика мыши, и тач-нажатия на смартфонах
         window.addEventListener('click', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) handleSensorSelection(sensorMesh);
@@ -1452,7 +1453,6 @@ with col_3d:
         }, { passive: true });
 
         window.addEventListener('touchend', function(e) {
-            // Если это был короткий тап, а не долгое вращение модели
             if (Date.now() - touchStartTime < 250) {
                 const sensorMesh = getIntersectedSensor(e);
                 if (sensorMesh) {
@@ -1511,5 +1511,5 @@ with col_3d:
 
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
         
-        # На мобильных отводится 520px для комфортного скролла, на ПК - 760px
-        st.components.v1.html(final_html, height=620, scrolling=False)
+        # 600px обеспечивает комфортный обзор модели и оставляет пространство для скролла страницы на телефонах
+        st.components.v1.html(final_html, height=600, scrolling=False)
