@@ -538,15 +538,15 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
+                // 7-СТУПЕНЧАТАЯ ИНЖЕНЕРНАЯ ШКАЛА (ТОЧНО ТАКАЯ ЖЕ, КАК НА СЦЕНЕ)
                 const strainStops = [
-                    new THREE.Color("#0022FF"), // Глубокий синий
-                    new THREE.Color("#00E5FF"), // Циан
-                    new THREE.Color("#00FF44"), // Зеленый
-                    new THREE.Color("#FFE600"), // Желтый
-                    new THREE.Color("#FFAA00"), // Оранжевый
-                    new THREE.Color("#FF5500"), // Красно-оранжевый
-                    new THREE.Color("#FF0022")  // Алый красный
+                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий (мин)
+                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
+                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
+                    new THREE.Color("#FFE600"), // 0.50: Желтый
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
+                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжевый
+                    new THREE.Color("#FF0022")  // 1.00: Алый красный (макс)
                 ];
 
                 const tempStops = [
@@ -562,19 +562,28 @@ with col_3d:
 
                 let currentStops = strainStops;
 
+                // ДИНАМИЧЕСКОЕ ПОСТРОЕНИЕ CSS-ГРАДИЕНТА СТРОГО ИЗ МАССИВА ЦВЕТОВ
+                function makeCssGradient(stops) {{
+                    // В Three.js 0 — это минимум (низ), 1 — это максимум (верх)
+                    // В CSS linear-gradient to bottom верх идет первым, поэтому разворачиваем массив
+                    const reversed = [...stops].reverse();
+                    const colorHexStrings = reversed.map(c => '#' + c.getHexString());
+                    return 'linear-gradient(to bottom, ' + colorHexStrings.join(', ') + ')';
+                }}
+
                 if (payload.comp === "temp") {{
                     currentStops = tempStops;
                     legendTitle.innerText = "Sıcaklık [°C]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #33FF33, #00FFCC, #0066FF, #0011AA)";
                 }} else if (payload.comp === "axial") {{
                     currentStops = strainStops;
                     legendTitle.innerText = "Boyuna [µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
                 }} else {{
                     currentStops = strainStops;
                     legendTitle.innerText = "Çevresel [µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
                 }}
+
+                // Применяем точный градиент к шкале легенды
+                legendBar.style.background = makeCssGradient(currentStops);
 
                 function sampleColorRamp(stops, t) {{
                     t = Math.max(0, Math.min(1, t));
@@ -661,9 +670,7 @@ with col_3d:
                     }};
                 }}
 
-                // НАДЕЖНАЯ ПРОВЕРКА НАЛИЧИЯ ДАННЫХ ДЛЯ СЕНСОРА
                 function findSensorData(sensorId, comp) {{
-                    // 1. Прямой поиск
                     if (payload.activeCategoryValues.hasOwnProperty(sensorId)) {{
                         const v = payload.activeCategoryValues[sensorId];
                         if (v !== undefined && v !== null && !isNaN(v)) {{
@@ -671,7 +678,6 @@ with col_3d:
                         }}
                     }}
 
-                    // 2. Для температуры: проверка замены суффиксов
                     if (comp === "temp" && !sensorId.toUpperCase().includes("-TP")) {{
                         const tpCandidate = sensorId.replace(/-CS|-S/gi, "-TP");
                         if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
@@ -682,7 +688,6 @@ with col_3d:
                         }}
                     }}
 
-                    // 3. Поиск по нормализованному ключу (без дефисов, пробелов, регистронезависимо)
                     const nId = normalizeKey(sensorId);
                     if (normalizedDataMap.hasOwnProperty(nId)) {{
                         const item = normalizedDataMap[nId];
@@ -691,7 +696,6 @@ with col_3d:
                         }}
                     }}
 
-                    // 4. Поиск нормализованного кандидата температуры
                     if (comp === "temp" && !nId.includes("TP")) {{
                         const nTpCandidate = nId.replace(/CS|S/g, "TP");
                         if (normalizedDataMap.hasOwnProperty(nTpCandidate)) {{
@@ -702,11 +706,9 @@ with col_3d:
                         }}
                     }}
 
-                    // Данных нет
                     return {{ found: false, key: sensorId, val: NaN }};
                 }}
 
-                // СТРОГАЯ ПРОВЕРКА СООТВЕТСТВИЯ КАТЕГОРИИ
                 function isCategoryMatch(name, comp) {{
                     const u = name.toUpperCase();
                     if (comp === "hoop") {{
@@ -859,23 +861,17 @@ with col_3d:
                         }}
                     }});
 
-                    // ПЕРЕНОС И ФИЛЬТРАЦИЯ СЕНСОРОВ
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
 
-                        // Проверяем наличие данных по точному и нормализованному соответствию
                         const dataLookup = findSensorData(sensorId, payload.comp);
                         const hasData = dataLookup.found;
                         const canonicalId = dataLookup.key;
                         const sensorVal = dataLookup.val;
 
-                        // Сенсор относится к открытому типу
                         const isCategory = isCategoryMatch(canonicalId, payload.comp) || isCategoryMatch(sensorId, payload.comp) || (payload.comp === "temp" && (sensorId.toUpperCase().includes("-TP") || canonicalId.toUpperCase().includes("-TP")));
 
-                        // Отображаем объект:
-                        // 1. Если данные есть -> БЕЛЫЙ ЦВЕТ (не красный!)
-                        // 2. Если данных нет, но это сенсор текущего открытого типа и включен чекбокс -> КРАСНЫЙ ЦВЕТ
                         if (hasData || (isCategory && payload.showNoDataRed)) {{
                             child.userData.sensorName = canonicalId;
                             child.userData.val = hasData ? sensorVal : NaN;
@@ -884,11 +880,11 @@ with col_3d:
 
                             const isSelected = (canonicalId === payload.selectedSensor || sensorId === payload.selectedSensor);
                             
-                            let sensorColor = 0xFFFFFF; // Белый по умолчанию
+                            let sensorColor = 0xFFFFFF;
                             if (isSelected) {{
-                                sensorColor = 0xFFD700; // Золотой при выделении
+                                sensorColor = 0xFFD700;
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033; // Красный ТОЛЬКО ЕСЛИ ДАННЫХ ДЕЙСТВИТЕЛЬНО НЕТ
+                                sensorColor = 0xFF0033;
                             }}
 
                             child.material = new THREE.MeshBasicMaterial({{
@@ -927,7 +923,6 @@ with col_3d:
                         }}
                     }});
 
-                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -968,7 +963,6 @@ with col_3d:
                         }}
                     }});
 
-                    // ЧИСТАЯ ПОЛАЯ ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -1148,7 +1142,6 @@ with col_3d:
                         }}
                     }}
 
-                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1303,7 +1296,6 @@ with col_3d:
                     renderer.setSize(container.clientWidth, container.clientHeight);
                 }});
 
-                // ДВУХПРОХОДНЫЙ РЕНДЕР
                 function animate(time) {{
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
