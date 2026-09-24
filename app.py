@@ -499,7 +499,7 @@ with col_3d:
         </head>
         <body>
             <div id="canvas-container">
-                <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
+                <div id="loader">3B MODEL VE TÜNEL ИНТЕРПОЛЯЦИЯСЫ ЖҮКТЕЛУДЕ...</div>
                 <div id="sensor-tooltip"></div>
                 
                 <div id="selected-hud">
@@ -697,8 +697,6 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
-                    const rawSensorNodes = [];
-
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -736,8 +734,66 @@ with col_3d:
                             );
 
                             if (isSensorObject) {{
-                                child.visible = false; // Скрываем исходные невидимые меши из GLB
-                                rawSensorNodes.push(child);
+                                const sensorId = extractSensorId(name);
+                                child.userData.sensorName = sensorId;
+                                child.userData.isSensor = true;
+
+                                let resolvedSensorId = sensorId;
+                                if (payload.comp === "temp" && !sensorId.includes("-TP")) {{
+                                    const baseMatch = sensorId.match(/^(T[AB]-(?:CS|S)\d+-[LR](?:-M\d+)?)/i);
+                                    if (baseMatch) {{
+                                        const tpCandidate = baseMatch[1].replace(/-CS|-S/i, "-TP");
+                                        if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
+                                            resolvedSensorId = tpCandidate;
+                                        }}
+                                    }}
+                                }}
+
+                                const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
+                                const isCategory = isCategoryMatch(sensorId, payload.comp);
+
+                                if (hasData) {{
+                                    child.visible = true;
+                                    const rawVal = payload.activeCategoryValues[resolvedSensorId];
+                                    child.userData.val = rawVal;
+                                    child.userData.isUsable = true;
+                                    child.userData.isNoData = false;
+                                    interactiveSensors.push(child);
+
+                                    const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
+                                    const sensorColor = isSelected ? 0xFFD700 : 0xFFFFFF;
+
+                                    // ЧИСТЫЙ НЕПРОЗРАЧНЫЙ БЕЛЫЙ ЦВЕТ МЕША ДАТЧИКА
+                                    child.material = new THREE.MeshBasicMaterial({{
+                                        color: sensorColor,
+                                        side: THREE.DoubleSide,
+                                        depthTest: false,
+                                        depthWrite: false
+                                    }});
+                                    child.renderOrder = 9999;
+
+                                    if (isSelected) {{
+                                        selectedMeshRef = child;
+                                        updateHud(sensorId, rawVal);
+                                    }}
+                                }} else if (isCategory && payload.showNoDataRed) {{
+                                    child.visible = true;
+                                    child.userData.isUsable = false;
+                                    child.userData.isNoData = true;
+                                    interactiveSensors.push(child);
+
+                                    child.material = new THREE.MeshBasicMaterial({{
+                                        color: 0xFF0033,
+                                        side: THREE.DoubleSide,
+                                        depthTest: false,
+                                        depthWrite: false
+                                    }});
+                                    child.renderOrder = 9999;
+                                }} else {{
+                                    child.visible = false;
+                                    child.userData.isUsable = false;
+                                    child.userData.isNoData = false;
+                                }}
                             }} else {{
                                 const isTunnel = (
                                     uName.includes("TUNNEL") || 
@@ -760,68 +816,7 @@ with col_3d:
                         }}
                     }});
 
-                    // 1. СОЗДАНИЕ ЯВНЫХ ПРОЦЕДУРНЫХ 3D-СФЕР ДЛЯ КАЖДОГО ДАТЧИКА
-                    const sphereGeom = new THREE.SphereGeometry(0.42, 16, 16);
-
-                    rawSensorNodes.forEach(child => {{
-                        const name = child.name;
-                        const sensorId = extractSensorId(name);
-
-                        let resolvedSensorId = sensorId;
-                        if (payload.comp === "temp" && !sensorId.includes("-TP")) {{
-                            const baseMatch = sensorId.match(/^(T[AB]-(?:CS|S)\d+-[LR](?:-M\d+)?)/i);
-                            if (baseMatch) {{
-                                const tpCandidate = baseMatch[1].replace(/-CS|-S/i, "-TP");
-                                if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
-                                    resolvedSensorId = tpCandidate;
-                                }}
-                            }}
-                        }}
-
-                        const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
-                        const isCategory = isCategoryMatch(sensorId, payload.comp);
-
-                        if (hasData || (isCategory && payload.showNoDataRed)) {{
-                            const worldPos = new THREE.Vector3();
-                            child.getWorldPosition(worldPos);
-
-                            // ЧИСТЫЙ НЕПРОЗРАЧНЫЙ МАТЕРИАЛ ДЛЯ МАРКЕРА
-                            const isNoData = !hasData;
-                            const isSelected = (sensorId === payload.selectedSensor || resolvedSensorId === payload.selectedSensor);
-                            
-                            let sphereColor = 0xFFFFFF; // По умолчанию чистый белый
-                            if (isNoData) {{
-                                sphereColor = 0xFF0033; // Красный
-                            }} else if (isSelected) {{
-                                sphereColor = 0xFFD700; // Золотой
-                            }}
-
-                            const sphereMat = new THREE.MeshBasicMaterial({{
-                                color: sphereColor,
-                                depthTest: false,
-                                depthWrite: false
-                            }});
-
-                            const sensorSphere = new THREE.Mesh(sphereGeom, sphereMat);
-                            sensorSphere.position.copy(worldPos);
-                            sensorSphere.renderOrder = 99999;
-                            scene.add(sensorSphere);
-
-                            sensorSphere.userData.sensorName = sensorId;
-                            sensorSphere.userData.val = hasData ? payload.activeCategoryValues[resolvedSensorId] : NaN;
-                            sensorSphere.userData.isUsable = hasData;
-                            sensorSphere.userData.isNoData = isNoData;
-
-                            interactiveSensors.push(sensorSphere);
-
-                            if (isSelected) {{
-                                selectedMeshRef = sensorSphere;
-                                updateHud(sensorId, sensorSphere.userData.val);
-                            }}
-                        }}
-                    }});
-
-                    // 2. РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА ПО СЕНСОРАМ
+                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -847,15 +842,16 @@ with col_3d:
                     lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
                     lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
 
-                    // 3. ПОСТРОЕНИЕ ИНТЕРПОЛЯЦИИ НА СВОДАХ ТОННЕЛЕЙ
                     const interpolationSensors = [];
                     interactiveSensors.forEach(sMesh => {{
                         if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {{
+                            const wPos = new THREE.Vector3();
+                            sMesh.getWorldPosition(wPos);
                             const uName = sMesh.userData.sensorName.toUpperCase();
                             const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
 
                             interpolationSensors.push({{
-                                pos: sMesh.position.clone(),
+                                pos: wPos,
                                 val: sMesh.userData.val,
                                 tun: tun,
                                 name: sMesh.userData.sensorName
@@ -863,6 +859,7 @@ with col_3d:
                         }}
                     }});
 
+                    // ВЫРАЗИТЕЛЬНАЯ ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -1094,7 +1091,8 @@ with col_3d:
                 }}
 
                 function flyCameraTo(targetMesh, animate = true) {{
-                    const targetPos = targetMesh.position.clone();
+                    const targetPos = new THREE.Vector3();
+                    targetMesh.getWorldPosition(targetPos);
 
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
@@ -1127,19 +1125,29 @@ with col_3d:
                         .start();
                 }}
 
-                // КЛИК В 3D: МГНОВЕННЫЙ ВЫБОР СФЕРЫ-ДАТЧИКА
-                window.addEventListener('click', function(e) {{
+                function getIntersectedSensor(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
                     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
                     raycaster.setFromCamera(mouse, camera);
-                    const intersects = raycaster.intersectObjects(interactiveSensors, false);
+                    const intersects = raycaster.intersectObjects(interactiveSensors, true);
 
                     if (intersects.length > 0) {{
-                        const sensorSphere = intersects[0].object;
-                        const sensorName = sensorSphere.userData.sensorName;
-                        const sensorVal = sensorSphere.userData.val;
+                        let obj = intersects[0].object;
+                        while (obj && !obj.userData.sensorName && obj.parent) {{
+                            obj = obj.parent;
+                        }}
+                        return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null;
+                    }}
+                    return null;
+                }}
+
+                window.addEventListener('click', function(e) {{
+                    const sensorMesh = getIntersectedSensor(e);
+                    if (sensorMesh) {{
+                        const sensorName = sensorMesh.userData.sensorName;
+                        const sensorVal = sensorMesh.userData.val;
                         
                         interactiveSensors.forEach(m => {{
                             if (m.userData.isUsable) {{
@@ -1148,25 +1156,18 @@ with col_3d:
                             }}
                         }});
 
-                        flyCameraTo(sensorSphere, true);
+                        flyCameraTo(sensorMesh, true);
                         updateHud(sensorName, sensorVal);
                     }}
                 }});
 
                 window.addEventListener('mousemove', function(e) {{
-                    const rect = renderer.domElement.getBoundingClientRect();
-                    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-                    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-                    raycaster.setFromCamera(mouse, camera);
-                    const intersects = raycaster.intersectObjects(interactiveSensors, false);
-
-                    if (intersects.length > 0) {{
-                        const sensorSphere = intersects[0].object;
-                        const name = sensorSphere.userData.sensorName;
-                        const val = sensorSphere.userData.val;
-                        const isUsable = sensorSphere.userData.isUsable;
-                        const isNoData = sensorSphere.userData.isNoData;
+                    const sensorMesh = getIntersectedSensor(e);
+                    if (sensorMesh) {{
+                        const name = sensorMesh.userData.sensorName;
+                        const val = sensorMesh.userData.val;
+                        const isUsable = sensorMesh.userData.isUsable;
+                        const isNoData = sensorMesh.userData.isNoData;
 
                         tooltip.style.display = 'block';
                         tooltip.style.left = (e.clientX + 14) + 'px';
