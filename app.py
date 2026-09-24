@@ -77,6 +77,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -123,15 +124,6 @@ st.markdown("""
         border-color: #00C8E6 !important;
     }
 
-    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
-        border-color: #00C8E6 !important;
-    }
-
-    div[data-testid="stCheckbox"] svg path {
-        fill: #0A0E17 !important;
-        stroke: #0A0E17 !important;
-    }
-
     .destech-badge {
         font-family: 'Syne', sans-serif;
         font-size: 15px;
@@ -161,26 +153,6 @@ st.markdown("""
         background-color: #132E4C !important;
         border-color: #00C8E6 !important;
         color: #FFFFFF !important;
-    }
-
-    @media (max-width: 820px) {
-        .main .block-container {
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
-            padding-top: 1.5rem !important;
-        }
-
-        [data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-direction: column-reverse !important;
-            gap: 1.2rem !important;
-        }
-
-        [data-testid="column"] {
-            width: 100% !important;
-            flex: 1 1 100% !important;
-            min-width: 100% !important;
-        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -224,7 +196,7 @@ def ensure_playwright_installed():
         pass
 
 # =========================================================================
-# 1. ТЕКУЩИЕ ДАННЫЕ (Быстрый DOM парсер с защитой обновления таблицы)
+# 1. ТЕКУЩИЕ ДАННЫЕ (Твой 100% стабильный оригинальный DOM парсер)
 # =========================================================================
 @st.cache_data(ttl=300)
 def fetch_current_data():
@@ -247,6 +219,7 @@ def fetch_current_data():
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
@@ -268,65 +241,60 @@ def fetch_current_data():
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
-                # Выбор категории
                 try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=3000)
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
                 except:
                     try:
-                        page.get_by_role("listbox").select_option(cat_cfg["name"].replace("Othoradial", "Orthoradial"), timeout=3000)
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
                     except: pass
                 
-                # ЗАЩИТА: Ждём пока таблица реально обновится под новую категорию!
-                try:
-                    page.wait_for_function(
-                        f"() => Array.from(document.querySelectorAll('th, td')).some(el => el.innerText.includes('{target_tag}'))",
-                        timeout=15000
-                    )
-                except Exception:
-                    page.wait_for_timeout(3000) # Если не дождались - просто спим 3 секунды
+                page.wait_for_timeout(3000)
 
                 val_map = {}
                 latest_date_str = ""
-                
-                for _ in range(10):
+
+                for _ in range(15):
                     try:
-                        extracted = page.evaluate(f"""() => {{
-                            try {{
+                        extracted = page.evaluate("""() => {
+                            try {
                                 const table = document.querySelector('table');
                                 if (!table) return null;
+
                                 const trs = Array.from(table.querySelectorAll('tr'));
                                 let headerCells = [];
-                                for (const tr of trs) {{
+                                for (const tr of trs) {
                                     const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    // Обязательно проверяем наличие нужного тега в заголовке!
-                                    if (cells.some(c => c.includes('{target_tag}'))) {{
+                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
                                         headerCells = cells; break;
-                                    }}
-                                }}
-                                if (headerCells.length === 0) return null; // Таблица еще не обновилась
-                                
+                                    }
+                                }
+
+                                if (headerCells.length === 0 && trs.length > 0) {
+                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                }
+
                                 const tbody = table.querySelector('tbody') || table;
                                 const rows = Array.from(tbody.querySelectorAll('tr'));
                                 let dataCells = [];
-                                for (const r of rows) {{
+
+                                for (const r of rows) {
                                     const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{{4}}/.test(cells[0]))) {{
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{4}/.test(cells[0]))) {
                                         dataCells = cells; // Всегда перезаписываем, чтобы получить последнюю строку
-                                    }}
-                                }}
-                                if (dataCells.length === 0) return null;
-                                return {{ headers: headerCells, values: dataCells }};
-                            }} catch(e) {{ return null; }}
-                        }}""")
-                        
+                                    }
+                                }
+
+                                if (headerCells.length === 0 || dataCells.length === 0) return null;
+                                return { headers: headerCells, values: dataCells };
+                            } catch(e) { return null; }
+                        }""")
+
                         if extracted and extracted.get("values"):
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
                             for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or target_tag in h:
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
                                     m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                     s_name = m.group(1) if m else h.split()[0].strip()
                                     v = clean_num(v_str)
@@ -334,20 +302,17 @@ def fetch_current_data():
                                         val_map[s_name] = v
                             if len(val_map) > 0:
                                 break
-                    except:
-                        pass
-                    page.wait_for_timeout(800)
-                
+                    except: pass
+                    page.wait_for_timeout(600)
                 all_results[cat_key] = {"values": val_map, "date": latest_date_str}
         except Exception as e:
-            st.warning(f"Güncel veri alınırken hata: {e}")
+            st.warning(f"Güncel veri alınırken hata oluştu: {e}")
         finally:
             browser.close()
-            
     return all_results
 
 # =========================================================================
-# 2. АРХИВНЫЕ ДАННЫЕ (Загрузка CSV с ожиданием интерфейса)
+# 2. ИСТОРИЧЕСКИЕ ДАННЫЕ (Скачивание CSV)
 # =========================================================================
 @st.cache_data(ttl=3600)
 def fetch_historical_csv_data():
@@ -377,45 +342,31 @@ def fetch_historical_csv_data():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(4000)
 
-            try:
-                page.get_by_text("Types").click(timeout=8000)
+            try: page.get_by_text("Types").click(timeout=8000)
             except: pass
             page.wait_for_timeout(1000)
 
-            try:
-                page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
+            try: page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except: pass
             page.wait_for_timeout(2000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
                 try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=4000)
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
                 except:
-                    try:
-                        page.get_by_role("listbox").select_option(cat_cfg["name"].replace("Othoradial", "Orthoradial"), timeout=4000)
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True)
                     except: pass
                 
-                # ЗАЩИТА: Ждём обновления таблицы перед скачиванием
-                try:
-                    page.wait_for_function(
-                        f"() => Array.from(document.querySelectorAll('th, td')).some(el => el.innerText.includes('{target_tag}'))",
-                        timeout=15000
-                    )
-                except Exception:
-                    page.wait_for_timeout(4000)
+                page.wait_for_timeout(4000)
 
                 csv_path = None
                 csv_btn = page.locator("text=CSV").first
-                
-                try:
-                    csv_btn.wait_for(state="visible", timeout=15000)
+                try: csv_btn.wait_for(state="visible", timeout=20000)
                 except: pass
 
                 try:
                     csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(2000)
 
                     with page.expect_download(timeout=30000) as d_info:
                         try:
@@ -434,7 +385,7 @@ def fetch_historical_csv_data():
                         lines = f.readlines()
                     
                     if len(lines) > 2:
-                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                        header = [h.replace('\ufeff', '').strip() for h in lines[0].strip().split(';')]
                         
                         for line in lines[2:]:
                             parts = [p.strip() for p in line.strip().split(';')]
@@ -445,7 +396,7 @@ def fetch_historical_csv_data():
                                 
                                 val_map = {}
                                 for h, v_str in zip(header[1:], parts[1:]):
-                                    if "TA-" in h or "TB-" in h or target_tag in h:
+                                    if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
                                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                         s_name = m.group(1) if m else h.split()[0].strip()
                                         v = clean_num(v_str)
@@ -474,6 +425,7 @@ col_nav, col_3d = st.columns([1, 4])
 with col_nav:
     st.subheader("KONTROL PANELİ")
     
+    # ПЕРЕКЛЮЧАТЕЛЬ РЕЖИМОВ
     data_mode = st.radio(
         "Veri Modu Seçimi:",
         options=["🔴 Canlı (Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
@@ -968,12 +920,12 @@ with col_3d:
                 }
             }
 
+            // ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ ПРИ СТАРТЕ
             const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
-                flyCameraTo(selectedMeshRef, true);
+                sessionStorage.setItem('threejs_last_selected', payload.selectedSensor); flyCameraTo(selectedMeshRef, true);
             } else {
                 const savedStateStr = sessionStorage.getItem('threejs_camera_state');
                 let stateRestored = false;
@@ -989,14 +941,8 @@ with col_3d:
                     } catch(e) {}
                 }
                 
-                // ИДЕАЛЬНОЕ ЦЕНТРИРОВАНИЕ ПРИ СТАРТЕ: Принудительный расчет BoundingBox
                 if (!stateRestored) {
-                    model.traverse(c => {
-                        if (c.isMesh && c.geometry) {
-                            c.geometry.computeBoundingBox();
-                            c.geometry.computeBoundingSphere();
-                        }
-                    });
+                    model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
                     const tunnelBox = new THREE.Box3().setFromObject(model);
                     if (!tunnelBox.isEmpty()) {
                         const center = tunnelBox.getCenter(new THREE.Vector3()); 
@@ -1055,7 +1001,7 @@ with col_3d:
                 tooltip.style.display = 'block'; tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY + 14) + 'px';
                 if (isUsable) {
                     const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Ölçüm: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
                     tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
