@@ -322,19 +322,17 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-vals = list(active_category_values.values())
+# РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА СТРОГО ПО ФАКТИЧЕСКИМ МИНИМУМАМ И МАКСИМУМАМ
+vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
-elif selected_comp == "temp":
-    clim = [round(float(min(vals)), 1), round(float(max(vals)), 1)]
 else:
-    abs_vals = [abs(v) for v in vals if not np.isnan(v)]
-    if abs_vals:
-        m = round(float(np.percentile(abs_vals, 80)), 1)
-        m = max(m, 2.0)
+    real_min = float(min(vals))
+    real_max = float(max(vals))
+    if abs(real_max - real_min) < 0.001:
+        clim = [round(real_min - 1.0, 1), round(real_max + 1.0, 1)]
     else:
-        m = 10.0
-    clim = [-m, m]
+        clim = [round(real_min, 1), round(real_max, 1)]
 
 with col_nav:
     st.markdown("---")
@@ -350,8 +348,8 @@ with col_nav:
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 20px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
     
-    st.write("**Skala Limitleri:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]} | Maks: {clim[1]} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
+    st.write("**Skala Limitleri (Gerçek Min / Maks):**")
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>Min: {clim[0]:+.1f} | Maks: {clim[1]:+.1f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
     selected_sensor = st.selectbox("Sensör Değerini İncele:", options=["Seçiniz..."] + sorted(list(active_category_values.keys())))
@@ -401,12 +399,12 @@ with col_3d:
                     background: rgba(14, 24, 42, 0.95);
                     border: 1px solid #00C8E6;
                     color: #FFFFFF;
-                    padding: 6px 12px;
-                    border-radius: 4px;
-                    font-size: 13px;
+                    padding: 8px 14px;
+                    border-radius: 6px;
+                    font-size: 14px;
                     pointer-events: none;
                     z-index: 100;
-                    box-shadow: 0 4px 14px rgba(0, 200, 230, 0.3);
+                    box-shadow: 0 6px 18px rgba(0, 200, 230, 0.35);
                 }}
                 #loader {{
                     position: absolute;
@@ -414,7 +412,7 @@ with col_3d:
                     left: 50%;
                     transform: translate(-50%, -50%);
                     color: #00C8E6;
-                    font-size: 17px;
+                    font-size: 18px;
                     font-weight: 700;
                     letter-spacing: 1px;
                 }}
@@ -426,7 +424,7 @@ with col_3d:
                     flex-direction: column;
                     align-items: center;
                     background: rgba(10, 14, 23, 0.92);
-                    padding: 12px 14px;
+                    padding: 14px 16px;
                     border: 1px solid rgba(0, 200, 230, 0.55);
                     box-shadow: 0 0 18px rgba(0, 200, 230, 0.25);
                     border-radius: 6px;
@@ -435,7 +433,7 @@ with col_3d:
                 }}
                 #legend-title {{
                     color: #00E5FF;
-                    font-size: 13px;
+                    font-size: 14px;
                     font-weight: 700;
                     margin-bottom: 8px;
                     text-transform: none !important;
@@ -444,20 +442,20 @@ with col_3d:
                 .legend-bar-container {{
                     display: flex;
                     align-items: stretch;
-                    height: 220px;
+                    height: 240px;
                 }}
                 #legend-bar {{
-                    width: 18px;
-                    border-radius: 3px;
+                    width: 20px;
+                    border-radius: 4px;
                     border: 1px solid rgba(255, 255, 255, 0.35);
-                    margin-right: 8px;
+                    margin-right: 10px;
                 }}
                 .legend-labels {{
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                     color: #FFFFFF;
-                    font-size: 11px;
+                    font-size: 12px;
                     font-weight: 700;
                 }}
             </style>
@@ -476,9 +474,9 @@ with col_3d:
                     <div class="legend-bar-container">
                         <div id="legend-bar"></div>
                         <div class="legend-labels">
-                            <span>{clim[1]:+.1f}</span>
-                            <span>{round((clim[0] + clim[1]) / 2.0, 1):+.1f}</span>
-                            <span>{clim[0]:+.1f}</span>
+                            <span id="lbl-max">--</span>
+                            <span id="lbl-mid">--</span>
+                            <span id="lbl-min">--</span>
                         </div>
                     </div>
                 </div>
@@ -493,91 +491,19 @@ with col_3d:
                 const loaderText = document.getElementById('loader');
                 const legendBar = document.getElementById('legend-bar');
                 const legendTitle = document.getElementById('legend-title');
+                const lblMax = document.getElementById('lbl-max');
+                const lblMid = document.getElementById('lbl-mid');
+                const lblMin = document.getElementById('lbl-min');
 
-                // ПАЛИТРЫ БЕЗ БЕЛЫХ ВЫЦВЕТАНИЙ: ТОЛЬКО СОЧНЫЙ ИНЖЕНЕРНЫЙ СПЕКТР
-                if (payload.comp === "temp") {{
-                    legendTitle.innerText = "[°C]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0000, #FF5500, #FFAA00, #FFFF00, #55FF00, #00FF66, #00EEFF, #0022FF)";
-                }} else if (payload.comp === "axial") {{
-                    legendTitle.innerText = "[µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF00E6, #D000FF, #8800FF, #0066FF, #00D5FF, #00FF99, #00E64D)";
-                }} else {{
-                    legendTitle.innerText = "[µm/m]";
-                    legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF3C00, #FF9900, #FFEA00, #00FF44, #00FFFF, #0022FF)";
-                }}
-
-                const scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x0A0E17);
-
-                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
-
-                const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
-                renderer.setSize(container.clientWidth, container.clientHeight);
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-                renderer.toneMapping = THREE.ACESFilmicToneMapping;
-                renderer.toneMappingExposure = 1.6;
-                container.appendChild(renderer.domElement);
-
-                const controls = new THREE.OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.05;
-                controls.minDistance = 0.1;
-                controls.maxDistance = 3500;
-
-                controls.addEventListener('change', () => {{
-                    const camState = {{
-                        pos: [camera.position.x, camera.position.y, camera.position.z],
-                        target: [controls.target.x, controls.target.y, controls.target.z]
-                    }};
-                    sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
-                }});
-
-                const ambientLight = new THREE.AmbientLight(0xffffff, 1.7);
-                scene.add(ambientLight);
-
-                const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.8);
-                dirLight1.position.set(40, 60, 50);
-                scene.add(dirLight1);
-
-                const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.2);
-                dirLight2.position.set(-40, -20, -50);
-                scene.add(dirLight2);
-
-                const interactiveSensors = [];
-                const tunnelMeshes = [];
-                const raycaster = new THREE.Raycaster();
-                const mouse = new THREE.Vector2();
-
-                // ШКАЛЫ БЕЗ БЕЛЫХ ТОЧЕК
-                const SPECTRAL_STOPS = [
-                    new THREE.Color("#0022FF"), // 0.00: синий
-                    new THREE.Color("#00EEFF"), // 0.15: циан
-                    new THREE.Color("#00FF66"), // 0.30: зеленый
-                    new THREE.Color("#55FF00"), // 0.45: салатовый
-                    new THREE.Color("#FFFF00"), // 0.60: желтый
-                    new THREE.Color("#FFAA00"), // 0.75: оранжевый
-                    new THREE.Color("#FF5500"), // 0.90: оранжево-красный
-                    new THREE.Color("#FF0000")  // 1.00: алый
-                ];
-
-                const AXIAL_STOPS = [
-                    new THREE.Color("#00E64D"), // сжатие: изумрудно-зеленый
-                    new THREE.Color("#00FF99"),
-                    new THREE.Color("#00D5FF"), // бирюзовый переход
-                    new THREE.Color("#0066FF"), // синий
-                    new THREE.Color("#8800FF"), // фиолетовый
-                    new THREE.Color("#D000FF"),
-                    new THREE.Color("#FF00E6")  // растяжение: ультра-маджента
-                ];
-
-                const HOOP_STOPS = [
-                    new THREE.Color("#0022FF"), // сжатие: глубокий синий
-                    new THREE.Color("#00FFFF"), // циан
-                    new THREE.Color("#00FF44"), // сочный зеленый (середина)
-                    new THREE.Color("#FFEA00"), // желтый
-                    new THREE.Color("#FF9900"), // оранжевый
-                    new THREE.Color("#FF3C00"),
-                    new THREE.Color("#FF0022")  // растяжение: сочный алый
+                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА (TURBO / RAINBOW)
+                const RAINBOW_STOPS = [
+                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
+                    new THREE.Color("#00E5FF"), // 0.16: Циан
+                    new THREE.Color("#00FF44"), // 0.33: Зеленый / Лайм
+                    new THREE.Color("#FFE600"), // 0.50: Желтый
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
+                    new THREE.Color("#FF5500"), // 0.83: Оранжево-красный
+                    new THREE.Color("#FF0022")  // 1.00: Алый красный
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -591,21 +517,59 @@ with col_3d:
                     return c;
                 }}
 
-                function getColorForValue(val, clim, comp) {{
+                function getColorForValue(val, clim) {{
                     if (val === undefined || isNaN(val)) return new THREE.Color(0x334455);
                     const min = clim[0], max = clim[1];
                     let t = (val - min) / ((max - min) || 1.0);
                     t = Math.max(0, Math.min(1, t));
-
-                    // Плавный и контрастный градиент без белого сектора
-                    if (comp === "hoop") {{
-                        return sampleColorRamp(HOOP_STOPS, t);
-                    }} else if (comp === "axial") {{
-                        return sampleColorRamp(AXIAL_STOPS, t);
-                    }} else {{
-                        return sampleColorRamp(SPECTRAL_STOPS, t);
-                    }}
+                    return sampleColorRamp(RAINBOW_STOPS, t);
                 }}
+
+                // ЕДИНАЯ РАДУЖНАЯ ПОЛОСА ЛЕГЕНДЫ ДЛЯ ВСЕХ РЕЖИМОВ
+                legendBar.style.background = "linear-gradient(to bottom, #FF0022, #FF5500, #FFAA00, #FFE600, #00FF44, #00E5FF, #0022FF)";
+                legendTitle.innerText = payload.comp === "temp" ? "[°C]" : "[µm/m]";
+
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x0A0E17);
+
+                const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
+
+                const renderer = new THREE.WebGLRenderer({{ antialias: true, alpha: true }});
+                renderer.setSize(container.clientWidth, container.clientHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                renderer.toneMappingExposure = 1.35;
+                container.appendChild(renderer.domElement);
+
+                const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.minDistance = 0.5;
+                controls.maxDistance = 2500;
+
+                controls.addEventListener('change', () => {{
+                    const camState = {{
+                        pos: [camera.position.x, camera.position.y, camera.position.z],
+                        target: [controls.target.x, controls.target.y, controls.target.z]
+                    }};
+                    sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+                }});
+
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
+                scene.add(ambientLight);
+
+                const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6);
+                dirLight1.position.set(60, 100, 80);
+                scene.add(dirLight1);
+
+                const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
+                dirLight2.position.set(-60, -40, -80);
+                scene.add(dirLight2);
+
+                const interactiveSensors = [];
+                const tunnelMeshes = [];
+                const raycaster = new THREE.Raycaster();
+                const mouse = new THREE.Vector2();
 
                 function extractSensorId(name) {{
                     const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
@@ -643,7 +607,7 @@ with col_3d:
                     const texture = new THREE.CanvasTexture(canvas);
                     const mat = new THREE.SpriteMaterial({{ map: texture, depthTest: false }});
                     const sprite = new THREE.Sprite(mat);
-                    sprite.scale.set(6.2, 3.1, 1);
+                    sprite.scale.set(6.0, 3.0, 1);
                     return sprite;
                 }}
 
@@ -687,6 +651,7 @@ with col_3d:
                     model.updateMatrixWorld(true);
                     loaderText.style.display = 'none';
 
+                    // 1. ПЕРВЫЙ ПРОХОД: СОПОСТАВЛЕНИЕ ДАТЧИКОВ
                     model.traverse(function(child) {{
                         if (child.isMesh) {{
                             const name = child.name;
@@ -749,21 +714,6 @@ with col_3d:
                                     child.userData.isUsable = true;
                                     child.userData.isNoData = false;
                                     interactiveSensors.push(child);
-
-                                    const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
-                                    const sensorColor = isSelected ? new THREE.Color(0xFFEA00) : getColorForValue(rawVal, payload.clim, payload.comp);
-
-                                    child.material = new THREE.MeshStandardMaterial({{
-                                        color: sensorColor,
-                                        emissive: sensorColor,
-                                        emissiveIntensity: isSelected ? 1.7 : 1.3,
-                                        roughness: 0.0,
-                                        metalness: 0.2
-                                    }});
-
-                                    if (isSelected) {{
-                                        selectedMeshRef = child;
-                                    }}
                                 }} else if (isCategory && payload.showNoDataRed) {{
                                     child.visible = true;
                                     child.userData.isUsable = false;
@@ -775,8 +725,11 @@ with col_3d:
                                         emissive: 0xFF0000,
                                         emissiveIntensity: 2.5,
                                         roughness: 0.0,
-                                        metalness: 0.2
+                                        metalness: 0.1,
+                                        depthTest: false,
+                                        depthWrite: false
                                     }});
+                                    child.renderOrder = 999;
                                 }} else {{
                                     child.visible = false;
                                     child.userData.isUsable = false;
@@ -804,6 +757,58 @@ with col_3d:
                         }}
                     }});
 
+                    // 2. ВЫЧИСЛЕНИЕ ФАКТИЧЕСКИХ ГРАНИЦ ДИАПАЗОНА СТРОГО ПО НАЙДЕННЫМ СЕНСОРАМ
+                    const validVals = interactiveSensors
+                        .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
+                        .map(s => s.userData.val);
+
+                    let dynamicClim = [0.0, 1.0];
+                    if (validVals.length > 0) {{
+                        let dMin = Math.min(...validVals);
+                        let dMax = Math.max(...validVals);
+                        if (Math.abs(dMax - dMin) < 0.001) {{
+                            dMin -= 1.0;
+                            dMax += 1.0;
+                        }}
+                        dynamicClim = [dMin, dMax];
+                    }} else if (payload.clim) {{
+                        dynamicClim = payload.clim;
+                    }}
+
+                    // ОБНОВЛЕНИЕ ЧИСЕЛ НА ШКАЛЕ ЛЕГЕНДЫ ПО РЕАЛЬНЫМ ЭКСТРЕМУМАМ
+                    const finalMin = dynamicClim[0];
+                    const finalMax = dynamicClim[1];
+                    const finalMid = (finalMin + finalMax) / 2.0;
+
+                    lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(1);
+                    lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
+                    lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
+
+                    // 3. НАЗНАЧЕНИЕ МАТЕРИАЛОВ ДАТЧИКАМ ПОСЛЕ РАСЧЕТА ШКАЛЫ
+                    interactiveSensors.forEach(child => {{
+                        if (child.userData.isUsable) {{
+                            const sensorId = child.userData.sensorName;
+                            const isSelected = (sensorId === payload.selectedSensor);
+                            const sensorColor = isSelected ? new THREE.Color(0xFFE600) : getColorForValue(child.userData.val, dynamicClim);
+
+                            child.material = new THREE.MeshStandardMaterial({{
+                                color: sensorColor,
+                                emissive: isSelected ? new THREE.Color(0xFFE600) : sensorColor,
+                                emissiveIntensity: isSelected ? 2.6 : 1.8,
+                                roughness: 0.05,
+                                metalness: 0.1,
+                                depthTest: false,
+                                depthWrite: false
+                            }});
+                            child.renderOrder = 999;
+
+                            if (isSelected) {{
+                                selectedMeshRef = child;
+                            }}
+                        }}
+                    }});
+
+                    // 4. СБОР ТОЧЕК И РАСЧЕТ ИНТЕРПОЛЯЦИИ НА СВОД ТАКЖЕ ПО DYNAMIC_CLIM
                     const interpolationSensors = [];
                     interactiveSensors.forEach(sMesh => {{
                         if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {{
@@ -821,8 +826,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ШИРОКИЙ РАДИУС ДЛЯ ПОЛНОГО ПОКРЫТИЯ ТОННЕЛЯ БЕЗ ПРОБЕЛОВ
-                    const R_INFLUENCE = (payload.comp === "hoop") ? 60.0 : 45.0;
+                    const R_INFLUENCE = 45.0;
 
                     tunnelMeshes.forEach(tMesh => {{
                         const geom = tMesh.geometry;
@@ -842,7 +846,6 @@ with col_3d:
 
                         tMesh.updateMatrixWorld(true);
 
-                        // ЕСЛИ ДАННЫХ НЕТ: ТЕМНЫЙ СТИЛЬНЫЙ ГРАФИТОВЫЙ ФОН ОБДЕЛКИ (#151C28)
                         if (pool.length === 0) {{
                             for (let i = 0; i < posAttr.count; i++) {{
                                 const idx = i * 3;
@@ -863,13 +866,11 @@ with col_3d:
                                     const d = worldV.distanceTo(s.pos);
                                     
                                     if (d < R_INFLUENCE) {{
-                                        const ratio = d / R_INFLUENCE;
-                                        const wEnvelope = Math.pow(1.0 - ratio, 1.1);
-                                        // Мощное насыщение вблизи датчика
-                                        const wCore = 1.0 / Math.pow(d * d + 0.001, 1.4);
-                                        const w = wEnvelope * wCore;
+                                        const rNorm = d / R_INFLUENCE;
+                                        const wEnvelope = (1.0 - rNorm * rNorm);
+                                        const w = (wEnvelope * wEnvelope) / (d * d + 0.35);
 
-                                        const c = getColorForValue(s.val, payload.clim, payload.comp);
+                                        const c = getColorForValue(s.val, dynamicClim);
                                         accumR += c.r * w;
                                         accumG += c.g * w;
                                         accumB += c.b * w;
@@ -878,12 +879,11 @@ with col_3d:
                                 }}
 
                                 const idx = i * 3;
-                                if (totalWeight > 0.00001) {{
-                                    colors[idx] = Math.min(1.0, (accumR / totalWeight) * 1.15);
-                                    colors[idx + 1] = Math.min(1.0, (accumG / totalWeight) * 1.15);
-                                    colors[idx + 2] = Math.min(1.0, (accumB / totalWeight) * 1.15);
+                                if (totalWeight > 0.000001) {{
+                                    colors[idx] = accumR / totalWeight;
+                                    colors[idx + 1] = accumG / totalWeight;
+                                    colors[idx + 2] = accumB / totalWeight;
                                 }} else {{
-                                    // Вне радиуса — нейтральный графитовый тон
                                     colors[idx] = 0.082;
                                     colors[idx + 1] = 0.110;
                                     colors[idx + 2] = 0.157;
@@ -900,7 +900,7 @@ with col_3d:
                             vertexColors: true,
                             transparent: isTransparent,
                             opacity: payload.tunnelOpacity,
-                            roughness: 0.15,
+                            roughness: 0.25,
                             metalness: 0.05,
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
@@ -1004,6 +1004,7 @@ with col_3d:
                         }}
                     }}
 
+                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1033,9 +1034,9 @@ with col_3d:
 
                             controls.target.copy(center);
                             camera.position.set(
-                                center.x - maxDim * 0.45,
-                                center.y + maxDim * 0.35,
-                                center.z + maxDim * 0.65
+                                center.x - maxDim * 0.40,
+                                center.y + maxDim * 0.45,
+                                center.z + maxDim * 0.55
                             );
                             controls.update();
                         }}
@@ -1081,6 +1082,22 @@ with col_3d:
                         .start();
                 }}
 
+                window.addEventListener('click', function(e) {{
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(interactiveSensors);
+
+                    if (intersects.length > 0) {{
+                        const mesh = intersects[0].object;
+                        if (mesh.userData.isUsable || mesh.userData.isNoData) {{
+                            flyCameraTo(mesh, true);
+                        }}
+                    }}
+                }});
+
                 window.addEventListener('mousemove', function(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1102,7 +1119,7 @@ with col_3d:
                         
                         if (isUsable) {{
                             const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
-                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span>';
+                            tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                             renderer.domElement.style.cursor = 'pointer';
                         }} else if (isNoData) {{
                             tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span>';
@@ -1135,4 +1152,4 @@ with col_3d:
         </html>
         """
 
-        st.components.v1.html(threejs_html, height=740, scrolling=False)
+        st.components.v1.html(threejs_html, height=760, scrolling=False)
