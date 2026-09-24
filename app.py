@@ -4,6 +4,8 @@ import sys
 import json
 import base64
 import subprocess
+import io
+import csv
 from datetime import datetime
 import numpy as np
 import streamlit as st
@@ -78,7 +80,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -101,20 +102,12 @@ st.markdown("""
         background-color: #00C8E6 !important;
     }
 
-    div[data-testid="stRadio"] div[role="radiogroup"] > label {
-        margin-bottom: 12px !important;
-        cursor: pointer !important;
-        display: flex !important;
-        align-items: center !important;
-    }
-
     div[data-baseweb="select"] {
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
     }
 
-    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -124,15 +117,6 @@ st.markdown("""
     div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
-    }
-
-    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
-        border-color: #00C8E6 !important;
-    }
-
-    div[data-testid="stCheckbox"] svg path {
-        fill: #0A0E17 !important;
-        stroke: #0A0E17 !important;
     }
 
     .destech-badge {
@@ -166,7 +150,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1rem !important;
@@ -208,7 +191,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & DİNAMİK ZAMAN</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & CSV PARSER</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -236,13 +219,13 @@ def ensure_playwright_installed():
         pass
 
 @st.cache_data(ttl=300)
-def fetch_loggis_data(target_date_str=None):
+def fetch_loggis_data_via_csv(target_timestamp=None):
     """
-    Динамически открывает LoggIS, выбирает ALL для получения всех дат, 
-    собирает список доступных временных меток и парсит данные для нужной даты.
+    Использует твой точный сценарий Playwright:
+    Types -> ALL -> Выбор категории -> Клик по кнопке загрузки CSV -> Чтение файла.
     """
-    dates_list = []
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
+    all_timestamps = []
 
     with sync_playwright() as p:
         browser_args = [
@@ -265,47 +248,23 @@ def fetch_loggis_data(target_date_str=None):
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
+            # Клик по Types
             try:
                 page.get_by_text("Types").click(timeout=8000)
             except Exception:
                 pass
             page.wait_for_timeout(1000)
 
-            # Выбираем ALL в первом комбобоксе для доступа к полной базе дат
+            # Выбор ALL по твоему скрипту
             try:
                 page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except Exception:
                 pass
-            page.wait_for_timeout(1000)
-
-            # Динамически считываем все доступные даты из второго комбобокса на странице
-            try:
-                date_combo = page.get_by_role("combobox").nth(1)
-                options = date_combo.locator("option").all_inner_texts()
-                dates_list = [opt.strip() for opt in options if opt.strip() and opt.strip() != "TABLE_ROW_DATE"]
-            except Exception:
-                pass
-
-            # Если выбрана конкретная дата — устанавливаем её, иначе TABLE_ROW_DATE (актуальная)
-            if target_date_str and target_date_str != "En Son (Güncel)":
-                try:
-                    page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
-                except Exception:
-                    try:
-                        page.get_by_role("combobox").nth(1).select_option(target_date_str, timeout=3000)
-                    except Exception:
-                        pass
-            else:
-                try:
-                    page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
-                except Exception:
-                    pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
@@ -323,74 +282,64 @@ def fetch_loggis_data(target_date_str=None):
                 page.wait_for_timeout(3000)
 
                 val_map = {}
-                latest_date_str = ""
+                found_date = ""
 
-                for _ in range(15):
-                    try:
-                        extracted = page.evaluate("""() => {
-                            try {
-                                const table = document.querySelector('table');
-                                if (!table) return null;
+                # Скачиваем CSV таблицу по кнопке 🠋CSV
+                try:
+                    with page.expect_download(timeout=15000) as download_info:
+                        page.get_by_text("🠋CSV").click()
+                    download = download_info.value
+                    csv_path = download.path()
 
-                                const trs = Array.from(table.querySelectorAll('tr'));
-                                let headerCells = [];
-                                for (const tr of trs) {
-                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
-                                        headerCells = cells;
-                                        break;
-                                    }
-                                }
-                                if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                }
+                    if csv_path and os.path.exists(csv_path):
+                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                            lines = f.readlines()
 
-                                const tbody = table.querySelector('tbody') || table;
-                                const rows = Array.from(tbody.querySelectorAll('tr'));
-                                let dataCells = [];
-                                for (const r of rows) {
-                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
-                                        dataCells = cells;
-                                        break;
-                                    }
-                                }
+                        if len(lines) > 2:
+                            header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                            
+                            rows_data = []
+                            for line in lines[2:]: # Пропускаем строку единиц измерения
+                                parts = [p.strip() for p in line.strip().split(';')]
+                                if len(parts) == len(header):
+                                    rows_data.append(parts)
 
-                                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                                return { headers: headerCells, values: dataCells };
-                            } catch(e) {
-                                return null;
-                            }
-                        }""")
+                            if cat_key == "hoop":
+                                all_timestamps = [r[0] for r in rows_data if len(r) > 0]
 
-                        if extracted and extracted.get("values") and extracted.get("headers"):
-                            headers = extracted["headers"]
-                            values = extracted["values"]
-                            latest_date_str = values[0]
+                            # Выбираем нужную строку по таймстампу или самую последнюю
+                            selected_row = None
+                            if target_timestamp and target_timestamp != "En Son (Güncel)":
+                                for r in rows_data:
+                                    if r[0] == target_timestamp:
+                                        selected_row = r
+                                        break
+                                if not selected_row and rows_data:
+                                    selected_row = rows_data[-1]
+                            else:
+                                if rows_data:
+                                    selected_row = rows_data[-1]
 
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
-                                    v = clean_num(v_str)
-                                    if not np.isnan(v):
-                                        val_map[s_name] = v
+                            if selected_row:
+                                found_date = selected_row[0]
+                                for h, v_str in zip(header[1:], selected_row[1:]):
+                                    if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                        s_name = m.group(1) if m else h.split()[0].strip()
+                                        v = clean_num(v_str)
+                                        if not np.isnan(v):
+                                            val_map[s_name] = v
+                except Exception as e:
+                    st.warning(f"CSV İndirme/Okuma Hatası ({cat_key}): {e}")
 
-                            if len(val_map) > 0:
-                                break
-                    except Exception:
-                        pass
-
-                    page.wait_for_timeout(600)
-
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+                all_results[cat_key] = {"values": val_map, "date": found_date}
 
         except Exception as e:
-            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
+            st.warning(f"LoggIS bağlantı hatası: {e}")
         finally:
             browser.close()
 
-    return dates_list, all_results
+    return all_timestamps, all_results
 
 @st.cache_data
 def get_model_b64(path):
@@ -401,9 +350,9 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Автоматически получаем список всех доступных дат и актуальные данные при старте
-with st.spinner("LoggIS zaman etiketleri senkronize ediliyor..."):
-    available_dates, current_data = fetch_loggis_data(None)
+# Первичный запуск: скачиваем CSV и автоматически собираем все таймстампы из колонки Timestamp
+with st.spinner("LoggIS verileri ve CSV tabloları yükleniyor..."):
+    timestamps_list, current_data = fetch_loggis_data_via_csv(None)
 
 with col_nav:
     st.subheader("KONTROL PANELİ")
@@ -414,20 +363,20 @@ with col_nav:
     )
 
     st.markdown("---")
-    st.subheader("⏱️ Zaman Seçimi")
+    st.subheader("⏱️ Zaman Seçimi (CSV)")
     
-    # Динамически сформированный список: актуальные данные + все даты, найденные на сайте
-    date_options = ["En Son (Güncel)"] + (available_dates if available_dates else [])
+    # Динамический список дат из CSV-файла (от самых ранних до свежих)
+    date_options = ["En Son (Güncel)"] + (timestamps_list if timestamps_list else [])
     selected_date_choice = st.selectbox("Tarih ve Saat Seç:", options=date_options)
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# Загружаем данные для выбранного времени (текущие или конкретная историческая дата)
+# Если выбрана историческая дата из CSV, загружаем данные для неё
 if selected_date_choice != "En Son (Güncel)":
     with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
-        _, current_data = fetch_loggis_data(selected_date_choice)
+        _, current_data = fetch_loggis_data_via_csv(selected_date_choice)
 
 cat_cfg = CATEGORIES[selected_comp]
 cur_layer = current_data.get(selected_comp, {"values": {}, "date": ""})
@@ -1507,7 +1456,7 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
-        (function animate(time) {
+        function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
             controls.update();
@@ -1517,7 +1466,8 @@ with col_3d:
 
             renderer.clearDepth();
             renderer.render(sensorScene, camera);
-        })();
+        }
+        requestAnimationFrame(animate);
     </script>
 </body>
 </html>"""
