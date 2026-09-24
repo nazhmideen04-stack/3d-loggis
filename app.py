@@ -241,7 +241,8 @@ def ensure_playwright_installed():
 def fetch_data_via_csv(target_timestamp=None):
     """
     Скачивает CSV таблицы по вашему сценарию Playwright (Types -> ALL -> категория -> 🠋CSV),
-    обрабатывает pop-up и download, читает файл и возвращает список всех дат и значения сенсоров.
+    разрешая скачивание в headless-режиме через accept_downloads=True,
+    читает файл и извлекает список всех доступных дат из колонки Timestamp[cite: 3].
     """
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
     timestamps_list = []
@@ -260,7 +261,9 @@ def fetch_data_via_csv(target_timestamp=None):
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
 
+        # CRITICAL: accept_downloads=True разрешает скачивание файлов в headless режиме!
         context = browser.new_context(
+            accept_downloads=True,
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="fr-FR",
@@ -272,14 +275,14 @@ def fetch_data_via_csv(target_timestamp=None):
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            # Клик по Types
+            # Шаг 1: Нажимаем Types
             try:
                 page.get_by_text("Types").click(timeout=8000)
             except Exception:
                 pass
             page.wait_for_timeout(1000)
 
-            # Выбор ALL в первом комбобоксе по вашему скрипту
+            # Шаг 2: Выбираем ALL в первом комбобоксе по вашему скрипту
             try:
                 page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
             except Exception:
@@ -303,9 +306,9 @@ def fetch_data_via_csv(target_timestamp=None):
                 val_map = {}
                 found_date = ""
 
-                # Скачивание CSV по вашему сценарию с обработкой popup и download
+                # Шаг 3: Скачивание CSV по вашему сценарию с обработкой popup и download
                 try:
-                    with page.expect_download(timeout=20000) as download_info:
+                    with page.expect_download(timeout=25000) as download_info:
                         try:
                             with page.expect_popup(timeout=4000) as popup_info:
                                 page.get_by_text("🠋CSV").click()
@@ -329,11 +332,11 @@ def fetch_data_via_csv(target_timestamp=None):
                                 if len(parts) == len(header):
                                     rows_data.append(parts)
 
-                            # Сохраняем все таймстампы из первой категории (hoop)
+                            # Сохраняем список всех таймстампов из первой категории (hoop)
                             if cat_key == "hoop":
                                 timestamps_list = [r[0] for r in rows_data if len(r) > 0]
 
-                            # Ищем нужную строку по выбранному времени или берем последнюю
+                            # Выбираем строку по таймстампу или последнюю (актуальную)
                             selected_row = None
                             if target_timestamp and target_timestamp != "En Son (Güncel)":
                                 for r in rows_data:
@@ -376,8 +379,8 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
-# Первичный запуск: скачиваем CSV и автоматически извлекаем все даты из колонки Timestamp
-with st.spinner("LoggIS CSV verileri yükleniyor..."):
+# Первичный запуск: скачиваем CSV и собираем все доступные даты из колонки Timestamp
+with st.spinner("LoggIS verileri ve CSV tabloları yükleniyor..."):
     timestamps_list, current_data = fetch_data_via_csv(None)
 
 with col_nav:
@@ -399,7 +402,7 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-# Если выбрана дата/время из архива CSV, загружаем данные для неё
+# Если выбрана дата из архива CSV, загружаем данные для неё
 if selected_date_choice != "En Son (Güncel)":
     with st.spinner(f"Veriler alınıyor ({selected_date_choice})..."):
         _, current_data = fetch_data_via_csv(selected_date_choice)
@@ -1191,16 +1194,31 @@ with col_3d:
                 geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 geom.attributes.color.needsUpdate = true;
 
-                tMesh.material = new THREE.MeshStandardMaterial({
+                const isTransparent = payload.tunnelOpacity < 0.98;
+
+                if (isTransparent) {
+                    const depthMaskMat = new THREE.MeshBasicMaterial({
+                        colorWrite: false,
+                        depthWrite: true,
+                        side: THREE.FrontSide
+                    });
+                    const depthMaskMesh = new THREE.Mesh(geom, depthMaskMat);
+                    depthMaskMesh.renderOrder = 0;
+                    tMesh.add(depthMaskMesh);
+                }
+
+                const visualMat = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
                     vertexColors: true,
-                    transparent: false,
+                    transparent: isTransparent,
+                    opacity: payload.tunnelOpacity,
                     roughness: 0.20,
                     metalness: 0.02,
-                    depthWrite: true,
+                    depthWrite: !isTransparent,
                     side: THREE.FrontSide
                 });
 
+                tMesh.material = visualMat;
                 tMesh.renderOrder = 1;
                 tMesh.material.needsUpdate = true;
             });
