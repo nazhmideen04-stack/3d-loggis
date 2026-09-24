@@ -538,19 +538,17 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
-                // --- 1. ПРЕЖНИЕ СОЧНЫЕ ПАЛИТРЫ (TURBO / RAINBOW) ---
-                // Для деформаций: сочная 7-ступенчатая инженерная радуга
+                // СОЧНАЯ ИНЖЕНЕРНАЯ 7-СТУПЕНЧАТАЯ РАДУГА
                 const strainStops = [
-                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
-                    new THREE.Color("#00E5FF"), // 0.16: Неоновый циан
-                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
-                    new THREE.Color("#FFE600"), // 0.50: Желтый
-                    new THREE.Color("#FFAA00"), // 0.67: Янтарно-оранжевый
-                    new THREE.Color("#FF5500"), // 0.83: Насыщенный оранжевый
-                    new THREE.Color("#FF0022")  // 1.00: Алый красный
+                    new THREE.Color("#0022FF"), // Глубокий синий
+                    new THREE.Color("#00E5FF"), // Циан
+                    new THREE.Color("#00FF44"), // Зеленый
+                    new THREE.Color("#FFE600"), // Желтый
+                    new THREE.Color("#FFAA00"), // Оранжевый
+                    new THREE.Color("#FF5500"), // Красно-оранжевый
+                    new THREE.Color("#FF0022")  // Алый красный
                 ];
 
-                // Для температуры: от синего через циан и желтый к красному
                 const tempStops = [
                     new THREE.Color("#0011AA"),
                     new THREE.Color("#0066FF"),
@@ -562,7 +560,6 @@ with col_3d:
                     new THREE.Color("#FF0000")
                 ];
 
-                // --- 2. ПОЛНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ И ЦВЕТОВ НА СВОДЕ ---
                 let currentStops = strainStops;
 
                 if (payload.comp === "temp") {{
@@ -598,7 +595,6 @@ with col_3d:
                     return sampleColorRamp(currentStops, t);
                 }}
 
-                // ДВЕ НЕЗАВИСИМЫЕ СЦЕНЫ: ДАТЧИКИ ВСЕГДА БЕЛЫЕ И НЕ ТОНУТ В ТОННЕЛЕ
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x0A0E17);
 
@@ -729,30 +725,37 @@ with col_3d:
                     const rawSensors = [];
 
                     model.traverse(function(child) {{
+                        // СКРЫВАЕМ ЛЮБЫЕ ЛИНИИ, КАРКАСЫ И РЕБРА
+                        if (child.isLine || child.isLineSegments) {{
+                            child.visible = false;
+                            return;
+                        }}
+
                         if (child.isMesh) {{
                             const name = child.name;
                             const uName = name.toUpperCase();
 
+                            // СКРЫВАЕМ КОРОБКУ
                             if (uName.includes("BOX001")) {{
-                                child.material = new THREE.MeshStandardMaterial({{
-                                    color: 0x0E2238,
-                                    emissive: 0x001122,
-                                    transparent: true,
-                                    opacity: 0.12,
-                                    roughness: 0.2,
-                                    metalness: 0.1,
-                                    depthWrite: false,
-                                    side: THREE.DoubleSide
-                                }});
+                                child.visible = false;
+                                return;
+                            }}
 
-                                const edges = new THREE.EdgesGeometry(child.geometry);
-                                const lineMat = new THREE.LineBasicMaterial({{
-                                    color: 0x00C8E6,
-                                    transparent: true,
-                                    opacity: 0.22
-                                }});
-                                const wireframeLine = new THREE.LineSegments(edges, lineMat);
-                                child.add(wireframeLine);
+                            // СКРЫВАЕМ ПОЛУВИДИМЫЕ КРУГИ СЕГМЕНТОВ И СТЫКОВ
+                            const isParasiticRing = (
+                                uName.includes("RING") ||
+                                uName.includes("SEGMENT") ||
+                                uName.includes("JOINT") ||
+                                uName.includes("SEAM") ||
+                                uName.includes("BORDER") ||
+                                uName.includes("EDGE") ||
+                                uName.includes("FRAME") ||
+                                uName.includes("CIRCLE") ||
+                                uName.includes("CONTOUR")
+                            );
+
+                            if (isParasiticRing && !uName.startsWith("TA-") && !uName.startsWith("TB-")) {{
+                                child.visible = false;
                                 return;
                             }}
 
@@ -788,7 +791,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ПЕРЕНОСИМ ДАТЧИКИ В ОТДЕЛЬНЫЙ НЕЗАВИСИМЫЙ СЛОЙ (ЧИСТЫЙ БЕЛЫЙ ЦВЕТ)
+                    // СЕНСОРЫ: ПЕРЕНОС В ОТДЕЛЬНЫЙ СЛОЙ, ЧИСТЫЙ НЕПРОЗРАЧНЫЙ БЕЛЫЙ ЦВЕТ
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
@@ -893,7 +896,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ВЫРАЗИТЕЛЬНАЯ ИНТЕРПОЛЯЦИЯ СВОДА
+                    // ЧИСТАЯ НЕПРЕРЫВНАЯ ИНТЕРПОЛЯЦИЯ СВОДА
                     const R_INFLUENCE = 48.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -973,7 +976,6 @@ with col_3d:
                             depthWrite: !isTransparent,
                             side: THREE.DoubleSide
                         }});
-                        tMesh.renderOrder = 0;
                         tMesh.material.needsUpdate = true;
                     }});
 
@@ -1228,7 +1230,6 @@ with col_3d:
                     renderer.setSize(container.clientWidth, container.clientHeight);
                 }});
 
-                // ДВУХПРОХОДНЫЙ РЕНДЕР: ДАТЧИКИ РИСУЮТСЯ НЕЗАВИСИМО ПОВЕРХ ТОННЕЛЯ
                 function animate(time) {{
                     requestAnimationFrame(animate);
                     TWEEN.update(time);
