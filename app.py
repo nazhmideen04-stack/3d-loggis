@@ -538,14 +538,15 @@ with col_3d:
                 const hudName = document.getElementById('hud-sensor-name');
                 const hudVal = document.getElementById('hud-sensor-val');
 
+                // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const strainStops = [
-                    new THREE.Color("#0022FF"),
-                    new THREE.Color("#00E5FF"),
-                    new THREE.Color("#00FF44"),
-                    new THREE.Color("#FFE600"),
-                    new THREE.Color("#FFAA00"),
-                    new THREE.Color("#FF5500"),
-                    new THREE.Color("#FF0022")
+                    new THREE.Color("#0022FF"), // Глубокий синий
+                    new THREE.Color("#00E5FF"), // Циан
+                    new THREE.Color("#00FF44"), // Зеленый
+                    new THREE.Color("#FFE600"), // Желтый
+                    new THREE.Color("#FFAA00"), // Оранжевый
+                    new THREE.Color("#FF5500"), // Красно-оранжевый
+                    new THREE.Color("#FF0022")  // Алый красный
                 ];
 
                 const tempStops = [
@@ -646,7 +647,66 @@ with col_3d:
                     return m ? m[0] : name;
                 }}
 
-                // СТРОГАЯ ФИЛЬТРАЦИЯ КАТЕГОРИЙ (ТОЛЬКО ТОТ ТИП, КОТОРЫЙ ВЫБРАН)
+                function normalizeKey(str) {{
+                    return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                }}
+
+                // КАРТА НОРМАЛИЗОВАННЫХ КЛЮЧЕЙ ИЗ ТАБЛИЦЫ ДАННЫХ
+                const normalizedDataMap = {{}};
+                for (const rawKey in payload.activeCategoryValues) {{
+                    const nKey = normalizeKey(rawKey);
+                    normalizedDataMap[nKey] = {{
+                        canonicalKey: rawKey,
+                        val: payload.activeCategoryValues[rawKey]
+                    }};
+                }}
+
+                // НАДЕЖНАЯ ПРОВЕРКА НАЛИЧИЯ ДАННЫХ ДЛЯ СЕНСОРА
+                function findSensorData(sensorId, comp) {{
+                    // 1. Прямой поиск
+                    if (payload.activeCategoryValues.hasOwnProperty(sensorId)) {{
+                        const v = payload.activeCategoryValues[sensorId];
+                        if (v !== undefined && v !== null && !isNaN(v)) {{
+                            return {{ found: true, key: sensorId, val: v }};
+                        }}
+                    }}
+
+                    // 2. Для температуры: проверка замены суффиксов
+                    if (comp === "temp" && !sensorId.toUpperCase().includes("-TP")) {{
+                        const tpCandidate = sensorId.replace(/-CS|-S/gi, "-TP");
+                        if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
+                            const v = payload.activeCategoryValues[tpCandidate];
+                            if (v !== undefined && v !== null && !isNaN(v)) {{
+                                return {{ found: true, key: tpCandidate, val: v }};
+                            }}
+                        }}
+                    }}
+
+                    // 3. Поиск по нормализованному ключу (без дефисов, пробелов, регистронезависимо)
+                    const nId = normalizeKey(sensorId);
+                    if (normalizedDataMap.hasOwnProperty(nId)) {{
+                        const item = normalizedDataMap[nId];
+                        if (item.val !== undefined && item.val !== null && !isNaN(item.val)) {{
+                            return {{ found: true, key: item.canonicalKey, val: item.val }};
+                        }}
+                    }}
+
+                    // 4. Поиск нормализованного кандидата температуры
+                    if (comp === "temp" && !nId.includes("TP")) {{
+                        const nTpCandidate = nId.replace(/CS|S/g, "TP");
+                        if (normalizedDataMap.hasOwnProperty(nTpCandidate)) {{
+                            const item = normalizedDataMap[nTpCandidate];
+                            if (item.val !== undefined && item.val !== null && !isNaN(item.val)) {{
+                                return {{ found: true, key: item.canonicalKey, val: item.val }};
+                            }}
+                        }}
+                    }}
+
+                    // Данных нет
+                    return {{ found: false, key: sensorId, val: NaN }};
+                }}
+
+                // СТРОГАЯ ПРОВЕРКА СООТВЕТСТВИЯ КАТЕГОРИИ
                 function isCategoryMatch(name, comp) {{
                     const u = name.toUpperCase();
                     if (comp === "hoop") {{
@@ -799,41 +859,36 @@ with col_3d:
                         }}
                     }});
 
-                    // ПЕРЕНОС СЕНСОРОВ В ОТДЕЛЬНУЮ СЦЕНУ: ПОКАЗ КРАСНЫХ СТРОГО В РАМКАХ ТЕКУЩЕГО ТИПА
+                    // ПЕРЕНОС И ФИЛЬТРАЦИЯ СЕНСОРОВ
                     rawSensors.forEach(child => {{
                         const name = child.name;
                         const sensorId = extractSensorId(name);
 
-                        let resolvedSensorId = sensorId;
-                        if (payload.comp === "temp" && !sensorId.includes("-TP")) {{
-                            const baseMatch = sensorId.match(/^(T[AB]-(?:CS|S)\d+-[LR](?:-M\d+)?)/i);
-                            if (baseMatch) {{
-                                const tpCandidate = baseMatch[1].replace(/-CS|-S/i, "-TP");
-                                if (payload.activeCategoryValues.hasOwnProperty(tpCandidate)) {{
-                                    resolvedSensorId = tpCandidate;
-                                }}
-                            }}
-                        }}
+                        // Проверяем наличие данных по точному и нормализованному соответствию
+                        const dataLookup = findSensorData(sensorId, payload.comp);
+                        const hasData = dataLookup.found;
+                        const canonicalId = dataLookup.key;
+                        const sensorVal = dataLookup.val;
 
-                        const hasData = payload.activeCategoryValues.hasOwnProperty(resolvedSensorId);
-                        
-                        // Проверка принадлежности объекта ИСКЛЮЧИТЕЛЬНО выбранному типу
-                        const isCategory = isCategoryMatch(resolvedSensorId, payload.comp) || (payload.comp === "temp" && isCategoryMatch(sensorId, "temp"));
+                        // Сенсор относится к открытому типу
+                        const isCategory = isCategoryMatch(canonicalId, payload.comp) || isCategoryMatch(sensorId, payload.comp) || (payload.comp === "temp" && (sensorId.toUpperCase().includes("-TP") || canonicalId.toUpperCase().includes("-TP")));
 
+                        // Отображаем объект:
+                        // 1. Если данные есть -> БЕЛЫЙ ЦВЕТ (не красный!)
+                        // 2. Если данных нет, но это сенсор текущего открытого типа и включен чекбокс -> КРАСНЫЙ ЦВЕТ
                         if (hasData || (isCategory && payload.showNoDataRed)) {{
-                            child.userData.sensorName = resolvedSensorId;
-                            child.userData.val = hasData ? payload.activeCategoryValues[resolvedSensorId] : NaN;
+                            child.userData.sensorName = canonicalId;
+                            child.userData.val = hasData ? sensorVal : NaN;
                             child.userData.isUsable = hasData;
                             child.userData.isNoData = !hasData;
 
-                            const isSelected = (resolvedSensorId === payload.selectedSensor || sensorId === payload.selectedSensor);
+                            const isSelected = (canonicalId === payload.selectedSensor || sensorId === payload.selectedSensor);
                             
-                            // Если есть данные - белый (или золотой при выборе), если данных нет и чекбокс включен - ярко-красный
-                            let sensorColor = 0xFFFFFF;
+                            let sensorColor = 0xFFFFFF; // Белый по умолчанию
                             if (isSelected) {{
-                                sensorColor = 0xFFD700;
+                                sensorColor = 0xFFD700; // Золотой при выделении
                             }} else if (!hasData) {{
-                                sensorColor = 0xFF0033;
+                                sensorColor = 0xFF0033; // Красный ТОЛЬКО ЕСЛИ ДАННЫХ ДЕЙСТВИТЕЛЬНО НЕТ
                             }}
 
                             child.material = new THREE.MeshBasicMaterial({{
@@ -865,7 +920,7 @@ with col_3d:
 
                             if (isSelected) {{
                                 selectedMeshRef = detachedMesh;
-                                updateHud(resolvedSensorId, detachedMesh.userData.val);
+                                updateHud(canonicalId, detachedMesh.userData.val);
                             }}
                         }} else {{
                             child.visible = false;
