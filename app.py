@@ -30,7 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Полный список доступных в системе дат для выбора
+# Полный список доступных дат для исторического сравнения
 AVAILABLE_DATES = [
     "08.09.2025 17:00", "08.09.2025 18:00", "08.09.2025 20:00", "08.09.2025 21:00", "08.09.2025 22:00", "08.09.2025 23:00",
     "09.09.2025 00:00", "09.09.2025 01:00", "09.09.2025 02:00", "09.09.2025 03:00", "09.09.2025 04:00", "09.09.2025 05:00",
@@ -279,7 +279,6 @@ def ensure_playwright_installed():
 
 @st.cache_data(ttl=300)
 def fetch_loggis_data(target_date_str=None):
-    """Парсит данные из LoggIS для актуальной или выбранной пользователем даты."""
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
@@ -321,7 +320,6 @@ def fetch_loggis_data(target_date_str=None):
                 pass
             page.wait_for_timeout(800)
 
-            # Выбор конкретной даты в интерфейсе LoggIS
             if target_date_str and target_date_str != "Последняя (Текущая)":
                 try:
                     page.get_by_role("combobox").nth(1).select_option(label=target_date_str, timeout=5000)
@@ -441,7 +439,6 @@ with col_nav:
     st.markdown("---")
     st.subheader("📅 Период данных")
     
-    # Выпадающий список всех ваших дат + вариант по умолчанию
     date_options = ["Последняя (Текущая)"] + AVAILABLE_DATES
     selected_date_choice = st.selectbox("Выберите дату и время:", options=date_options)
 
@@ -454,11 +451,9 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-# Загружаем данные для выбранного основного периода
 with st.spinner(f"Загрузка данных ({selected_date_choice})..."):
     current_data = fetch_loggis_data(None if selected_date_choice == "Последняя (Текущая)" else selected_date_choice)
 
-# Загружаем данные для базового периода (если включено сравнение)
 if enable_comparison and selected_base_choice != selected_date_choice:
     with st.spinner(f"Загрузка базы для сравнения ({selected_base_choice})..."):
         base_data = fetch_loggis_data(None if selected_base_choice == "Последняя (Текущая)" else selected_base_choice)
@@ -492,14 +487,12 @@ for s_name, val in raw_v_map.items():
         curr_val = float(val)
         active_category_values[s_name] = curr_val
         
-        # Расчет изменения (дельта) сопоставляемой даты
         base_val = raw_base_map.get(s_name, curr_val)
         if not np.isnan(base_val):
             active_delta_values[s_name] = round(curr_val - base_val, 2)
         else:
             active_delta_values[s_name] = 0.0
 
-# Расчет шкалы с буфером
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -777,7 +770,6 @@ with col_3d:
                 if (isSelected) { selectedMeshRef = detached; updateHud(item.sensorName, item.val); }
             });
 
-            // Плавное наложение интерполяции по всему тоннелю (R = 60m)
             const R_SENSOR = 60.0;
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry; if (!geom.attributes.position) return;
