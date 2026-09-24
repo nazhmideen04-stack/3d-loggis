@@ -409,7 +409,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Единый точный расчёт диапазона clim для шкалы
+# Точный расчёт диапазона clim для шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -447,7 +447,7 @@ with col_3d:
     sel_col1, sel_col2 = st.columns([3, 1])
     with sel_col1:
         selected_sensor = st.selectbox(
-            "Sensör Değerini Иncele:", 
+            "Sensör Değerini İncele:", 
             options=sensor_options,
             help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
         )
@@ -679,10 +679,10 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // УНИКАЛЬНЫЕ И ЧЁТКИЕ СПЕКТРЫ ДЛЯ КАЖДОГО ТИПА (СВЕРХУ ВНИЗ В ЛЕГЕНДЕ: MAX -> MIN)
+        // УНИКАЛЬНЫЕ СПЕКТРЫ ДЛЯ КАЖДОГО ТИПА (СВЕРХУ ВНИЗ В ЛЕГЕНДЕ: MAX -> MIN)
         // =========================================================================
 
-        // 1. Çevresel gerinim (CS): Электрический спектр деформации
+        // 1. Çevresel gerinim (CS): Индиго -> Сапфир -> Циан -> Зеленый -> Желтый -> Оранжевый -> Красный
         const hoopStops = [
             new THREE.Color("#050833"),
             new THREE.Color("#0044FF"),
@@ -693,15 +693,15 @@ with col_3d:
             new THREE.Color("#FF0022")
         ];
 
-        // 2. Boyuna gerinim (S): ТЕМНО-ФИОЛЕТОВЫЙ -> СВЕТЛО-РОЗОВЫЙ (ПОЛНОСТЬЮ БЕЗ БЕЛОГО)
+        // 2. Boyuna gerinim (S): ТЕМНО-ФИОЛЕТОВЫЙ -> НАСЫЩЕННЫЙ РОЗОВЫЙ (ПОЛНОСТЬЮ БЕЗ БЕЛОГО)
         const axialStops = [
-            new THREE.Color("#1F0038"),
-            new THREE.Color("#43085E"),
-            new THREE.Color("#76147E"),
-            new THREE.Color("#A8228E"),
-            new THREE.Color("#D84297"),
-            new THREE.Color("#F272B4"),
-            new THREE.Color("#FFAFD3")
+            new THREE.Color("#1A0033"), // Глубокий темно-фиолетовый (Минимум)
+            new THREE.Color("#450A61"), // Густой пурпур
+            new THREE.Color("#75127D"), // Фиолетово-маджентовый
+            new THREE.Color("#A81A8A"), // Маджента
+            new THREE.Color("#CC248B"), // Малиново-розовый
+            new THREE.Color("#E62985"), // Сочный розовый
+            new THREE.Color("#FF2E93")  // Яркий неоново-розовый (Максимум, без белого!)
         ];
 
         // 3. Sıcaklık (TP): Термо-инфракрасный
