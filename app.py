@@ -9,6 +9,20 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
+# 1. АВТОМАТИЧЕСКАЯ УСТАНОВКА ФИРМЕННОЙ ТЕМЫ STREAMLIT (ВЫЖИГАНИЕ ДЕФОЛТНОГО КРАСНОГО)
+os.makedirs(".streamlit", exist_ok=True)
+config_path = os.path.join(".streamlit", "config.toml")
+target_config = """[theme]
+primaryColor = "#00C8E6"
+backgroundColor = "#0A0E17"
+secondaryBackgroundColor = "#0E182A"
+textColor = "#D2DEEC"
+font = "sans serif"
+"""
+if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").read() != target_config:
+    with open(config_path, "w", encoding="utf-8") as f:
+        f.write(target_config)
+
 st.set_page_config(page_title="CATERİNG - THY", layout="wide")
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
@@ -23,6 +37,7 @@ st.markdown("""
 
     :root {
         --primary-color: #00C8E6 !important;
+        accent-color: #00C8E6 !important;
     }
 
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -63,6 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -78,7 +94,7 @@ st.markdown("""
     }
 
     div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) div:first-child {
-        filter: hue-rotate(185deg) saturate(2) !important;
+        filter: hue-rotate(185deg) saturate(3) brightness(1.2) !important;
         transform: scale(1.2) !important;
     }
 
@@ -93,6 +109,38 @@ st.markdown("""
         background-color: #0E182A !important;
         border: 1px solid rgba(0, 200, 230, 0.4) !important;
         border-radius: 6px !important;
+    }
+
+    /* ГАРАНТИРОВАННЫЙ ЦИАН ДЛЯ СЛАЙДЕРА И ЧЕКБОКСОВ */
+    div[data-testid="stSlider"] div[role="slider"] {
+        background-color: #00C8E6 !important;
+        border-color: #00C8E6 !important;
+        box-shadow: 0 0 14px #00C8E6 !important;
+    }
+
+    div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="rgb(255, 75, 75)"],
+    div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="255, 75, 75"],
+    div[data-testid="stSlider"] [data-baseweb="slider"] > div > div:first-child > div {
+        background-color: #00C8E6 !important;
+        background: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] span[style*="rgb(255, 75, 75)"],
+    div[data-testid="stCheckbox"] span[style*="255, 75, 75"],
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"]:has(svg),
+    div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
+        background-color: #00C8E6 !important;
+        border-color: #00C8E6 !important;
+        box-shadow: 0 0 8px rgba(0, 200, 230, 0.6) !important;
+    }
+
+    div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+        border-color: #00C8E6 !important;
+    }
+
+    div[data-testid="stCheckbox"] svg path {
+        fill: #0A0E17 !important;
+        stroke: #0A0E17 !important;
     }
 
     .destech-badge {
@@ -352,47 +400,6 @@ else:
 with col_nav:
     st.markdown("---")
     st.subheader("GÖRÜNÜM AYARLARI")
-    
-    # ЖЕСТКОЕ ВЫЖИГАНИЕ КРАСНОГО ЦВЕТА ИЗ СЛАЙДЕРА И ЧЕКБОКСОВ
-    st.markdown("""
-    <style>
-        /* 1. ШАРИК-ПОЛЗУНОК СЛАЙДЕРА */
-        div[data-testid="stSlider"] div[role="slider"] {
-            background-color: #00C8E6 !important;
-            border-color: #00C8E6 !important;
-            box-shadow: 0 0 14px #00C8E6 !important;
-        }
-
-        /* 2. КРАСНАЯ ПОЛОСА СЛАЙДЕРА (ПЕРЕБИВАЕТ INLINE RGB СТИЛИ BASEWEB) */
-        div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="rgb(255, 75, 75)"],
-        div[data-testid="stSlider"] [data-baseweb="slider"] div[style*="255, 75, 75"],
-        div[data-testid="stSlider"] [data-baseweb="slider"] > div > div:first-child > div {
-            background-color: #00C8E6 !important;
-            background: #00C8E6 !important;
-        }
-
-        /* 3. ЧЕКБОКС: КВАДРАТ И ФОН ГАЛОЧКИ */
-        div[data-testid="stCheckbox"] span[style*="rgb(255, 75, 75)"],
-        div[data-testid="stCheckbox"] span[style*="255, 75, 75"],
-        div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"]:has(svg),
-        div[data-testid="stCheckbox"] label:has(input:checked) span[data-baseweb="checkbox"] {
-            background-color: #00C8E6 !important;
-            border-color: #00C8E6 !important;
-            box-shadow: 0 0 8px rgba(0, 200, 230, 0.6) !important;
-        }
-
-        /* 4. ПУСТОЙ ЧЕКБОКС (РАМКА) */
-        div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
-            border-color: #00C8E6 !important;
-        }
-
-        /* 5. САМА ГАЛОЧКА (ДЕЛАЕМ ТЕМНОЙ ЧТОБЫ ЧЕТКО ВЫДЕЛЯЛАСЬ НА СИНЕМ ФОНЕ) */
-        div[data-testid="stCheckbox"] svg path {
-            fill: #0A0E17 !important;
-            stroke: #0A0E17 !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
@@ -417,6 +424,7 @@ with col_nav:
             label=f"Seçilen: {selected_sensor}",
             value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
         )
+
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
     model_b64 = get_model_b64(MODEL_PATH)
@@ -762,20 +770,18 @@ with col_3d:
             return { found: false, key: sensorId, val: NaN };
         }
 
-        // ШРИФТ И РАЗМЕР СПРАЙТА УВЕЛИЧЕНЫ РОВНО В 4 РАЗА
         function createPortalMarker(text) {
             const canvas = document.createElement('canvas');
-            canvas.width = 2048; // Увеличенное разрешение холста в 4 раза
+            canvas.width = 2048;
             canvas.height = 1024;
             const ctx = canvas.getContext('2d');
 
             ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
             ctx.strokeStyle = '#00C8E6';
-            ctx.lineWidth = 56; // 14 * 4
+            ctx.lineWidth = 56;
             ctx.strokeRect(40, 40, 1968, 944);
             ctx.fillRect(40, 40, 1968, 944);
 
-            // 135px * 4 = 540px
             ctx.font = '900 540px Syne, Chakra Petch, sans-serif';
             ctx.fillStyle = '#00E5FF';
             ctx.shadowColor = '#00C8E6';
@@ -787,7 +793,6 @@ with col_3d:
             const texture = new THREE.CanvasTexture(canvas);
             const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
             const sprite = new THREE.Sprite(mat);
-            // Масштаб увеличен в 4 раза: 6.0 * 4 = 24.0, 3.0 * 4 = 12.0
             sprite.scale.set(24.0, 12.0, 1);
             return sprite;
         }
@@ -881,7 +886,6 @@ with col_3d:
                 }
             });
 
-            // 1. СТРОГИЙ ОТБОР СЕНСОРОВ ПО КАТЕГОРИИ
             const targetMeshes = [];
 
             rawSensors.forEach(child => {
@@ -920,7 +924,6 @@ with col_3d:
                 });
             });
 
-            // 2. ДЕДУПЛИКАЦИЯ
             const finalSensors = [];
             targetMeshes.forEach(item => {
                 let duplicate = null;
@@ -943,7 +946,6 @@ with col_3d:
                 }
             });
 
-            // 3. РЕНДЕРИНГ МАРКЕРОВ В НЕЗАВИСИМОМ СЛОЕ (СТРОГО ОДИН ВЫБРАННЫЙ СЕНСОР)
             let alreadyHighlightedOne = false;
 
             finalSensors.forEach(item => {
@@ -959,11 +961,11 @@ with col_3d:
                         alreadyHighlightedOne = true;
                     }
 
-                    let sensorColor = 0xFFFFFF; // Белый по умолчанию
+                    let sensorColor = 0xFFFFFF;
                     if (isSelected) {
-                        sensorColor = 0xFFD700; // Золотой ТОЛЬКО для одного выбранного
+                        sensorColor = 0xFFD700;
                     } else if (!hasData) {
-                        sensorColor = 0xFF0033; // Красный при отсутствии данных
+                        sensorColor = 0xFF0033;
                     }
 
                     const sensorMat = new THREE.MeshBasicMaterial({
@@ -1000,7 +1002,6 @@ with col_3d:
                 }
             });
 
-            // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА
             const validVals = interactiveSensors
                 .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                 .map(s => s.userData.val);
@@ -1043,7 +1044,6 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
-            // ИНТЕРПОЛЯЦИЯ И АЛЬТЕРНАТИВНОЕ РЕШЕНИЕ: ПРЯМАЯ ПРОЗРАЧНОСТЬ И ЧИСТЫЙ СВОД
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -1156,11 +1156,9 @@ with col_3d:
 
             const portalsGroup = new THREE.Group();
 
-            // ПОЗИЦИОНИРОВАНИЕ УВЕЛИЧЕННЫХ ПОРТАЛОВ
             if (hasTA) {
                 const cA = boxTA.getCenter(new THREE.Vector3());
                 const spriteTA = createPortalMarker("TA");
-                // Поднят выше с учетом увеличенного размера (24x12)
                 spriteTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0);
                 portalsGroup.add(spriteTA);
             }
@@ -1237,7 +1235,6 @@ with col_3d:
                 }
             }
 
-            // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
             const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1280,7 +1277,6 @@ with col_3d:
             console.error(err);
         });
 
-        // ПЛАШКА ВЫБРАННОГО ДАТЧИКА: И ДЛЯ РАБОЧИХ, И ДЛЯ НЕРАБОЧИХ
         function updateHud(name, val, isUsable) {
             selectedHud.style.display = 'block';
             hudName.innerText = name;
@@ -1346,7 +1342,6 @@ with col_3d:
             return null;
         }
 
-        // ВЫДЕЛЕНИЕ СТРОГО ОДНОГО СЕНСОРА ПРИ КЛИКЕ
         window.addEventListener('click', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) {
@@ -1356,11 +1351,11 @@ with col_3d:
                 
                 interactiveSensors.forEach(m => {
                     if (m === sensorMesh) {
-                        m.material.color.setHex(0xFFD700); // Только он окрасится в желтый
+                        m.material.color.setHex(0xFFD700);
                     } else if (m.userData.isUsable) {
-                        m.material.color.setHex(0xFFFFFF); // Все остальные рабочие - белые
+                        m.material.color.setHex(0xFFFFFF);
                     } else {
-                        m.material.color.setHex(0xFF0033); // Нерабочие - красные
+                        m.material.color.setHex(0xFF0033);
                     }
                 });
 
@@ -1401,7 +1396,6 @@ with col_3d:
             renderer.setSize(container.clientWidth, container.clientHeight);
         });
 
-        // ДВУХПРОХОДНЫЙ РЕНДЕР
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
