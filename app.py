@@ -288,7 +288,7 @@ def get_model_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# --- СЧИТЫВАНИЕ ВЫБРАННОГО ИЗ URL СЕНСОРА ---
+# --- СЧИТЫВАНИЕ URL ПАРАМЕТРА ДЛЯ СИНХРОНИЗАЦИИ КЛИКА ИЗ 3D ---
 query_params = st.query_params
 url_selected_sensor = query_params.get("sensor", "Seçiniz...")
 
@@ -325,7 +325,7 @@ for s_name, val in raw_v_map.items():
     elif selected_comp == "temp" and "-TP" in u_name:
         active_category_values[s_name] = float(val)
 
-# Расчет границ по фактическим данным
+# Расчет диапазона строго по фактическим минимумам и максимумам
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 1.0]
@@ -356,7 +356,7 @@ with col_nav:
 
     st.markdown("---")
     
-    # АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ: список учитывает клик из 3D
+    # Автоматическая синхронизация выпадающего списка при клике на 3D сцене
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
     default_idx = 0
     if url_selected_sensor in sensor_options:
@@ -368,7 +368,6 @@ with col_nav:
         index=default_idx
     )
 
-    # Если выбор изменился вручную в выпадающем списке, обновляем URL
     if selected_sensor != "Seçiniz..." and selected_sensor != url_selected_sensor:
         st.query_params["sensor"] = selected_sensor
     elif selected_sensor == "Seçiniz..." and "sensor" in st.query_params:
@@ -518,13 +517,13 @@ with col_3d:
 
                 // 7-СТУПЕНЧАТАЯ ЯРКАЯ ИНЖЕНЕРНАЯ ШКАЛА
                 const RAINBOW_STOPS = [
-                    new THREE.Color("#0022FF"),
-                    new THREE.Color("#00E5FF"),
-                    new THREE.Color("#00FF44"),
-                    new THREE.Color("#FFE600"),
-                    new THREE.Color("#FFAA00"),
-                    new THREE.Color("#FF5500"),
-                    new THREE.Color("#FF0022")
+                    new THREE.Color("#0022FF"), // 0.00: Глубокий синий
+                    new THREE.Color("#00E5FF"), // 0.16: Циан
+                    new THREE.Color("#00FF44"), // 0.33: Чистый зеленый
+                    new THREE.Color("#FFE600"), // 0.50: Желтый
+                    new THREE.Color("#FFAA00"), // 0.67: Янтарный оранжевый
+                    new THREE.Color("#FF5500"), // 0.83: Оранжево-красный
+                    new THREE.Color("#FF0022")  // 1.00: Алый красный
                 ];
 
                 function sampleColorRamp(stops, t) {{
@@ -739,7 +738,6 @@ with col_3d:
                                     child.userData.isNoData = true;
                                     interactiveSensors.push(child);
 
-                                    // ЗАЩИТА ОТ ПРОПАДАНИЯ ВНУТРИ СТЕНКИ
                                     child.material = new THREE.MeshStandardMaterial({{
                                         color: 0xFF0033,
                                         emissive: 0xFF0000,
@@ -777,7 +775,7 @@ with col_3d:
                         }}
                     }});
 
-                    // ТОЧНЫЙ РАСЧЕТ ШКАЛЫ ПО ФАКТИЧЕСКИМ МИНИМУМАМ И МАКСИМУМАМ
+                    // РАСЧЕТ РЕАЛЬНОГО ДИАПАЗОНА ПО СЕНСОРАМ
                     const validVals = interactiveSensors
                         .filter(s => s.userData.isUsable && !isNaN(s.userData.val))
                         .map(s => s.userData.val);
@@ -803,20 +801,22 @@ with col_3d:
                     lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(1);
                     lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(1);
 
-                    // ПРИОРИТЕТ ОТОБРАЖЕНИЯ СЕНСОРОВ ПОВЕРХ ТОННЕЛЕЙ
+                    // НЕЙТРАЛЬНЫЙ БЕЛЫЙ ЦВЕТ ДАТЧИКОВ (ЗОЛОТОЙ ПРИ ВЫДЕЛЕНИИ)
                     interactiveSensors.forEach(child => {{
                         if (child.userData.isUsable) {{
                             const sensorId = child.userData.sensorName;
                             const isSelected = (sensorId === payload.selectedSensor);
-                            const sensorColor = isSelected ? new THREE.Color(0xFFE600) : getColorForValue(child.userData.val, dynamicClim);
+                            
+                            const sensorBaseColor = isSelected ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
+                            const sensorEmissiveColor = isSelected ? new THREE.Color(0xFFE600) : new THREE.Color(0xFFFFFF);
 
                             child.material = new THREE.MeshStandardMaterial({{
-                                color: sensorColor,
-                                emissive: isSelected ? new THREE.Color(0xFFE600) : sensorColor,
-                                emissiveIntensity: isSelected ? 2.6 : 1.8,
-                                roughness: 0.05,
+                                color: sensorBaseColor,
+                                emissive: sensorEmissiveColor,
+                                emissiveIntensity: isSelected ? 2.5 : 1.6,
+                                roughness: 0.1,
                                 metalness: 0.1,
-                                depthTest: false, // Сенсор никогда не тонет в стенке
+                                depthTest: false, // Всегда виден поверх свода
                                 depthWrite: false
                             }});
                             child.renderOrder = 9999;
@@ -844,6 +844,7 @@ with col_3d:
                         }}
                     }});
 
+                    // ШИРОКАЯ И ПЛАВНАЯ ИНТЕРПОЛЯЦИЯ ВДОЛЬ ТОННЕЛЯ
                     const R_INFLUENCE = 45.0;
 
                     tunnelMeshes.forEach(tMesh => {{
@@ -1022,7 +1023,7 @@ with col_3d:
                         }}
                     }}
 
-                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (ПРИБЛИЖЕННЫЙ РАКУРС)
+                    // ПОЗИЦИОНИРОВАНИЕ КАМЕРЫ (КРУПНЫЙ ПЛАН)
                     const lastSelected = sessionStorage.getItem('threejs_last_selected');
                     const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1051,11 +1052,10 @@ with col_3d:
                             const maxDim = Math.max(size.x, size.y, size.z, 20.0);
 
                             controls.target.copy(center);
-                            // Комфортный ракурс вблизи тоннелей
                             camera.position.set(
-                                center.x - maxDim * 0.35,
-                                center.y + maxDim * 0.38,
-                                center.z + maxDim * 0.48
+                                center.x - maxDim * 0.40,
+                                center.y + maxDim * 0.45,
+                                center.z + maxDim * 0.55
                             );
                             controls.update();
                         }}
@@ -1073,7 +1073,7 @@ with col_3d:
                     const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
                     if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
 
-                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
+                    const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.5)).add(new THREE.Vector3(0, 1.8, 0));
 
                     if (!animate) {{
                         camera.position.copy(endCamPos);
@@ -1101,7 +1101,7 @@ with col_3d:
                         .start();
                 }}
 
-                // КЛИК В 3D: ПЕРЕДАЧА ВЫБРАННОГО ДАТЧИКА В STREAMLIT ВЫПАДАЮЩИЙ СПИСОК
+                // КЛИК В 3D: ПЕРЕДАЧА СЕНСОРА В SELECTBOX STREAMLIT
                 window.addEventListener('click', function(e) {{
                     const rect = renderer.domElement.getBoundingClientRect();
                     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1116,13 +1116,12 @@ with col_3d:
                         if (mesh.userData.isUsable || mesh.userData.isNoData) {{
                             flyCameraTo(mesh, true);
                             
-                            // АВТОМАТИЧЕСКИЙ ВЫБОР В STREAMLIT ЧЕРЕЗ URL
+                            // Автоматический выбор в Streamlit через URL
                             try {{
                                 const currentUrl = new URL(window.parent.location.href);
                                 if (currentUrl.searchParams.get('sensor') !== sensorName) {{
                                     currentUrl.searchParams.set('sensor', sensorName);
                                     window.parent.history.pushState({{}}, '', currentUrl);
-                                    // Отправляем событие родителю Streamlit для мгновенного обновления
                                     window.parent.dispatchEvent(new Event('popstate'));
                                 }}
                             }} catch(err) {{
