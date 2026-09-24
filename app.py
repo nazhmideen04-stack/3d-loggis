@@ -438,18 +438,27 @@ with col_nav:
     st.write("**Skala Limitleri (Gerçek Min / Maks):**")
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.1f} | Maks: {clim[1]:+.1f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
-    st.markdown("---")
-    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
-    selected_sensor = st.selectbox("Sensör Değerini İncele:", options=sensor_options)
-
-    if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
-        st.metric(
-            label=f"Seçilen: {selected_sensor}",
-            value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
-        )
-
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
+    # --- ВЕРХНЯЯ ПАНЕЛЬ ВЫБОРА ДАТЧИКА ПРЯМО НАД 3D СЦЕНОЙ ---
+    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
+    
+    sel_col1, sel_col2 = st.columns([3, 1])
+    with sel_col1:
+        selected_sensor = st.selectbox(
+            "Sensör Değerini İncele:", 
+            options=sensor_options,
+            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
+        )
+    with sel_col2:
+        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
+            st.metric(
+                label=f"Seçilen Sensör Değeri",
+                value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
+            )
+        else:
+            st.metric(label="Sensör Değeri", value="--")
+
     model_b64 = get_model_b64(MODEL_PATH)
     
     if not model_b64:
@@ -822,7 +831,6 @@ with col_3d:
             normalizedDataMap[getCanonicalSensorId(rawKey)] = { canonicalKey: rawKey, val: val };
         }
 
-        // СТРОГАЯ ПРОВЕРКА ДАННЫХ БЕЗ ВИРТУАЛЬНЫХ ПОДМЕН
         function checkSensorData(sensorId, comp) {
             const uId = sensorId.toUpperCase();
             const nId = normalizeKey(sensorId);
@@ -960,7 +968,7 @@ with col_3d:
                 const uName = name.toUpperCase();
                 const sensorId = extractSensorId(name);
 
-                // СТРОГАЯ ФИЛЬТРАЦИЯ: В ТЕМПЕРАТУРЕ ТОЛЬКО МЕШИ С -TP
+                // Строгая фильтрация: в температуре ТОЛЬКО датчики -TP
                 let isCategory = false;
                 if (payload.comp === "hoop") {
                     if (uName.includes("-CS")) isCategory = true;
@@ -1051,7 +1059,7 @@ with col_3d:
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
                     
-                    // Исходный масштаб
+                    // Исходный масштаб без изменений
                     detachedMesh.scale.copy(wScale);
 
                     detachedMesh.userData.sensorName = sensorName;
