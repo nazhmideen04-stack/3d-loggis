@@ -679,7 +679,11 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // ИНДИВИДУАЛЬНЫЕ ВЫРАЗИТЕЛЬНЫЕ ЦВЕТОВЫЕ ПАЛИТРЫ ДЛЯ КАЖДОГО ТИПА
+        // =========================================================================
+        // ИНДИВИДУАЛЬНЫЕ ВЫРАЗИТЕЛЬНЫЕ ЦВЕТОВЫЕ ПАЛИТРЫ
+        // =========================================================================
+
+        // 1. Çevresel gerinim (CS): Сапфир -> Циан -> Сочный зеленый -> Желтый -> Оранжевый -> Кармин
         const hoopStops = [
             new THREE.Color("#000844"),
             new THREE.Color("#0044FF"),
@@ -690,16 +694,18 @@ with col_3d:
             new THREE.Color("#FF0022")
         ];
 
+        // 2. Boyuna gerinim (S): ТЕМНО-ФИОЛЕТОВЫЙ -> СВЕТЛО-РОЗОВЫЙ (БЕЗ БЕЛОГО)
         const axialStops = [
-            new THREE.Color("#0D0826"),
-            new THREE.Color("#3B0F70"),
-            new THREE.Color("#8C2981"),
-            new THREE.Color("#DE4968"),
-            new THREE.Color("#FE9F6D"),
-            new THREE.Color("#FFD443"),
-            new THREE.Color("#FCFFA4")
+            new THREE.Color("#20003B"), // Глубокий темно-фиолетовый (Минимум)
+            new THREE.Color("#4A0E68"),
+            new THREE.Color("#801A7A"),
+            new THREE.Color("#BA2E82"),
+            new THREE.Color("#E65C9C"),
+            new THREE.Color("#FF9EC6"),
+            new THREE.Color("#FFCCE1")  // Нежно-светло-розовый (Максимум, без белого)
         ];
 
+        // 3. Sıcaklık (TP): Классический термо-турбо
         const temperatureStops = [
             new THREE.Color("#020024"),
             new THREE.Color("#0033FF"),
@@ -723,7 +729,7 @@ with col_3d:
             legendTitle.innerText = "Çevresel [µm/m]";
         }
 
-        // ПОЛНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ
+        // ПОЛНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ (СВЕРХУ ВНИЗ: MAX -> MIN)
         function buildExactLegendGradient(stops) {
             const n = stops.length;
             const items = [];
@@ -738,6 +744,7 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
+        // ОБЩАЯ ФУНКЦИЯ ДЛЯ ВЫБОРКИ ЦВЕТА ИЗ ТЕКУЩЕЙ ПАЛИТРЫ
         function sampleColorRamp(stops, t) {
             t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
@@ -1165,6 +1172,7 @@ with col_3d:
                             const d = worldV.distanceTo(s.pos);
                             
                             if (d < R_INFLUENCE) {
+                                // Плавный весовой спад для бесшовного наложения соседних ореолов
                                 const normD = d / R_INFLUENCE;
                                 const w = Math.pow(1.0 - normD, 1.4) / (d + 0.15);
                                 accumulatedVal += s.val * w;
@@ -1175,6 +1183,7 @@ with col_3d:
                         const idx = i * 3;
                         if (totalWeight > 0.00001) {
                             const interpolatedVal = accumulatedVal / totalWeight;
+                            // Цвет поверхности тоннеля берется строго из индивидуальной палитры
                             const c = getColorForValue(interpolatedVal, dynamicClim);
                             colors[idx] = c.r;
                             colors[idx + 1] = c.g;
