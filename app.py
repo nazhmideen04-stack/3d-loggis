@@ -166,9 +166,7 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* =========================================================================
-       МОБИЛЬНАЯ АДАПТАЦИЯ (ПЕРЕСТРОЕНИЕ КОЛОНОК)
-       ========================================================================= */
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ (ПЕРЕСТРОЕНИЕ КОЛОНОК) */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1rem !important;
@@ -176,7 +174,7 @@ st.markdown("""
             padding-top: 1.5rem !important;
         }
 
-        /* 3D модель сверху, контрольная панель снизу */
+        /* 3D модель сверху, панель управления снизу */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column-reverse !important;
@@ -767,7 +765,6 @@ with col_3d:
         controls.minDistance = 0.5;
         controls.maxDistance = 2500;
         
-        // Оптимизация сенсорного управления для мобильных экранов
         controls.touches = {
             ONE: THREE.TOUCH.ROTATE,
             TWO: THREE.TOUCH.DOLLY_PAN
@@ -1061,8 +1058,8 @@ with col_3d:
                     detachedMesh.position.copy(item.pos);
                     detachedMesh.quaternion.copy(wQuat);
                     
-                    // Исходная форма + лёгкое утолщение (+25%)
-                    detachedMesh.scale.copy(wScale).multiplyScalar(1.25);
+                    // ПОЛНЫЙ ВОЗВРАТ К ИСХОДНОМУ МАСШТАБУ БЕЗ УВЕЛИЧЕНИЙ
+                    detachedMesh.scale.copy(wScale);
 
                     detachedMesh.userData.sensorName = sensorName;
                     detachedMesh.userData.val = hasData ? val : NaN;
@@ -1510,6 +1507,4 @@ with col_3d:
 </html>"""
 
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
-        
-        # 600px обеспечивает комфортный обзор модели и оставляет пространство для скролла страницы на телефонах
         st.components.v1.html(final_html, height=600, scrolling=False)
