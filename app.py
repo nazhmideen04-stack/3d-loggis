@@ -515,7 +515,7 @@ with col_3d:
 </head>
 <body>
     <div id="canvas-container">
-        <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
+        <div id="loader">3B MODEL VE TÜNEL ИНТЕРПОЛЯЦИЯСЫ ЖҮКТЕЛУДЕ...</div>
         <div id="sensor-tooltip"></div>
         
         <div id="selected-hud">
@@ -998,7 +998,7 @@ with col_3d:
 
             const R_INFLUENCE = 48.0;
 
-            // ИНТЕРПОЛЯЦИЯ И НАЗНАЧЕНИЕ МАТЕРИАЛА С ПОЛНЫМ СКРЫТИЕМ ДИСКОВ
+            // ИНТЕРПОЛЯЦИЯ И НАЗНАЧЕНИЕ МАТЕРИАЛА С РАБОТАЮЩЕЙ ПРОЗРАЧНОСТЬЮ И БЕЗ ДИСКОВ
             tunnelMeshes.forEach(tMesh => {
                 const geom = tMesh.geometry;
                 if (!geom || !geom.attributes || !geom.attributes.position) return;
@@ -1071,10 +1071,10 @@ with col_3d:
                 
                 const isTransparent = payload.tunnelOpacity < 0.98;
 
-                // 100% ГАРАНТИРОВАННОЕ СКРЫТИЕ ДИСКОВ:
-                // Мы используем ShaderMaterial на базе Standard, который аппаратно отбрасывает пиксели дисков
+                // КОРРЕКТНЫЙ МАТЕРИАЛ: РАБОТАЕТ ПРОЗРАЧНОСТЬ И ОТСЕКАЮТСЯ ДИСКИ
                 const customShader = THREE.ShaderLib.standard;
                 const uniforms = THREE.UniformsUtils.clone(customShader.uniforms);
+                uniforms.opacity.value = payload.tunnelOpacity; // ЯВНАЯ ПЕРЕДАЧА ОПАКНОСТИ ИЗ СЛАЙДЕРА
 
                 let fragmentShaderCode = customShader.fragmentShader;
                 let vertexShaderCode = customShader.vertexShader;
@@ -1106,6 +1106,9 @@ with col_3d:
                     // Отсекаем строго поперечные диски
                     vec3 norm = normalize(vWorldNormalClean);
                     ${isZAxis ? 'if (abs(norm.z) > 0.80) discard;' : 'if (abs(norm.x) > 0.80) discard;'}
+                    
+                    // ГАРАНТИЯ РАБОТЫ ПОЛЗУНКА ПРОЗРАЧНОСТИ
+                    gl_FragColor.a *= opacity;
                     `
                 );
 
@@ -1117,6 +1120,7 @@ with col_3d:
                     vertexColors: true,
                     transparent: isTransparent,
                     opacity: payload.tunnelOpacity,
+                    depthWrite: !isTransparent,
                     side: THREE.DoubleSide
                 });
 
