@@ -948,11 +948,11 @@ with col_3d:
                     // Длина рассчитывается с учетом того, что модель увеличена в 2 раза.
                     // Значит, физическое расстояние в 3D надо умножить на 0.5
                     const physicalLength = Math.abs(endCoord - startCoord);
-                    const realMeters = physicalLength * 0.5;
+                    const realMeters = physicalLength * 2;
 
                     // Шаг линейки - каждые 10 метров (в координатах модели это 20 единиц)
-                    const stepReal = 10.0; 
-                    const step3D = stepReal / 0.5; 
+                    const stepReal = 5.0; 
+                    const step3D = stepReal / 2; 
                     const stepsCount = Math.floor(physicalLength / step3D); 
                     const totalDistanceM = stepsCount * stepReal;
 
