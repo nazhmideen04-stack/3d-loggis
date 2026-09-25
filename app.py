@@ -27,7 +27,7 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
 
 st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
 
-# Генерация уникального ID сессии для сохранения положения камеры без сбросов
+# Генерация уникального ID сессии для правильного сохранения камеры
 if "app_session_id" not in st.session_state:
     st.session_state["app_session_id"] = str(uuid.uuid4())
 
@@ -84,7 +84,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -120,7 +119,6 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -172,7 +170,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Стили для таблицы */
     [data-testid="stDataFrame"] {
         background-color: #0E182A !important;
         border-radius: 8px !important;
@@ -188,7 +185,6 @@ st.markdown("""
         background-color: #0A0E17 !important;
     }
 
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ - УЛУЧШЕННАЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 2rem !important;
@@ -667,9 +663,11 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (LocalStorage привязан к сессии)
-        function safeSetItem(key, val) { try { window.sessionStorage.setItem(key, val); } catch (e) {} }
-        function safeGetItem(key) { try { return window.sessionStorage.getItem(key); } catch (e) { return null; } }
+        // =========================================================================
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ
+        // =========================================================================
+        function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
+        function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
 
         const currentSessionId = payload.sessionId;
         const savedSessionId = safeGetItem('threejs_session_id');
@@ -750,9 +748,10 @@ with col_3d:
         lblMid.innerText = (finalMid !== undefined && !isNaN(finalMid)) ? ((finalMid > 0 ? "+" : "") + finalMid.toFixed(2)) : "-";
         lblMin.innerText = (finalMin !== undefined && !isNaN(finalMin)) ? ((finalMin > 0 ? "+" : "") + finalMin.toFixed(2)) : "-";
 
+        // РАСШИРЕННЫЕ ЛИМИТЫ КАМЕРЫ ДО 50000 ДЛЯ УВЕЛИЧЕННЫХ ОБЪЕКТОВ
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
         const sensorScene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 50000);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
@@ -761,7 +760,7 @@ with col_3d:
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true; controls.dampingFactor = 0.05;
-        controls.minDistance = 0.5; controls.maxDistance = 2500;
+        controls.minDistance = 0.5; controls.maxDistance = 50000;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
         // Сохраняем положение каждый раз, когда камера двигается пользователем
@@ -1047,7 +1046,9 @@ with col_3d:
                 }
             }
 
-            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ
+            // =========================================================
+            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ ПОЛОЖЕНИЯ КАМЕРЫ (КАК В ИСХОДНИКЕ)
+            // =========================================================
             const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1058,10 +1059,11 @@ with col_3d:
                 let cameraRestored = false;
                 const savedStateStr = safeGetItem('threejs_camera_state');
                 
+                // Пробуем восстановить камеру из памяти (и проверяем, что там нет NaN)
                 if (savedStateStr) {
                     try {
                         const st = JSON.parse(savedStateStr);
-                        if (st && st.pos && st.target) {
+                        if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
                             camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
                             controls.target.set(st.target[0], st.target[1], st.target[2]);
                             controls.update();
@@ -1070,8 +1072,8 @@ with col_3d:
                     } catch(e) {}
                 }
                 
+                // Если камеры в памяти нет (первый запуск) или была ошибка — центрируем по твоему старому коду
                 if (!cameraRestored) {
-                    // ВОССТАНОВЛЕНО ИСХОДНОЕ (ИДЕАЛЬНОЕ) ПОЛОЖЕНИЕ ИЗ ПЕРВОГО КОДА
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1090,14 +1092,18 @@ with col_3d:
                         
                         controls.target.copy(center); 
                         
-                        // СТАРЫЕ, ПРОВЕРЕННЫЕ КОЭФФИЦИЕНТЫ, КОТОРЫЕ ТЫ ПРОСИЛ ВЕРНУТЬ
+                        // ИСХОДНАЯ МАТЕМАТИКА КАМЕРЫ, О КОТОРОЙ ТЫ ПРОСИЛ
+                        const fov = camera.fov * (Math.PI / 180);
+                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
+                        
                         camera.position.set(
-                            center.x - maxDim * 0.40, 
-                            center.y + maxDim * 0.45, 
-                            center.z + maxDim * 0.55
+                            center.x - maxDim * 0.1, 
+                            center.y + maxDim * 0.1, 
+                            center.z + cameraZ
                         ); 
                         controls.update();
 
+                        // Сохраняем это положение, чтобы при обновлении оно не сбрасывалось
                         const camState = {
                             pos: [camera.position.x, camera.position.y, camera.position.z],
                             target: [controls.target.x, controls.target.y, controls.target.z]
