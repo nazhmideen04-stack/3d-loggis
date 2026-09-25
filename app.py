@@ -4,7 +4,6 @@ import sys
 import json
 import base64
 import subprocess
-import uuid
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -26,10 +25,6 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
         f.write(target_config)
 
 st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
-
-# Генерация уникального ID сессии для защиты положения камеры
-if "app_session_id" not in st.session_state:
-    st.session_state["app_session_id"] = str(uuid.uuid4())
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -274,18 +269,12 @@ def clean_num(s):
     m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
     return float(m.group()) if m else np.nan
 
-def parse_safe_datetime(d_str):
-    try:
-        return pd.to_datetime(d_str, dayfirst=True)
-    except:
-        return pd.to_datetime('1900-01-01')
-
 def ensure_playwright_installed():
     try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     except Exception: pass
 
 # ---------------------------------------------------------
-# МЕТОД ДЛЯ КРАЙНИХ ДАННЫХ (ИЗ ПЕРВОГО ФАЙЛА - ПРЯМОЙ ПАРСИНГ ТАБЛИЦЫ САЙТА)
+# 1. ЖИВЫЕ ДАННЫЕ (ИЗ САМОГО ПЕРВОГО ФАЙЛА - ПРЯМОЙ ПАРСИНГ WEB-ТАБЛИЦЫ)
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_data_from_web():
@@ -404,7 +393,7 @@ def fetch_live_data_from_web():
     return all_results
 
 # ---------------------------------------------------------
-# МЕТОД ДЛЯ АРХИВНЫХ ДАННЫХ (ЧЕРЕЗ CSV ВЫГРУЗКУ)
+# 2. АРХИВНЫЕ ДАННЫЕ (ИЗ CSV ВЫГРУЗКИ)
 # ---------------------------------------------------------
 @st.cache_data(ttl=900)
 def fetch_csv_archive_database(mode_type="ALL"):
@@ -485,32 +474,16 @@ def fetch_csv_archive_database(mode_type="ALL"):
                     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                         lines = f.readlines()
                     
-                    if len(lines) > 0:
-                        header = None
-                        for line in lines:
-                            line_clean = line.replace('\ufeff', '').strip()
-                            if not line_clean: continue
-                            
-                            delimiter = ';' if ';' in line_clean else ','
-                            parts = [p.strip() for p in line_clean.split(delimiter)]
-                            
-                            if len(parts) < 2: continue
-                            
-                            if not header and any("TA-" in p or "TB-" in p or "-CS" in p for p in parts):
-                                header = parts
-                                continue
-                                
-                            if header:
+                    if len(lines) > 2:
+                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                        for line in lines[2:]:
+                            parts = [p.strip() for p in line.strip().split(';')]
+                            if len(parts) == len(header):
                                 date_str = parts[0]
-                                if not date_str or ("/" not in date_str and "-" not in date_str): continue
-                                
-                                dates_set.add(date_str)
+                                if date_str: dates_set.add(date_str)
+                                        
                                 val_map = {}
-                                
-                                for i in range(1, min(len(header), len(parts))):
-                                    h = header[i]
-                                    v_str = parts[i]
-                                    
+                                for h, v_str in zip(header[1:], parts[1:]):
                                     match_cond = False
                                     if target_tag == '-CS' and '-CS' in h: match_cond = True
                                     elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
@@ -519,23 +492,19 @@ def fetch_csv_archive_database(mode_type="ALL"):
                                     if match_cond or target_tag in h:
                                         if target_tag == "-S" and "-CS" in h: continue
                                         if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                        
                                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                         s_name = m.group(1) if m else h.split()[0].strip()
                                         v = clean_num(v_str)
                                         if not np.isnan(v):
                                             val_map[s_name] = v
-                                            
-                                if date_str not in historical_db[cat_key]:
-                                    historical_db[cat_key][date_str] = {}
-                                historical_db[cat_key][date_str].update(val_map)
+                                historical_db[cat_key][date_str] = val_map
 
         except Exception as e:
             pass
         finally:
             browser.close()
 
-    sorted_dates = sorted(list(dates_set), key=parse_safe_datetime, reverse=True)
+    sorted_dates = sorted(list(dates_set), reverse=True)
     return sorted_dates, historical_db
 
 @st.cache_data
@@ -583,23 +552,14 @@ with col_nav:
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
             date_hierarchy = {}
-            exact_date_map = {}
-            
             for d_str in all_dates:
-                d_part = d_str.split(" ")[0]
-                t_part = d_str.split(" ")[1] if " " in d_str else "00:00"
-                clean_d = d_part.replace("-", "/")
-                parts = clean_d.split("/")
-                if len(parts) == 3:
-                    if len(parts[0]) == 4: y, m, d = parts[0], parts[1], parts[2]
-                    else: y, m, d = parts[2], parts[1], parts[0]
-                    
-                    if y not in date_hierarchy: date_hierarchy[y] = {}
-                    if m not in date_hierarchy[y]: date_hierarchy[y][m] = {}
-                    if d not in date_hierarchy[y][m]: date_hierarchy[y][m][d] = []
-                    if t_part not in date_hierarchy[y][m][d]: date_hierarchy[y][m][d].append(t_part)
-                    
-                    exact_date_map[f"{y}-{m}-{d} {t_part}"] = d_str
+                clean_d = d_str.replace("-", "/")
+                if " " in clean_d:
+                    date_part, time_part = clean_d.split(" ", 1)
+                    parts = date_part.split("/")
+                    if len(parts) == 3:
+                        y, m, d = parts[0], parts[1], parts[2]
+                        date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
 
             years = sorted(list(date_hierarchy.keys()), reverse=True)
             sel_year = st.selectbox("Yıl Seçiniz", options=years)
@@ -617,11 +577,9 @@ with col_nav:
                         sel_time = st.selectbox("Saat Seçiniz:", options=times)
 
                         if sel_time:
-                            key_lookup = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            target_timestamp = exact_date_map.get(key_lookup, "-")
-                            if target_timestamp != "-":
-                                raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-                                latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
+                            target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
+                            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+                            latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
     else:
         with st.spinner("En güncel canlı veriler alınıyor..."):
             live_data = fetch_live_data_from_web()
@@ -827,27 +785,29 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (С ФИКСАЦИЕЙ ПОСЛЕ ЗАГРУЗКИ)
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ ПОЛЬЗОВАТЕЛЕМ)
         // =========================================================================
-        let isModelLoaded = false;
-        
+        function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
+        function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
+
+        const currentSessionId = payload.sessionId;
+        const savedSessionId = safeGetItem('loggis_session_id');
+
+        if (savedSessionId !== currentSessionId) {
+            safeSetItem('loggis_session_id', currentSessionId);
+            safeSetItem('threejs_camera_state_v9', '');
+            safeSetItem('threejs_last_selected', '');
+        }
+
+        let userInteracted = false;
         function saveCamState() {
-            if (!isModelLoaded) return; 
+            if (!userInteracted) return;
             try {
-                window.localStorage.setItem('threejs_camera_state', JSON.stringify({
+                window.localStorage.setItem('threejs_camera_state_v9', JSON.stringify({
                     pos: camera.position.toArray(),
                     target: controls.target.toArray()
                 }));
             } catch(e) {}
-        }
-
-        const currentSessionId = payload.sessionId;
-        const savedSessionId = window.localStorage.getItem('threejs_session_id');
-
-        if (savedSessionId !== currentSessionId) {
-            window.localStorage.setItem('threejs_session_id', currentSessionId);
-            window.localStorage.setItem('threejs_camera_state', '');
-            window.localStorage.setItem('threejs_last_selected', '');
         }
 
         // =========================================================================
@@ -932,7 +892,8 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 50000;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        controls.addEventListener('change', saveCamState);
+        controls.addEventListener('start', () => { userInteracted = true; });
+        controls.addEventListener('end', saveCamState);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -1210,21 +1171,17 @@ with col_3d:
             // ====================================================================
             // ЛОГИКА КАМЕРЫ (СОХРАНЕНИЕ ПОЗИЦИИ И ИСХОДНЫЙ ЦЕНТР)
             // ====================================================================
-            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
+            const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
-                isModelLoaded = true;
+                safeSetItem('threejs_last_selected', payload.selectedSensor);
+                userInteracted = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
-                if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
-                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
-                }
-
                 let cameraRestored = false;
                 try {
-                    const savedStr = window.localStorage.getItem('threejs_camera_state');
+                    const savedStr = safeGetItem('threejs_camera_state_v8');
                     if (savedStr) {
                         const st = JSON.parse(savedStr);
                         if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
@@ -1254,14 +1211,13 @@ with col_3d:
                         const maxDim = Math.max(size.x, size.y, size.z, 20.0);
                         controls.target.copy(center); 
                         
-                        // ИСХОДНАЯ ЦЕНТРОВКА КАМЕРЫ ИЗ ТВОЕГО РАБОЧЕГО КОДА
-                        camera.position.set(center.x - maxDim * 0.40, center.y + maxDim * 0.45, center.z + maxDim * 0.55); 
+                        const fov = camera.fov * (Math.PI / 180);
+                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
+                        
+                        camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
                         controls.update();
                     }
                 }
-                
-                isModelLoaded = true;
-                saveCamState();
             }
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
@@ -1279,12 +1235,16 @@ with col_3d:
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
             if (!animate) { 
                 camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
+                userInteracted = true;
                 saveCamState();
                 return; 
             }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
             new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-            .onComplete(saveCamState).start();
+            .onComplete(() => {
+                userInteracted = true;
+                saveCamState();
+            }).start();
         }
 
         function getIntersectedSensor(e) {
