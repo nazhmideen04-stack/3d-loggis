@@ -4,6 +4,7 @@ import sys
 import json
 import base64
 import subprocess
+import uuid
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -25,6 +26,10 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
         f.write(target_config)
 
 st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
+
+# Генерация уникального ID сессии для сохранения положения камеры без багов при обновлении страницы
+if "app_session_id" not in st.session_state:
+    st.session_state["app_session_id"] = str(uuid.uuid4())
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -592,7 +597,8 @@ with col_3d:
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red,
-            "isCompareMode": compare_mode
+            "isCompareMode": compare_mode,
+            "sessionId": st.session_state["app_session_id"]
         }
         json_payload = json.dumps(payload_data)
 
@@ -661,9 +667,19 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // СБРОС И СОХРАНЕНИЕ КАМЕРЫ (LocalStorage wrapper)
-        function safeSetItem(key, val) { try { window.sessionStorage.setItem(key, val); } catch (e) {} }
-        function safeGetItem(key) { try { return window.sessionStorage.getItem(key); } catch (e) { return null; } }
+        // СИСТЕМА СОХРАНЕНИЯ КАМЕРЫ (localStorage привязан к сессии Streamlit)
+        function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
+        function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
+
+        const currentSessionId = payload.sessionId;
+        const savedSessionId = safeGetItem('threejs_session_id');
+
+        // Сбрасываем позицию камеры ТОЛЬКО если открыта новая вкладка или нажато F5
+        if (savedSessionId !== currentSessionId) {
+            safeSetItem('threejs_session_id', currentSessionId);
+            safeSetItem('threejs_camera_state', '');
+            safeSetItem('threejs_last_selected', '');
+        }
 
         // =========================================================================
         // ЦВЕТОВЫЕ ШКАЛЫ
@@ -683,13 +699,12 @@ with col_3d:
             new THREE.Color("#FF4400"), new THREE.Color("#D50000")
         ];
 
-        // Шкала для Дельты (Разницы): СИНИЙ (-) -> СЕРЫЙ (0) -> КРАСНЫЙ (+)
         const compareStops = [
-            new THREE.Color("#0055FF"), // Уменьшение
+            new THREE.Color("#0055FF"), 
             new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений) - идеально посередине
+            new THREE.Color("#2E3A59"), 
             new THREE.Color("#FFDD00"), 
-            new THREE.Color("#FF0033")  // Увеличение
+            new THREE.Color("#FF0033")  
         ];
 
         let currentStops = hoopStops;
@@ -748,7 +763,7 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Сохранение позиции камеры при любых вращениях пользователя
+        // Сохраняем положение каждый раз, когда камера двигается
         controls.addEventListener('change', () => {
             const camState = {
                 pos: [camera.position.x, camera.position.y, camera.position.z],
@@ -954,7 +969,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
+                    const scale = 2.0; 
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -991,7 +1006,6 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
-                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
                         const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
@@ -1031,7 +1045,7 @@ with col_3d:
                 }
             }
 
-            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ (С СОХРАНЕНИЕМ ПОЛОЖЕНИЯ)
+            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ
             const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1041,6 +1055,7 @@ with col_3d:
             } else {
                 const savedStateStr = safeGetItem('threejs_camera_state');
                 if (savedStateStr) {
+                    // ЕСЛИ КАМЕРА УЖЕ БЫЛА СДВИНУТА В ТЕКУЩЕЙ СЕССИИ - ВОССТАНАВЛИВАЕМ
                     try {
                         const st = JSON.parse(savedStateStr);
                         camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
@@ -1048,7 +1063,7 @@ with col_3d:
                         controls.update();
                     } catch(e) {}
                 } else {
-                    // НАЧАЛЬНЫЙ ЭКРАН КАК ЕСТЬ ИЗ ТВОЕГО КОДА
+                    // ЕСЛИ ЭТО ПЕРВАЯ ЗАГРУЗКА ИЛИ F5 - ОСТАВЛЯЕМ НАЧАЛЬНЫЙ ЭКРАН СТРОГО КАК БЫЛО
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1071,6 +1086,13 @@ with col_3d:
                         
                         camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
                         controls.update();
+
+                        // СОХРАНЯЕМ ЭТО ПОЛОЖЕНИЕ, ЧТОБЫ ОНО НЕ СБРАСЫВАЛОСЬ ПРИ СЛЕДУЮЩЕМ КЛИКЕ
+                        const camState = {
+                            pos: [camera.position.x, camera.position.y, camera.position.z],
+                            target: [controls.target.x, controls.target.y, controls.target.z]
+                        };
+                        safeSetItem('threejs_camera_state', JSON.stringify(camState));
                     }
                 }
             }
