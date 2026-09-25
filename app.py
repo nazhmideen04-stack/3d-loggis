@@ -1082,7 +1082,7 @@ with col_3d:
 # ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
-    st.markdown(f"### 📊 Detaylı Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
+    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
     # Создаем DataFrame из собранных данных
     df = pd.DataFrame(table_data)
