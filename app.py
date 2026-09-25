@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import csv
 import json
 import base64
 import subprocess
@@ -249,7 +250,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -263,76 +264,393 @@ CATEGORIES = {
     "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
+# ---------------------------------------------------------
+# ОБЩИЕ ПОМОЩНИКИ: ЧИСЛА, ДАТЫ, ИМЕНА СЕНСОРОВ
+# ---------------------------------------------------------
+SENSOR_RE = re.compile(r"(?<![A-Za-z0-9])(T[AB]-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)", re.IGNORECASE)
+
+TR_MONTHS = {
+    "01": "Ocak", "02": "Şubat", "03": "Mart", "04": "Nisan", "05": "Mayıs", "06": "Haziran",
+    "07": "Temmuz", "08": "Ağustos", "09": "Eylül", "10": "Ekim", "11": "Kasım", "12": "Aralık",
+}
+
+DATE_FORMATS = [
+    "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y",
+    "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y",
+    "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%d-%m-%Y",
+    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+    "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d",
+    "%d/%m/%y %H:%M:%S", "%d/%m/%y %H:%M",
+]
+
+
 def clean_num(s):
-    if not s: return np.nan
-    s = str(s).replace(",", ".").replace(" ", "").strip()
-    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
+    """Число из ячейки LoggIS: '12,5', '-1 234,56', '−3,2 µm/m', '1\u202f024,0' и т.п."""
+    if s is None:
+        return np.nan
+    if isinstance(s, (int, float, np.integer, np.floating)):
+        return float(s)
+    s = str(s).strip()
+    if not s:
+        return np.nan
+    s = s.replace("\u2212", "-").replace("\u2013", "-")          # юникод-минусы
+    s = re.sub(r"[\s\u00a0\u202f\u2009']", "", s)               # пробелы-разделители тысяч
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")               # 1.234,5
+        else:
+            s = s.replace(",", "")                                 # 1,234.5
+    else:
+        s = s.replace(",", ".")
+    m = re.search(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", s)
     return float(m.group()) if m else np.nan
+
+
+def parse_ts(s):
+    """Строка даты LoggIS -> datetime (день идёт первым, как в fr-FR)."""
+    if s is None:
+        return None
+    t = str(s).replace("\ufeff", "").strip()
+    if not t or not re.search(r"\d", t):
+        return None
+    t = re.sub(r"\s+", " ", t.replace("T", " "))
+    t = re.sub(r"(\.\d+)?(Z|[+-]\d{2}:?\d{2})$", "", t).strip()
+    for fmt in DATE_FORMATS:
+        try:
+            return datetime.strptime(t, fmt)
+        except ValueError:
+            pass
+    if not re.search(r"\d{1,4}[./-]\d{1,2}[./-]\d{1,4}", t):
+        return None
+    try:
+        ts = pd.to_datetime(t, dayfirst=True, errors="coerce")
+        if pd.notna(ts):
+            return ts.to_pydatetime().replace(tzinfo=None)
+    except Exception:
+        pass
+    return None
+
+
+def ts_key(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def fmt_ts(key):
+    """'2026-09-25 10:00:00' -> '25.09.2026 10:00' для показа."""
+    if not key or key == "-":
+        return "-"
+    try:
+        return datetime.strptime(key, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+    except ValueError:
+        return str(key)
+
+
+def extract_sensor_name(header):
+    if header is None:
+        return None
+    m = SENSOR_RE.search(str(header).replace("\ufeff", ""))
+    return m.group(1).strip("-") if m else None
+
+
+def classify_sensor(name):
+    """Категория по имени сенсора: -CS -> hoop, -S.. -> axial, -TP -> temp (как в 3D-модели)."""
+    if not name:
+        return None
+    segs = name.upper().split("-")[1:]
+    if any(s.startswith("CS") for s in segs):
+        return "hoop"
+    if any(s.startswith("S") for s in segs):
+        return "axial"
+    if any(s.startswith("TP") for s in segs):
+        return "temp"
+    return None
+
 
 def ensure_playwright_installed():
     try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     except Exception: pass
 
+
+# ---------------------------------------------------------
+# ОБЩИЕ ШАГИ PLAYWRIGHT
+# ---------------------------------------------------------
+BROWSER_ARGS = [
+    "--no-sandbox", "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+]
+
+
+def _launch_browser(p):
+    try:
+        return p.chromium.launch(headless=True, args=BROWSER_ARGS)
+    except Exception:
+        ensure_playwright_installed()
+        return p.chromium.launch(headless=True, args=BROWSER_ARGS)
+
+
+def _new_page(browser):
+    context = browser.new_context(
+        accept_downloads=True, viewport={"width": 1920, "height": 1080},
+        timezone_id="Europe/Istanbul", locale="fr-FR",
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+    )
+    return context.new_page()
+
+
+def _open_loggis(page, mode_type):
+    page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+    page.wait_for_timeout(3500)
+    page.get_by_text("Types").click()
+    page.wait_for_timeout(1000)
+    page.get_by_role("combobox").first.select_option(mode_type)
+    page.wait_for_timeout(2000)
+
+
+def _select_category(page, cat_cfg):
+    for c_name in cat_cfg["names"]:
+        try:
+            page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
+            return True
+        except Exception: pass
+    for c_name in cat_cfg["names"]:
+        try:
+            page.get_by_role("listbox").select_option(c_name, timeout=2000)
+            return True
+        except Exception: pass
+    for c_name in cat_cfg["names"]:
+        try:
+            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
+            return True
+        except Exception: pass
+    return False
+
+
+# ---------------------------------------------------------
+# CANLI VERİLER: ТАБЛИЦА LoggIS (MONTH_02, заголовки TA-/TB-, последняя строка)
+# ---------------------------------------------------------
+_TABLE_JS = r"""
+() => {
+  const txt = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+  const expand = cells => {
+    const out = [];
+    cells.forEach(c => {
+      const n = parseInt(c.getAttribute('colspan') || '1', 10) || 1;
+      const t = txt(c);
+      for (let i = 0; i < n; i++) out.push(t);
+    });
+    return out;
+  };
+  const result = [];
+  document.querySelectorAll('table').forEach(t => {
+    const headRows = [], bodyRows = [];
+    t.querySelectorAll('tr').forEach(tr => {
+      if (tr.closest('table') !== t) return;               // пропускаем вложенные таблицы
+      const cells = Array.from(tr.children).filter(c => c.tagName === 'TH' || c.tagName === 'TD');
+      if (!cells.length) return;
+      const inHead = !!tr.closest('thead') || cells.every(c => c.tagName === 'TH');
+      (inHead ? headRows : bodyRows).push(expand(cells));
+    });
+    result.push({ headRows, bodyRows });
+  });
+  document.querySelectorAll('[role="grid"],[role="table"],[role="treegrid"]').forEach(g => {
+    if (g.tagName === 'TABLE') return;
+    const headRows = [], bodyRows = [];
+    g.querySelectorAll('[role="row"]').forEach(r => {
+      const hc = Array.from(r.querySelectorAll('[role="columnheader"]'));
+      const bc = Array.from(r.querySelectorAll('[role="gridcell"],[role="cell"],[role="rowheader"]'));
+      if (hc.length && !bc.length) headRows.push(hc.map(txt));
+      else if (bc.length) bodyRows.push(bc.map(txt));
+    });
+    result.push({ headRows, bodyRows });
+  });
+  return result;
+}
+"""
+
+_SCROLL_JS = r"""
+() => {
+  document.querySelectorAll('*').forEach(el => {
+    if (el.scrollHeight > el.clientHeight + 20 && el.querySelector('table,[role="row"]')) {
+      el.scrollTop = el.scrollHeight;
+    }
+  });
+  window.scrollTo(0, document.body.scrollHeight);
+}
+"""
+
+
+def _pick_sensor_table(raw_tables):
+    """Выбирает таблицу/строку заголовков с максимальным числом колонок TA-/TB-."""
+    best = None
+    for tbl in raw_tables or []:
+        head_rows = list(tbl.get("headRows") or [])
+        body_rows = list(tbl.get("bodyRows") or [])
+        candidates = [(h, body_rows) for h in head_rows]
+        if not head_rows and body_rows:
+            candidates.append((body_rows[0], body_rows[1:]))
+        for header, rows in candidates:
+            cols = [(j, extract_sensor_name(h)) for j, h in enumerate(header)]
+            cols = [(j, n) for j, n in cols if n]
+            if cols and (best is None or len(cols) > len(best["cols"])):
+                best = {"header": header, "cols": cols, "rows": rows}
+    return best
+
+
+def _last_row_values(tbl):
+    """Значения последней строки с данными (если в строках есть даты — берётся самая свежая)."""
+    header_len = len(tbl["header"])
+    candidates = []
+    for idx, row in enumerate(tbl["rows"]):
+        offset = len(row) - header_len if len(row) > header_len else 0
+        vals = {}
+        for j, name in tbl["cols"]:
+            k = j + offset
+            if k < len(row):
+                v = clean_num(row[k])
+                if not np.isnan(v):
+                    vals[name] = v
+        if not vals:
+            continue
+        dt = None
+        for cell in row[:3]:
+            dt = parse_ts(cell)
+            if dt: break
+        candidates.append((idx, dt, vals))
+    if not candidates:
+        return None, {}
+    if all(c[1] for c in candidates):
+        _, dt, vals = max(candidates, key=lambda c: (c[1], c[0]))
+    else:
+        _, dt, vals = candidates[-1]
+    return dt, vals
+
+
+@st.cache_data(ttl=300)
+def fetch_live_table(mode_type="MONTH_02"):
+    live_db = {k: {} for k in CATEGORIES}
+    diag = {"timestamp": None, "reads": [], "error": None}
+    latest_dt = None
+
+    with sync_playwright() as p:
+        browser = _launch_browser(p)
+        page = _new_page(browser)
+        try:
+            _open_loggis(page, mode_type)
+
+            for cat_key, cat_cfg in CATEGORIES.items():
+                if live_db[cat_key]:
+                    continue  # эта категория уже пришла из предыдущей таблицы
+                selected = _select_category(page, cat_cfg)
+                page.wait_for_timeout(4000)
+                try: page.wait_for_selector("table, [role='grid'], [role='table']", timeout=15000)
+                except Exception: pass
+                try:
+                    page.evaluate(_SCROLL_JS)
+                    page.wait_for_timeout(800)
+                except Exception: pass
+
+                tbl = _pick_sensor_table(page.evaluate(_TABLE_JS))
+                read_info = {"kategori": cat_key, "seçildi": selected, "sütun": 0, "satır": 0,
+                             "zaman": None, "değer": 0}
+                if tbl:
+                    dt, vals = _last_row_values(tbl)
+                    read_info.update({"sütun": len(tbl["cols"]), "satır": len(tbl["rows"]),
+                                      "zaman": ts_key(dt) if dt else None, "değer": len(vals)})
+                    for s_name, v in vals.items():
+                        c = classify_sensor(s_name)
+                        if c:
+                            live_db[c][s_name] = v
+                    if dt and (latest_dt is None or dt > latest_dt):
+                        latest_dt = dt
+                diag["reads"].append(read_info)
+        except Exception as e:
+            diag["error"] = str(e)
+        finally:
+            browser.close()
+
+    diag["timestamp"] = ts_key(latest_dt) if latest_dt else (
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S") if any(live_db.values()) else None)
+    return live_db, diag
+
+
+# ---------------------------------------------------------
+# ARŞİV VERİLER: CSV (скачивание, разбор дат и значений)
+# ---------------------------------------------------------
+def _read_text_any(path):
+    with open(path, "rb") as f:
+        raw = f.read()
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        return raw.decode("utf-16", errors="ignore")
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return raw.decode("latin-1", errors="ignore")
+
+
+def parse_loggis_csv(path):
+    """CSV LoggIS -> {ts_key: {sensor: value}}. Строки без даты (единицы и т.п.) пропускаются."""
+    text = _read_text_any(path).replace("\ufeff", "")
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return {}, 0
+
+    sample = "\n".join(lines[:5])
+    delim = max([";", "\t"], key=sample.count)
+    if sample.count(delim) == 0:
+        delim = ","
+    rows = list(csv.reader(lines, delimiter=delim))
+
+    # строка заголовков = строка с максимумом имён TA-/TB- среди первых 15
+    header_idx, best_cols = None, []
+    for i, row in enumerate(rows[:15]):
+        cols = [(j, extract_sensor_name(h)) for j, h in enumerate(row)]
+        cols = [(j, n) for j, n in cols if n]
+        if len(cols) > len(best_cols):
+            header_idx, best_cols = i, cols
+    if header_idx is None:
+        return {}, 0
+
+    out = {}
+    for row in rows[header_idx + 1:]:
+        dt = None
+        for cell in row[:3]:
+            dt = parse_ts(cell)
+            if dt: break
+        if not dt:
+            continue
+        vals = {}
+        for j, name in best_cols:
+            if j < len(row):
+                v = clean_num(row[j])
+                if not np.isnan(v):
+                    vals[name] = v
+        if vals:
+            out.setdefault(ts_key(dt), {}).update(vals)
+    return out, len(best_cols)
+
+
 @st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
     historical_db = {k: {} for k in CATEGORIES}
-    dates_set = set()
+    diag = {"reads": [], "error": None}
 
     with sync_playwright() as p:
-        browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-        ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
-
-        context = browser.new_context(
-            accept_downloads=True, viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
+        browser = _launch_browser(p)
+        page = _new_page(browser)
 
         try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
-
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
-            
-            page.get_by_role("combobox").first.select_option(mode_type)
-            page.wait_for_timeout(2000)
+            _open_loggis(page, mode_type)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                            success = True; break
-                        except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                            success = True; break
-                        except: pass
-                
+                selected = _select_category(page, cat_cfg)
                 page.wait_for_timeout(4000)
 
                 csv_path = None
                 csv_btn = page.locator("text=CSV").first
                 try: csv_btn.wait_for(state="visible", timeout=15000)
-                except: pass
+                except Exception: pass
 
                 try:
                     csv_btn.click(force=True, timeout=5000)
@@ -342,48 +660,34 @@ def fetch_csv_database(mode_type="ALL"):
                             with page.expect_popup(timeout=8000) as p_info:
                                 csv_btn.click(force=True)
                             p_info.value.close()
-                        except:
+                        except Exception:
                             csv_btn.click(force=True)
                     csv_path = d_info.value.path()
                 except Exception as e:
                     print(f"CSV İndirme Hatası ({cat_key}): {e}")
 
+                read_info = {"kategori": cat_key, "seçildi": selected, "sütun": 0, "zaman": 0}
                 if csv_path and os.path.exists(csv_path):
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                    
-                    if len(lines) > 2:
-                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                        for line in lines[2:]:
-                            parts = [p.strip() for p in line.strip().split(';')]
-                            if len(parts) == len(header):
-                                date_str = parts[0]
-                                if date_str: dates_set.add(date_str)
-                                        
-                                val_map = {}
-                                for h, v_str in zip(header[1:], parts[1:]):
-                                    match_cond = False
-                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                    if match_cond or target_tag in h:
-                                        if target_tag == "-S" and "-CS" in h: continue
-                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                        s_name = m.group(1) if m else h.split()[0].strip()
-                                        v = clean_num(v_str)
-                                        if not np.isnan(v):
-                                            val_map[s_name] = v
-                                historical_db[cat_key][date_str] = val_map
+                    parsed, n_cols = parse_loggis_csv(csv_path)
+                    read_info.update({"sütun": n_cols, "zaman": len(parsed)})
+                    # раскладываем по категории ПО ИМЕНИ сенсора, а не по тому, какой CSV скачался
+                    for key, vals in parsed.items():
+                        for s_name, v in vals.items():
+                            c = classify_sensor(s_name)
+                            if c:
+                                historical_db[c].setdefault(key, {})[s_name] = v
+                diag["reads"].append(read_info)
 
         except Exception as e:
-            st.warning(f"LoggIS bağlantı hatası: {e}")
+            diag["error"] = str(e)
         finally:
             browser.close()
 
-    sorted_dates = sorted(list(dates_set), reverse=True)
-    return sorted_dates, historical_db
+    all_keys = set()
+    for cat_rows in historical_db.values():
+        all_keys.update(k for k, v in cat_rows.items() if v)
+    sorted_dates = sorted(all_keys, reverse=True)   # ISO-ключи сортируются хронологически
+    return sorted_dates, historical_db, diag
 
 @st.cache_data
 def get_model_b64(path):
@@ -415,59 +719,72 @@ with col_nav:
     cat_cfg = CATEGORIES[selected_comp]
     compare_mode = False
 
+    diag = None
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
+        st.subheader("Zaman Seçimi")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
-            all_dates, full_db = fetch_csv_database(mode_type="ALL")
+            all_dates, full_db, diag = fetch_csv_database(mode_type="ALL")
+        if diag.get("error"):
+            st.warning(f"LoggIS bağlantı hatası: {diag['error']}")
+
+        cat_rows = full_db[selected_comp]
+        cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)
             
-        if not all_dates:
+        if not cat_dates:
             st.warning("Arşiv verisi bulunamadı.")
         else:
-            latest_timestamp = all_dates[0]  
+            latest_key = cat_dates[0]   # самая свежая дата с данными ЭТОЙ категории
+            latest_timestamp = fmt_ts(latest_key)
             
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
+            # ключи вида 'YYYY-MM-DD HH:MM:SS'
             date_hierarchy = {}
-            for d_str in all_dates:
-                clean_d = d_str.replace("-", "/")
-                if " " in clean_d:
-                    date_part, time_part = clean_d.split(" ", 1)
-                    parts = date_part.split("/")
-                    if len(parts) == 3:
-                        y, m, d = parts[0], parts[1], parts[2]
-                        date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
+            for k in cat_dates:
+                y, m, d, t = k[0:4], k[5:7], k[8:10], k[11:]
+                date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(t)
 
-            years = sorted(list(date_hierarchy.keys()), reverse=True)
+            years = sorted(date_hierarchy.keys(), reverse=True)
             sel_year = st.selectbox("Yıl Seçiniz", options=years)
 
             if sel_year:
-                months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
-                sel_month = st.selectbox("Ay Seçiniz:", options=months)
+                months = sorted(date_hierarchy[sel_year].keys(), reverse=True)
+                sel_month = st.selectbox("Ay Seçiniz:", options=months,
+                                         format_func=lambda mm: f"{mm} - {TR_MONTHS.get(mm, mm)}")
 
                 if sel_month:
-                    days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
+                    days = sorted(date_hierarchy[sel_year][sel_month].keys(), reverse=True)
                     sel_day = st.selectbox("Gün Seçiniz:", options=days)
 
                     if sel_day:
                         times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("Saat Seçiniz:", options=times)
+                        sel_time = st.selectbox("Saat Seçiniz:", options=times, format_func=lambda t: t[:5])
 
                         if sel_time:
-                            target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
-                            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-                            latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
+                            target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
+                            target_timestamp = fmt_ts(target_key)
+                            raw_v_map = cat_rows.get(target_key, {})
+                            latest_v_map = cat_rows.get(latest_key, {})
     else:
         with st.spinner("En güncel veriler alınıyor..."):
-            all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
-        if all_dates:
-            target_timestamp = all_dates[0]
-            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+            live_db, diag = fetch_live_table(mode_type="MONTH_02")
+        if diag.get("error"):
+            st.warning(f"LoggIS bağlantı hatası: {diag['error']}")
+        raw_v_map = live_db.get(selected_comp, {})
+        if raw_v_map:
+            target_timestamp = fmt_ts(diag.get("timestamp"))
+        else:
+            st.warning("Canlı tabloda bu kategori için veri bulunamadı.")
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
+
+    if diag and diag.get("reads"):
+        with st.expander("🔎 Veri Tanılama"):
+            st.dataframe(pd.DataFrame(diag["reads"]), hide_index=True, use_container_width=True)
 
 # ---------------------------------------------------------
 # ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
@@ -478,14 +795,7 @@ table_data = []
 if raw_v_map:
     for s_name, val in raw_v_map.items():
         if val is None or np.isnan(val): continue
-        u_name = s_name.upper()
-        
-        is_valid_sensor = False
-        if selected_comp == "hoop" and "-CS" in u_name: is_valid_sensor = True
-        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: is_valid_sensor = True
-        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: is_valid_sensor = True
-
-        if is_valid_sensor:
+        if classify_sensor(s_name) == selected_comp:
             if compare_mode:
                 latest_val = latest_v_map.get(s_name)
                 
@@ -532,7 +842,7 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜМ AYARLARI")
+    st.subheader("GÖRÜNÜM AYARLARI")
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
@@ -662,6 +972,21 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
+        // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ
+        // =========================================================================
+        let isModelLoaded = false;
+        
+        function saveCamState() {
+            if (!isModelLoaded) return; // Не сохраняем дефолтные нули во время загрузки!
+            try {
+                window.sessionStorage.setItem('loggis_cam_v7', JSON.stringify({
+                    pos: camera.position.toArray(),
+                    tgt: controls.target.toArray()
+                }));
+            } catch(e) {}
+        }
+
+        // =========================================================================
         // ЦВЕТОВЫЕ ШКАЛЫ
         // =========================================================================
 
@@ -679,13 +1004,12 @@ with col_3d:
             new THREE.Color("#FF4400"), new THREE.Color("#D50000")
         ];
 
-        // Шкала для Дельты (Разницы): СИНИЙ (-) -> СЕРЫЙ (0) -> КРАСНЫЙ (+)
         const compareStops = [
-            new THREE.Color("#0055FF"), // Уменьшение
+            new THREE.Color("#0055FF"), 
             new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений) - идеально посередине
+            new THREE.Color("#2E3A59"), 
             new THREE.Color("#FFDD00"), 
-            new THREE.Color("#FF0033")  // Увеличение
+            new THREE.Color("#FF0033")  
         ];
 
         let currentStops = hoopStops;
@@ -743,6 +1067,9 @@ with col_3d:
         controls.enableDamping = true; controls.dampingFactor = 0.05;
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+        // Сохранение вызывается при любом вращении пользователем
+        controls.addEventListener('change', saveCamState);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -926,12 +1253,12 @@ with col_3d:
             });
 
             const portalsGroup = new THREE.Group();
-            if (hasTA) { const cA = boxTA.getCenter(new THREE.Vector3()); const sTA = createPortalMarker("TA"); sTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0); portalsGroup.add(sTA); }
-            if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 8.5, boxTB.min.z - 4.0); portalsGroup.add(sTB); }
+            if (hasTA) { const cA = boxTA.getCenter(new THREE.Vector3()); const sTA = createPortalMarker("TA"); sTA.position.set(cA.x, boxTA.max.y + 17.0, boxTA.min.z - 8.0); portalsGroup.add(sTA); }
+            if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 17.0, boxTB.min.z - 8.0); portalsGroup.add(sTB); }
             scene.add(portalsGroup);
 
             // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 0.5
+            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
             // =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
@@ -941,44 +1268,32 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
+                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
+
                     const isZAxis = size.z >= size.x; 
+                    const length3D = isZAxis ? size.z : size.x; 
                     const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x; 
                     const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
                     
-                    // Длина рассчитывается с учетом того, что модель увеличена в 2 раза.
-                    // Значит, физическое расстояние в 3D надо умножить на 0.5
-                    const physicalLength = Math.abs(endCoord - startCoord);
-                    const realMeters = physicalLength * 2;
-
-                    // Шаг линейки - каждые 10 метров (в координатах модели это 20 единиц)
-                    const stepReal = 5.0; 
-                    const step3D = stepReal / 2; 
-                    const stepsCount = Math.floor(physicalLength / step3D); 
-                    const totalDistanceM = stepsCount * stepReal;
+                    const stepReal = 10.0; 
+                    const step3D = stepReal * scale; 
+                    const stepsCount = Math.floor(length3D / step3D); 
 
                     const yRuler = overallBox.min.y - 0.2; 
                     
-                    // Первая линейка (с одной стороны)
-                    const lateralPos1 = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
-                    // Вторая линейка (с противоположной стороны, зеркально)
-                    const lateralPos2 = isZAxis ? (overallBox.min.x - 3.5) : (overallBox.min.z - 3.5);
+                    const lateralPos1 = isZAxis ? (overallBox.max.x + (3.5 * scale)) : (overallBox.max.z + (3.5 * scale));
+                    const lateralPos2 = isZAxis ? (overallBox.min.x - (3.5 * scale)) : (overallBox.min.z - (3.5 * scale));
 
-                    // Линия 1
                     const linePoints1 = [];
+                    const linePoints2 = [];
                     if (isZAxis) {
                         linePoints1.push(new THREE.Vector3(lateralPos1, yRuler, startCoord));
                         linePoints1.push(new THREE.Vector3(lateralPos1, yRuler, endCoord));
-                    } else {
-                        linePoints1.push(new THREE.Vector3(startCoord, yRuler, lateralPos1));
-                        linePoints1.push(new THREE.Vector3(endCoord, yRuler, lateralPos1));
-                    }
-
-                    // Линия 2
-                    const linePoints2 = [];
-                    if (isZAxis) {
                         linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, startCoord));
                         linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, endCoord));
                     } else {
+                        linePoints1.push(new THREE.Vector3(startCoord, yRuler, lateralPos1));
+                        linePoints1.push(new THREE.Vector3(endCoord, yRuler, lateralPos1));
                         linePoints2.push(new THREE.Vector3(startCoord, yRuler, lateralPos2));
                         linePoints2.push(new THREE.Vector3(endCoord, yRuler, lateralPos2));
                     }
@@ -987,73 +1302,110 @@ with col_3d:
                     rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints1), axisMat));
                     rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints2), axisMat));
 
-                    for (let i = 0; i <= stepsCount; i++) {
-                        const currentPos3D = startCoord + i * step3D; 
-                        const reversedDistance = (totalDistanceM - (i * stepReal)).toFixed(0); 
-                        const distanceText = reversedDistance + " m";
+                    const tickSize = 0.8 * scale;
 
-                        // Метки и текст для Первой линейки
+                    for (let i = 0; i <= stepsCount; i++) {
+                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
+                        const currentPos3D = endCoord - (i * step3D); 
+                        const distanceText = (i * stepReal).toFixed(0) + " m"; 
+
                         const tickPoints1 = [];
                         if (isZAxis) {
-                            tickPoints1.push(new THREE.Vector3(lateralPos1 - 0.8, yRuler, currentPos3D));
-                            tickPoints1.push(new THREE.Vector3(lateralPos1 + 0.8, yRuler, currentPos3D));
+                            tickPoints1.push(new THREE.Vector3(lateralPos1 - tickSize, yRuler, currentPos3D));
+                            tickPoints1.push(new THREE.Vector3(lateralPos1 + tickSize, yRuler, currentPos3D));
                         } else {
-                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 - 0.8));
-                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 + 0.8));
+                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 - tickSize));
+                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 + tickSize));
                         }
                         rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints1), axisMat));
                         
                         const label1 = createRulerLabel(distanceText);
-                        if (isZAxis) label1.position.set(lateralPos1 + 2.4, yRuler + 0.4, currentPos3D); 
-                        else label1.position.set(currentPos3D, yRuler + 0.4, lateralPos1 + 2.4);
+                        label1.scale.set(2.4 * scale, 1.2 * scale, 1);
+                        if (isZAxis) label1.position.set(lateralPos1 + (2.4 * scale), yRuler + 0.4, currentPos3D); 
+                        else label1.position.set(currentPos3D, yRuler + 0.4, lateralPos1 + (2.4 * scale));
                         rulerGroup.add(label1);
 
-                        // Метки и текст для Второй линейки (зеркально)
                         const tickPoints2 = [];
                         if (isZAxis) {
-                            tickPoints2.push(new THREE.Vector3(lateralPos2 - 0.8, yRuler, currentPos3D));
-                            tickPoints2.push(new THREE.Vector3(lateralPos2 + 0.8, yRuler, currentPos3D));
+                            tickPoints2.push(new THREE.Vector3(lateralPos2 - tickSize, yRuler, currentPos3D));
+                            tickPoints2.push(new THREE.Vector3(lateralPos2 + tickSize, yRuler, currentPos3D));
                         } else {
-                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 - 0.8));
-                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 + 0.8));
+                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 - tickSize));
+                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 + tickSize));
                         }
                         rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints2), axisMat));
                         
                         const label2 = createRulerLabel(distanceText);
-                        if (isZAxis) label2.position.set(lateralPos2 - 2.4, yRuler + 0.4, currentPos3D); 
-                        else label2.position.set(currentPos3D, yRuler + 0.4, lateralPos2 - 2.4);
+                        label2.scale.set(2.4 * scale, 1.2 * scale, 1);
+                        if (isZAxis) label2.position.set(lateralPos2 - (2.4 * scale), yRuler + 0.4, currentPos3D); 
+                        else label2.position.set(currentPos3D, yRuler + 0.4, lateralPos2 - (2.4 * scale));
                         rulerGroup.add(label2);
                     }
                     scene.add(rulerGroup);
                 }
             }
 
-            if (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && selectedMeshRef) {
+            // ====================================================================
+            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ ИЗ [SOURCE: 6])
+            // ====================================================================
+            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
+            const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
+
+            if (selectedMeshRef && isNewSensorSelected) {
+                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
+                
+                // Перелет к датчику. isModelLoaded станет true внутри flyCameraTo
+                isModelLoaded = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
-                const tunnelBox = new THREE.Box3(); 
-                if (tunnelMeshes.length > 0) {
-                    tunnelMeshes.forEach(tm => {
-                        if(tm.geometry) tm.geometry.computeBoundingBox();
-                        tunnelBox.expandByObject(tm);
-                    });
-                } else { 
-                    model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
-                    tunnelBox.setFromObject(model); 
+                if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
+                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
+                }
+
+                let cameraRestored = false;
+                try {
+                    const savedStr = window.sessionStorage.getItem('loggis_cam_v7');
+                    if (savedStr) {
+                        const st = JSON.parse(savedStr);
+                        if (st && st.pos && st.tgt && !isNaN(st.pos[0]) && !isNaN(st.tgt[0])) {
+                            camera.position.fromArray(st.pos);
+                            controls.target.fromArray(st.tgt);
+                            controls.update();
+                            cameraRestored = true;
+                        }
+                    }
+                } catch(e) {}
+                
+                if (!cameraRestored) {
+                    // ЭТО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ КОДА [SOURCE: 6]
+                    const tunnelBox = new THREE.Box3(); 
+                    if (tunnelMeshes.length > 0) {
+                        tunnelMeshes.forEach(tm => {
+                            if(tm.geometry) tm.geometry.computeBoundingBox();
+                            tunnelBox.expandByObject(tm);
+                        });
+                    } else { 
+                        model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
+                        tunnelBox.setFromObject(model); 
+                    }
+                    
+                    if (!tunnelBox.isEmpty()) {
+                        const center = tunnelBox.getCenter(new THREE.Vector3()); 
+                        const size = tunnelBox.getSize(new THREE.Vector3()); 
+                        const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                        controls.target.copy(center); 
+                        
+                        const fov = camera.fov * (Math.PI / 180);
+                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
+                        
+                        camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
+                        controls.update();
+                    }
                 }
                 
-                if (!tunnelBox.isEmpty()) {
-                    const center = tunnelBox.getCenter(new THREE.Vector3()); 
-                    const size = tunnelBox.getSize(new THREE.Vector3()); 
-                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                    controls.target.copy(center); 
-                    
-                    const fov = camera.fov * (Math.PI / 180);
-                    let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
-                    
-                    camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
-                    controls.update();
-                }
+                // РАЗРЕШАЕМ СОХРАНЯТЬ КАМЕРУ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ЗАГРУЗКИ МОДЕЛИ
+                isModelLoaded = true;
+                saveCamState();
             }
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
@@ -1069,9 +1421,14 @@ with col_3d:
             const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
             if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
-            if (!animate) { camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); return; }
+            if (!animate) { 
+                camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
+                saveCamState();
+                return; 
+            }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
-            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update()).start();
+            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
+            .onComplete(saveCamState).start();
         }
 
         function getIntersectedSensor(e) {
@@ -1128,9 +1485,13 @@ if compare_mode and table_data:
     st.markdown("---")
     st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
+    # Создаем DataFrame из собранных данных
     df = pd.DataFrame(table_data)
+    
+    # Сортируем по номеру сенсора для красоты
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
+    # Используем возможности Streamlit для стилизации DataFrame
     st.dataframe(
         df,
         use_container_width=True,
