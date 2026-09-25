@@ -931,7 +931,7 @@ with col_3d:
             scene.add(portalsGroup);
 
             // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X
+            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА И ТОЧНОГО НУЛЯ
             // =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
@@ -951,7 +951,6 @@ with col_3d:
                     const stepReal = 10.0; 
                     const step3D = stepReal * scale; 
                     const stepsCount = Math.floor(length3D / step3D); 
-                    const totalDistanceM = stepsCount * stepReal;
 
                     const yRuler = overallBox.min.y - 0.2; 
                     
@@ -980,8 +979,9 @@ with col_3d:
 
                     for (let i = 0; i <= stepsCount; i++) {
                         const currentPos3D = startCoord + i * step3D; 
-                        const reversedDistance = (totalDistanceM - (i * stepReal)).toFixed(0); 
-                        const distanceText = reversedDistance + " m";
+                        
+                        // НОЛЬ НАЧИНАЕТСЯ РОВНО НА КОНЧИКЕ (startCoord)
+                        const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
                         const tickPoints1 = [];
                         if (isZAxis) {
