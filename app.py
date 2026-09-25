@@ -400,10 +400,11 @@ def _new_page(browser):
 def _open_loggis(page, mode_type, view_type=None):
     """Порядок как в записи Playwright: период -> (вид таблицы) -> Types."""
     page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-    page.wait_for_timeout(3500)
+    page.wait_for_selector(f'select option[value="{mode_type}"]', state="attached", timeout=60000)
     page.get_by_role("combobox").first.select_option(mode_type)
     page.wait_for_timeout(2000)
     if view_type:
+        page.wait_for_selector(f'select option[value="{view_type}"]', state="attached", timeout=30000)
         page.get_by_role("combobox").nth(1).select_option(view_type)
         page.wait_for_timeout(2000)
     page.get_by_text("Types").click()
@@ -547,7 +548,7 @@ def _last_row_values(tbl):
 @st.cache_data(ttl=300)
 def fetch_live_table(mode_type="MONTH_02"):
     live_db = {k: {} for k in CATEGORIES}
-    diag = {"timestamp": None, "reads": [], "error": None, "sensor_times": {}}
+    diag = {"timestamp": None, "reads": [], "error": None}
     latest_dt = None
 
     with sync_playwright() as p:
@@ -561,7 +562,11 @@ def fetch_live_table(mode_type="MONTH_02"):
                     continue  # эта категория уже пришла из предыдущей таблицы
                 selected = _select_category(page, cat_cfg)
                 page.wait_for_timeout(4000)
-                try: page.wait_for_selector("table, [role='grid'], [role='table']", timeout=15000)
+                try:
+                    page.wait_for_function(
+                        """() => Array.from(document.querySelectorAll('th,[role="columnheader"],td'))
+                                 .some(e => /T[AB]-/i.test(e.innerText || ''))""",
+                        timeout=20000)
                 except Exception: pass
                 try:
                     page.evaluate(_SCROLL_JS)
@@ -573,15 +578,12 @@ def fetch_live_table(mode_type="MONTH_02"):
                              "zaman": None, "değer": 0}
                 if tbl:
                     dt, vals, times = _last_row_values(tbl)
-                    old_vals = sum(1 for t in times.values() if dt and t and t != ts_key(dt))
                     read_info.update({"sütun": len(tbl["cols"]), "satır": len(tbl["rows"]),
-                                      "zaman": ts_key(dt) if dt else None, "değer": len(vals),
-                                      "eski değer": old_vals})
+                                      "zaman": ts_key(dt) if dt else None, "değer": len(vals)})
                     for s_name, v in vals.items():
                         c = classify_sensor(s_name)
                         if c:
                             live_db[c][s_name] = v
-                            diag["sensor_times"][s_name] = times.get(s_name)
                     if dt and (latest_dt is None or dt > latest_dt):
                         latest_dt = dt
                 diag["reads"].append(read_info)
@@ -807,9 +809,6 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-    if diag and diag.get("reads"):
-        with st.expander("🔎 Veri Tanılama"):
-            st.dataframe(pd.DataFrame(diag["reads"]), hide_index=True, use_container_width=True)
 
 # ---------------------------------------------------------
 # ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
