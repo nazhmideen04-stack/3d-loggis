@@ -6,11 +6,10 @@ import base64
 import subprocess
 from datetime import datetime
 import numpy as np
-import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -167,35 +166,18 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Стили для таблицы */
-    [data-testid="stDataFrame"] {
-        background-color: #0E182A !important;
-        border-radius: 8px !important;
-        padding: 10px !important;
-        border: 1px solid rgba(0, 200, 230, 0.3) !important;
-    }
-    
-    [data-testid="stDataFrame"] table th {
-        color: #00C8E6 !important;
-        font-family: 'Syne', sans-serif !important;
-        font-weight: 700 !important;
-        letter-spacing: 1px !important;
-        background-color: #0A0E17 !important;
-    }
-
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ - УЛУЧШЕННАЯ */
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
-            padding-left: 2rem !important;
-            padding-right: 2rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
             padding-top: 1.5rem !important;
-            padding-bottom: 2.5rem !important;
         }
 
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column-reverse !important;
-            gap: 1.5rem !important;
+            gap: 1.2rem !important;
         }
 
         [data-testid="column"] {
@@ -204,35 +186,12 @@ st.markdown("""
             min-width: 100% !important;
         }
 
-        h1, h2, h3 {
-            letter-spacing: 1px !important;
-        }
-        h2 { font-size: 1.15rem !important; }
-        h3 { font-size: 1.05rem !important; }
-
         .header-box h1 {
-            font-size: 19px !important;
-            margin-bottom: 2px !important;
-        }
-
-        .header-box div {
-            font-size: 11px !important;
-            letter-spacing: 1px !important;
+            font-size: 22px !important;
         }
 
         .header-box img {
-            width: 110px !important;
-        }
-        
-        div[data-testid="stRadio"] div[role="radiogroup"] label p {
-            font-size: 15px !important;
-        }
-        
-        [data-testid="stMetricValue"] {
-            font-size: 24px !important;
-        }
-        [data-testid="stMetricLabel"] {
-            font-size: 11px !important;
+            width: 130px !important;
         }
     }
 </style>
@@ -243,13 +202,13 @@ if os.path.exists(LOGO_PATH):
     with open(LOGO_PATH, "rb") as f:
         LOGO_B64 = base64.b64encode(f.read()).decode()
 
-LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 250px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
+LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 180px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
 
 st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -258,29 +217,26 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 CATEGORIES = {
-    "hoop": {"names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
-    if not s: return np.nan
+    if not s:
+        return np.nan
     s = str(s).replace(",", ".").replace(" ", "").strip()
     m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
     return float(m.group()) if m else np.nan
 
 def ensure_playwright_installed():
-    try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-    except Exception: pass
+    try:
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+    except Exception:
+        pass
 
 @st.cache_data(ttl=300)
 def fetch_all_categories_data():
-    """
-    LIVE DATA ONLY.
-    This follows the working GİTHUB_3DMAX logic:
-    MONTH_02 -> TABLE_ROW_DATE -> category -> HTML table -> first data row.
-    Archive/CSV is deliberately not used here.
-    """
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
@@ -291,7 +247,6 @@ def fetch_all_categories_data():
             "--disable-gpu",
             "--window-size=1920,1080",
         ]
-
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
         except Exception:
@@ -302,12 +257,10 @@ def fetch_all_categories_data():
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="fr-FR",
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
-            ),
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
@@ -319,54 +272,27 @@ def fetch_all_categories_data():
                 pass
             page.wait_for_timeout(1000)
 
-            # Exactly as in the working version.
             try:
-                page.get_by_role("combobox").first.select_option(
-                    "MONTH_02", timeout=5000
-                )
+                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
             except Exception:
                 pass
             page.wait_for_timeout(800)
 
             try:
-                page.get_by_role("combobox").nth(1).select_option(
-                    "TABLE_ROW_DATE", timeout=5000
-                )
+                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
             except Exception:
                 pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                # Use the exact category name first, as in GİTHUB_3DMAX.
-                selected = False
                 try:
-                    page.get_by_role("listbox").select_option(
-                        cat_cfg["names"][0], timeout=6000
-                    )
-                    selected = True
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
                 except Exception:
-                    pass
-
-                # Fallbacks for installations where the visible label differs.
-                if not selected:
-                    for name in cat_cfg["names"]:
+                    try:
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                    except Exception:
                         try:
-                            page.get_by_role("listbox").select_option(
-                                name, timeout=3000
-                            )
-                            selected = True
-                            break
-                        except Exception:
-                            pass
-
-                if not selected:
-                    for name in cat_cfg["names"]:
-                        try:
-                            page.locator(
-                                f"option:has-text('{name}')"
-                            ).first.click(force=True, timeout=3000)
-                            selected = True
-                            break
+                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
                         except Exception:
                             pass
 
@@ -375,230 +301,72 @@ def fetch_all_categories_data():
                 val_map = {}
                 latest_date_str = ""
 
-                # Give the table time to update after category selection.
-                for _ in range(20):
+                for _ in range(15):
                     try:
                         extracted = page.evaluate("""() => {
                             try {
-                                const tables = Array.from(document.querySelectorAll('table'));
+                                const table = document.querySelector('table');
+                                if (!table) return null;
 
-                                for (const table of tables) {
-                                    const trs = Array.from(table.querySelectorAll('tr'));
-                                    if (!trs.length) continue;
-
-                                    let headerCells = [];
-                                    for (const tr of trs) {
-                                        const cells = Array.from(
-                                            tr.querySelectorAll('th, td')
-                                        ).map(c => (c.innerText || '').trim());
-
-                                        if (cells.some(c =>
-                                            c.includes('TA-') ||
-                                            c.includes('TB-')
-                                        )) {
-                                            headerCells = cells;
-                                            break;
-                                        }
+                                const trs = Array.from(table.querySelectorAll('tr'));
+                                let headerCells = [];
+                                for (const tr of trs) {
+                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
+                                        headerCells = cells;
+                                        break;
                                     }
+                                }
+                                if (headerCells.length === 0 && trs.length > 0) {
+                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                }
 
-                                    if (!headerCells.length) continue;
-
-                                    const tbody = table.querySelector('tbody') || table;
-                                    const rows = Array.from(tbody.querySelectorAll('tr'));
-
-                                    // Prefer the first real data row.
-                                    for (const r of rows) {
-                                        const cells = Array.from(
-                                            r.querySelectorAll('td')
-                                        ).map(c => (c.innerText || '').trim());
-
-                                        if (
-                                            cells.length > 1 &&
-                                            (
-                                                cells[0].includes('/') ||
-                                                cells[0].includes(':') ||
-                                                cells[0].includes('-')
-                                            )
-                                        ) {
-                                            return {
-                                                headers: headerCells,
-                                                values: cells
-                                            };
-                                        }
+                                const tbody = table.querySelector('tbody') || table;
+                                const rows = Array.from(tbody.querySelectorAll('tr'));
+                                let dataCells = [];
+                                for (const r of rows) {
+                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
+                                        dataCells = cells;
+                                        break;
                                     }
                                 }
 
-                                return null;
+                                if (headerCells.length === 0 || dataCells.length === 0) return null;
+                                return { headers: headerCells, values: dataCells };
                             } catch(e) {
                                 return null;
                             }
                         }""")
 
-                        if extracted:
-                            headers = extracted.get("headers", [])
-                            values = extracted.get("values", [])
+                        if extracted and extracted.get("values") and extracted.get("headers"):
+                            headers = extracted["headers"]
+                            values = extracted["values"]
+                            latest_date_str = values[0]
 
-                            if headers and values and len(values) > 1:
-                                latest_date_str = values[0]
+                            for h, v_str in zip(headers[1:], values[1:]):
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                    s_name = m.group(1) if m else h.split()[0].strip()
+                                    v = clean_num(v_str)
+                                    if not np.isnan(v):
+                                        val_map[s_name] = v
 
-                                for h, v_str in zip(headers[1:], values[1:]):
-                                    # Keep the original GİTHUB_3DMAX sensor-name extraction.
-                                    if (
-                                        "TA-" in h
-                                        or "TB-" in h
-                                        or cat_cfg["tag"] in h
-                                    ):
-                                        m = re.search(
-                                            r"(T[AB]-[A-Za-z0-9\-]+)", h
-                                        )
-                                        s_name = (
-                                            m.group(1)
-                                            if m
-                                            else h.split()[0].strip()
-                                        )
-
-                                        v = clean_num(v_str)
-                                        if not np.isnan(v):
-                                            val_map[s_name] = v
-
-                                if val_map:
-                                    break
-
+                            if len(val_map) > 0:
+                                break
                     except Exception:
                         pass
 
                     page.wait_for_timeout(600)
 
-                all_results[cat_key] = {
-                    "values": val_map,
-                    "date": latest_date_str
-                }
-
-                # Important: do not silently continue with empty live data.
-                if not val_map:
-                    print(
-                        f"[LIVE] Veri alınamadı: {cat_key} | "
-                        f"category={cat_cfg['names'][0]}"
-                    )
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
         except Exception as e:
-            st.warning(f"LoggIS canlı veri hatası: {e}")
+            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
         finally:
             browser.close()
 
     return all_results
-
-@st.cache_data(ttl=900)
-def fetch_csv_database(mode_type="ALL"):
-    historical_db = {k: {} for k in CATEGORIES}
-    dates_set = set()
-
-    with sync_playwright() as p:
-        browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-        ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
-
-        context = browser.new_context(
-            accept_downloads=True, viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-
-        try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
-
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
-            
-            page.get_by_role("combobox").first.select_option(mode_type)
-            page.wait_for_timeout(2000)
-
-            for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                            success = True; break
-                        except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                            success = True; break
-                        except: pass
-                
-                page.wait_for_timeout(4000)
-
-                csv_path = None
-                csv_btn = page.locator("text=CSV").first
-                try: csv_btn.wait_for(state="visible", timeout=15000)
-                except: pass
-
-                try:
-                    csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1500)
-                    with page.expect_download(timeout=30000) as d_info:
-                        try:
-                            with page.expect_popup(timeout=8000) as p_info:
-                                csv_btn.click(force=True)
-                            p_info.value.close()
-                        except:
-                            csv_btn.click(force=True)
-                    csv_path = d_info.value.path()
-                except Exception as e:
-                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
-
-                if csv_path and os.path.exists(csv_path):
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                    
-                    if len(lines) > 2:
-                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                        for line in lines[2:]:
-                            parts = [p.strip() for p in line.strip().split(';')]
-                            if len(parts) == len(header):
-                                date_str = parts[0]
-                                if date_str: dates_set.add(date_str)
-                                        
-                                val_map = {}
-                                for h, v_str in zip(header[1:], parts[1:]):
-                                    match_cond = False
-                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                    if match_cond or target_tag in h:
-                                        if target_tag == "-S" and "-CS" in h: continue
-                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                        s_name = m.group(1) if m else h.split()[0].strip()
-                                        v = clean_num(v_str)
-                                        if not np.isnan(v):
-                                            val_map[s_name] = v
-                                historical_db[cat_key][date_str] = val_map
-
-        except Exception as e:
-            st.warning(f"LoggIS bağlantı hatası: {e}")
-        finally:
-            browser.close()
-
-    sorted_dates = sorted(list(dates_set), reverse=True)
-    return sorted_dates, historical_db
 
 @st.cache_data
 def get_model_b64(path):
@@ -609,177 +377,69 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
+with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
+    all_data = fetch_all_categories_data()
+
 with col_nav:
     st.subheader("KONTROL PANELİ")
-    
-    data_mode = st.radio(
-        "Veri Modu Seçimi:",
-        options=["Canlı Veriler", "Arşiv Veriler"]
-    )
-
     selected_comp = st.radio(
-        "Görüntülenecek Bileşen (Kategori):",
+        "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
     )
-
-    target_timestamp = "-"
-    latest_timestamp = None
-    raw_v_map = {}
-    latest_v_map = {}
-    cat_cfg = CATEGORIES[selected_comp]
-    compare_mode = False
-
-    if data_mode == "Arşiv Veriler":
-        st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
-        
-        with st.spinner("Arşiv tarihleri yükleniyor..."):
-            all_dates, full_db = fetch_csv_database(mode_type="ALL")
-            
-        if not all_dates:
-            st.warning("Arşiv verisi bulunamadı.")
-        else:
-            latest_timestamp = all_dates[0]  
-            
-            compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
-
-            date_hierarchy = {}
-            for d_str in all_dates:
-                clean_d = d_str.replace("-", "/")
-                if " " in clean_d:
-                    date_part, time_part = clean_d.split(" ", 1)
-                    parts = date_part.split("/")
-                    if len(parts) == 3:
-                        y, m, d = parts[0], parts[1], parts[2]
-                        date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
-
-            years = sorted(list(date_hierarchy.keys()), reverse=True)
-            sel_year = st.selectbox("Yıl Seçiniz", options=years)
-
-            if sel_year:
-                months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
-                sel_month = st.selectbox("Ay Seçiniz:", options=months)
-
-                if sel_month:
-                    days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
-                    sel_day = st.selectbox("Gün Seçiniz:", options=days)
-
-                    if sel_day:
-                        times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("Saat Seçiniz:", options=times)
-
-                        if sel_time:
-                            target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
-                            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-                            latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
-    else:
-        # CANLI VERİLER: брать напрямую из таблицы LoggIS по проверенной логике
-        # из GİTHUB_3DMAX. Архив здесь НЕ используется.
-        with st.spinner("En güncel veriler alınıyor..."):
-            live_data = fetch_all_categories_data()
-
-        cur_live = live_data.get(selected_comp, {"values": {}, "date": ""})
-        target_timestamp = cur_live.get("date", "-") or "-"
-        raw_v_map = cur_live.get("values", {})
-
-        if not raw_v_map:
-            st.error(
-                "LoggIS canlı tablosundan veri alınamadı. "
-                "Sayfa açıldı ancak seçilen kategori için tablo satırı okunamadı."
-            )
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# ---------------------------------------------------------
-# ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
-# ---------------------------------------------------------
+cat_cfg = CATEGORIES[selected_comp]
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
+raw_v_map = cur_layer["values"]
+
 active_category_values = {}
-table_data = [] 
+for s_name, val in raw_v_map.items():
+    if val is None or np.isnan(val):
+        continue
+    u_name = s_name.upper()
+    if selected_comp == "hoop" and "-CS" in u_name:
+        active_category_values[s_name] = float(val)
+    elif selected_comp == "axial":
+        if ("-S" in u_name) and ("-CS" not in u_name):
+            active_category_values[s_name] = float(val)
+    elif selected_comp == "temp" and "-TP" in u_name:
+        active_category_values[s_name] = float(val)
 
-if raw_v_map:
-    for s_name, val in raw_v_map.items():
-        if val is None or np.isnan(val): continue
-        u_name = s_name.upper()
-        
-        is_valid_sensor = False
-        if selected_comp == "hoop" and "-CS" in u_name: is_valid_sensor = True
-        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: is_valid_sensor = True
-        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: is_valid_sensor = True
-
-        if is_valid_sensor:
-            if compare_mode:
-                latest_val = latest_v_map.get(s_name)
-                
-                str_val = f"{float(val):.2f}"
-                str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
-                
-                if latest_val is not None and not np.isnan(latest_val):
-                    delta = float(latest_val) - float(val)
-                    active_category_values[s_name] = delta
-                    str_delta = f"{delta:+.2f}"
-                else:
-                    str_delta = "-"
-                    
-                table_data.append({
-                    "Sensör No": s_name,
-                    "Arşiv Değeri": str_val,
-                    "Güncel Değer": str_latest,
-                    "Fark (Δ)": str_delta
-                })
-            else:
-                active_category_values[s_name] = float(val)
-
-# Расчет шкалы: Для Дельты шкала симметрична [-Max, +Max]
+# Точный расчёт диапазона clim с технологическим буфером для стопроцентного попадания в пиковые цвета легенды
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
 else:
-    if compare_mode:
-        max_abs = max(abs(min(vals)), abs(max(vals)))
-        if max_abs < 0.001:
-            clim = [-0.5, 0.5]
-        else:
-            buf = max_abs * 0.05
-            clim = [-round(max_abs + buf, 2), round(max_abs + buf, 2)]
+    real_min = float(min(vals))
+    real_max = float(max(vals))
+    diff = abs(real_max - real_min)
+    if diff < 0.001:
+        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
     else:
-        real_min = float(min(vals))
-        real_max = float(max(vals))
-        diff = abs(real_max - real_min)
-        if diff < 0.001:
-            clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
-        else:
-            buf = diff * 0.02
-            clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
+        buf = diff * 0.02
+        clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜМ AYARLARI")
+    st.subheader("GÖRÜNÜM AYARLARI")
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    if compare_mode:
-        st.write("**Karşılaştırma (Fark Analizi):**")
-        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  {latest_timestamp}</span>", unsafe_allow_html=True)
-    else:
-        st.write("**Aktif Periyot:**")
-        st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
+    st.write("**En Son Veri Zamanı:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
-    sensor_count_str = str(len(active_category_values)) if active_category_values else "-"
-    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{sensor_count_str}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
     
-    st.write("**Skala Limitleri:**")
-    if vals:
-        limit_str = f"Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}"
-    else:
-        limit_str = "-"
-    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
+    st.write("**Skala Limitleri (Gerçek Min / Maks):**")
+    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
 
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
@@ -788,19 +448,18 @@ with col_3d:
     sel_col1, sel_col2 = st.columns([3, 1])
     with sel_col1:
         selected_sensor = st.selectbox(
-            "Modelde Sensör Odakla:", 
+            "Sensör Değerini İncele:", 
             options=sensor_options,
             help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
         )
     with sel_col2:
         if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
-            val_label = "Değişim (Δ)" if compare_mode else "Ölçüm"
             st.metric(
-                label=f"{val_label} ({selected_sensor})",
+                label=f"Seçilen Sensör Değeri",
                 value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
             )
         else:
-            st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
+            st.metric(label="Sensör Değeri", value="--")
 
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -815,8 +474,7 @@ with col_3d:
             "comp": selected_comp,
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
-            "showNoDataRed": show_no_data_red,
-            "isCompareMode": compare_mode
+            "showNoDataRed": show_no_data_red
         }
         json_payload = json.dumps(payload_data)
 
@@ -826,21 +484,154 @@ with col_3d:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #0A0E17; font-family: 'Chakra Petch', sans-serif; touch-action: none; border-radius: 8px; }
-        #canvas-container { width: 100%; height: 100vh; position: relative; }
-        #sensor-tooltip { position: absolute; display: none; background: rgba(14, 24, 42, 0.95); border: 1px solid #00C8E6; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-size: 13px; pointer-events: none; z-index: 100; box-shadow: 0 4px 16px rgba(0, 200, 230, 0.35); }
-        #selected-hud { position: absolute; top: 14px; left: 14px; display: none; background: rgba(10, 14, 23, 0.92); border: 1px solid #00C8E6; padding: 8px 14px; border-radius: 8px; z-index: 95; box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3); max-width: 220px; }
-        #selected-hud .hud-title { font-size: 11px; color: #8397AD; text-transform: uppercase; letter-spacing: 0.8px; }
-        #selected-hud .hud-name { font-size: 15px; color: #FFFFFF; font-weight: 700; margin: 1px 0 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        #selected-hud .hud-val { font-size: 18px; color: #00E5FF; font-weight: 700; }
-        #loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #00C8E6; font-size: 16px; font-weight: 700; letter-spacing: 1px; text-align: center; width: 80%; }
-        #color-legend { position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; align-items: center; background: rgba(10, 14, 23, 0.92); padding: 10px 12px; border: 1px solid rgba(0, 200, 230, 0.55); box-shadow: 0 0 16px rgba(0, 200, 230, 0.25); border-radius: 6px; z-index: 90; user-select: none; }
-        #legend-title { color: #00E5FF; font-size: 12px; font-weight: 700; margin-bottom: 6px; text-transform: none !important; letter-spacing: 0.5px; }
-        .legend-bar-container { display: flex; align-items: stretch; height: 180px; }
-        #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
-        .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
-        @media (max-width: 600px) { #color-legend { padding: 6px 8px; top: 10px; right: 10px; } .legend-bar-container { height: 130px; } #legend-bar { width: 12px; } #legend-title { font-size: 10px; } .legend-labels { font-size: 9px; } #selected-hud { top: 10px; left: 10px; padding: 6px 10px; } #selected-hud .hud-name { font-size: 13px; } #selected-hud .hud-val { font-size: 15px; } }
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0A0E17;
+            font-family: 'Chakra Petch', sans-serif;
+            touch-action: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #sensor-tooltip {
+            position: absolute;
+            display: none;
+            background: rgba(14, 24, 42, 0.95);
+            border: 1px solid #00C8E6;
+            color: #FFFFFF;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            pointer-events: none;
+            z-index: 100;
+            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.35);
+        }
+        #selected-hud {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            display: none;
+            background: rgba(10, 14, 23, 0.92);
+            border: 1px solid #00C8E6;
+            padding: 8px 14px;
+            border-radius: 8px;
+            z-index: 95;
+            box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3);
+            max-width: 220px;
+        }
+        #selected-hud .hud-title {
+            font-size: 11px;
+            color: #8397AD;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        #selected-hud .hud-name {
+            font-size: 15px;
+            color: #FFFFFF;
+            font-weight: 700;
+            margin: 1px 0 3px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #selected-hud .hud-val {
+            font-size: 18px;
+            color: #00E5FF;
+            font-weight: 700;
+        }
+        #loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00C8E6;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-align: center;
+            width: 80%;
+        }
+        #color-legend {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(10, 14, 23, 0.92);
+            padding: 10px 12px;
+            border: 1px solid rgba(0, 200, 230, 0.55);
+            box-shadow: 0 0 16px rgba(0, 200, 230, 0.25);
+            border-radius: 6px;
+            z-index: 90;
+            user-select: none;
+        }
+        #legend-title {
+            color: #00E5FF;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            text-transform: none !important;
+            letter-spacing: 0.5px;
+        }
+        .legend-bar-container {
+            display: flex;
+            align-items: stretch;
+            height: 180px;
+        }
+        #legend-bar {
+            width: 16px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            margin-right: 8px;
+        }
+        .legend-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            color: #FFFFFF;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        @media (max-width: 600px) {
+            #color-legend {
+                padding: 6px 8px;
+                top: 10px;
+                right: 10px;
+            }
+            .legend-bar-container {
+                height: 130px;
+            }
+            #legend-bar {
+                width: 12px;
+            }
+            #legend-title {
+                font-size: 10px;
+            }
+            .legend-labels {
+                font-size: 9px;
+            }
+            #selected-hud {
+                top: 10px;
+                left: 10px;
+                padding: 6px 10px;
+            }
+            #selected-hud .hud-name {
+                font-size: 13px;
+            }
+            #selected-hud .hud-val {
+                font-size: 15px;
+            }
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -849,21 +640,23 @@ with col_3d:
 </head>
 <body>
     <div id="canvas-container">
-        <div id="loader">3B MODEL YÜKLENİYOR...</div>
+        <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
         <div id="sensor-tooltip"></div>
+        
         <div id="selected-hud">
             <div class="hud-title">Seçilen Sensör</div>
             <div id="hud-sensor-name" class="hud-name">--</div>
-            <div id="hud-sensor-val" class="hud-val">-</div>
+            <div id="hud-sensor-val" class="hud-val">--</div>
         </div>
+
         <div id="color-legend">
             <div id="legend-title"></div>
             <div class="legend-bar-container">
                 <div id="legend-bar"></div>
                 <div class="legend-labels">
-                    <span id="lbl-max">-</span>
-                    <span id="lbl-mid">-</span>
-                    <span id="lbl-min">-</span>
+                    <span id="lbl-max">--</span>
+                    <span id="lbl-mid">--</span>
+                    <span id="lbl-min">--</span>
                 </div>
             </div>
         </div>
@@ -881,123 +674,171 @@ with col_3d:
         const lblMax = document.getElementById('lbl-max');
         const lblMid = document.getElementById('lbl-mid');
         const lblMin = document.getElementById('lbl-min');
+
         const selectedHud = document.getElementById('selected-hud');
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ
-        // =========================================================================
-        let isModelLoaded = false;
-        
-        function saveCamState() {
-            if (!isModelLoaded) return; // Не сохраняем дефолтные нули во время загрузки!
-            try {
-                window.sessionStorage.setItem('loggis_cam_v7', JSON.stringify({
-                    pos: camera.position.toArray(),
-                    tgt: controls.target.toArray()
-                }));
-            } catch(e) {}
-        }
-
-        // =========================================================================
-        // ЦВЕТОВЫЕ ШКАЛЫ
+        // МНОГОТОНОВЫЕ ВЫРАЗИТЕЛЬНЫЕ СПЕКТРЫ ДЛЯ КАЖДОЙ КАТЕГОРИИ
         // =========================================================================
 
+        // 1. Çevresel gerinim (CS): Индиго -> Синий -> Циан -> Зеленый -> Желтый -> Оранжевый -> Красный
         const hoopStops = [
-            new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
-            new THREE.Color("#00FF66"), new THREE.Color("#FFEE00"), new THREE.Color("#FF7700"), new THREE.Color("#FF0022")
-        ];
-        const axialStops = [
-            new THREE.Color("#080038"), new THREE.Color("#2A0A5E"), new THREE.Color("#630F78"),
-            new THREE.Color("#9E1B7F"), new THREE.Color("#D32B6E"), new THREE.Color("#F55447"), new THREE.Color("#FF9500") 
-        ];
-        const temperatureStops = [
-            new THREE.Color("#020024"), new THREE.Color("#0033FF"), new THREE.Color("#00D8FF"),
-            new THREE.Color("#00FF44"), new THREE.Color("#B4FF00"), new THREE.Color("#FFDD00"),
-            new THREE.Color("#FF4400"), new THREE.Color("#D50000")
+            new THREE.Color("#050833"),
+            new THREE.Color("#0044FF"),
+            new THREE.Color("#00D5FF"),
+            new THREE.Color("#00FF66"),
+            new THREE.Color("#FFEE00"),
+            new THREE.Color("#FF7700"),
+            new THREE.Color("#FF0022")
         ];
 
-        const compareStops = [
-            new THREE.Color("#0055FF"), 
-            new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), 
-            new THREE.Color("#FFDD00"), 
-            new THREE.Color("#FF0033")  
+        // 2. Boyuna gerinim (S): МНОГОСЛОЙНЫЙ ГРАДИЕНТ (ГЛУБОКИЙ ИНДИГО -> ПУРПУР -> МАЛИНОВЫЙ -> КОРАЛЛОВЫЙ -> ЯНТАРНЫЙ)
+        const axialStops = [
+            new THREE.Color("#080038"), // 0%: Глубокий ночной индиго (Минимум)
+            new THREE.Color("#2A0A5E"), // 16%: Королевский фиолетовый
+            new THREE.Color("#630F78"), // 33%: Глубокий пурпур
+            new THREE.Color("#9E1B7F"), // 50%: Насыщенная маджента
+            new THREE.Color("#D32B6E"), // 66%: Сочный малиново-рубиновый
+            new THREE.Color("#F55447"), // 83%: Горячий коралловый
+            new THREE.Color("#FF9500")  // 100%: Плотный янтарный огонь (Максимум, без белого!)
+        ];
+
+        // 3. Sıcaklık (TP): Классический термо-инфракрасный
+        const temperatureStops = [
+            new THREE.Color("#020024"),
+            new THREE.Color("#0033FF"),
+            new THREE.Color("#00D8FF"),
+            new THREE.Color("#00FF44"),
+            new THREE.Color("#B4FF00"),
+            new THREE.Color("#FFDD00"),
+            new THREE.Color("#FF4400"),
+            new THREE.Color("#D50000")
         ];
 
         let currentStops = hoopStops;
-        if (payload.isCompareMode) {
-            currentStops = compareStops;
-            legendTitle.innerText = "Δ Fark [" + payload.unit + "]";
+        if (payload.comp === "axial") {
+            currentStops = axialStops;
+            legendTitle.innerText = "Boyuna [µm/m]";
+        } else if (payload.comp === "temp") {
+            currentStops = temperatureStops;
+            legendTitle.innerText = "Sıcaklık [°C]";
         } else {
-            if (payload.comp === "axial") { currentStops = axialStops; legendTitle.innerText = "Boyuna [" + payload.unit + "]"; }
-            else if (payload.comp === "temp") { currentStops = temperatureStops; legendTitle.innerText = "Sıcaklık [" + payload.unit + "]"; }
-            else { currentStops = hoopStops; legendTitle.innerText = "Çevresel [" + payload.unit + "]"; }
+            currentStops = hoopStops;
+            legendTitle.innerText = "Çevresel [µm/m]";
         }
 
-        const labelPrefix = payload.isCompareMode ? "Fark (Δ): " : "Ölçüm: ";
-
+        // ТОЧНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ (СВЕРХУ ВНИЗ: MAX -> MIN)
         function buildExactLegendGradient(stops) {
-            const n = stops.length; const items = [];
+            const n = stops.length;
+            const items = [];
             for (let i = 0; i < n; i++) {
                 const colorObj = stops[n - 1 - i];
-                items.push('#' + colorObj.getHexString() + ' ' + ((i / (n - 1)) * 100).toFixed(1) + '%');
+                const hex = '#' + colorObj.getHexString();
+                const percent = ((i / (n - 1)) * 100).toFixed(1);
+                items.push(hex + ' ' + percent + '%');
             }
             return 'linear-gradient(to bottom, ' + items.join(', ') + ')';
         }
+
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
+        // ОБЩАЯ ВЫБОРКА ЦВЕТА
         function sampleColorRamp(stops, t) {
             t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
-            const idx = Math.floor(scaled); const fract = scaled - idx;
+            const idx = Math.floor(scaled);
+            const fract = scaled - idx;
             if (idx >= stops.length - 1) return stops[stops.length - 1].clone();
-            const c = new THREE.Color(); c.lerpColors(stops[idx], stops[idx + 1], fract);
+            
+            const c = new THREE.Color();
+            c.lerpColors(stops[idx], stops[idx + 1], fract);
             return c;
         }
 
         function getColorForValue(val, clim) {
             if (val === undefined || isNaN(val)) return new THREE.Color(0x08111e);
-            const min = clim[0], max = clim[1]; let t = (val - min) / ((max - min) || 1.0);
+            const min = clim[0], max = clim[1];
+            let t = (val - min) / ((max - min) || 1.0);
             return sampleColorRamp(currentStops, t);
         }
 
-        const finalMin = payload.clim[0]; const finalMax = payload.clim[1]; const finalMid = (finalMin + finalMax) / 2.0;
-        lblMax.innerText = (finalMax !== undefined && !isNaN(finalMax)) ? ((finalMax > 0 ? "+" : "") + finalMax.toFixed(2)) : "-";
-        lblMid.innerText = (finalMid !== undefined && !isNaN(finalMid)) ? ((finalMid > 0 ? "+" : "") + finalMid.toFixed(2)) : "-";
-        lblMin.innerText = (finalMin !== undefined && !isNaN(finalMin)) ? ((finalMin > 0 ? "+" : "") + finalMin.toFixed(2)) : "-";
+        // Синхронизация числовых меток шкалы с Python-диапазоном
+        const finalMin = payload.clim[0];
+        const finalMax = payload.clim[1];
+        const finalMid = (finalMin + finalMax) / 2.0;
 
-        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
+        lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(2);
+        lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(2);
+        lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(2);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0A0E17);
+
         const sensorScene = new THREE.Scene();
+
         const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.autoClear = false; container.appendChild(renderer.domElement);
+        renderer.autoClear = false;
+        container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true; controls.dampingFactor = 0.05;
-        controls.minDistance = 0.5; controls.maxDistance = 2500;
-        controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 0.5;
+        controls.maxDistance = 2500;
+        
+        controls.touches = {
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_PAN
+        };
 
-        // Сохранение вызывается при любом вращении пользователем
-        controls.addEventListener('change', saveCamState);
+        controls.addEventListener('change', () => {
+            const camState = {
+                pos: [camera.position.x, camera.position.y, camera.position.z],
+                target: [controls.target.x, controls.target.y, controls.target.z]
+            };
+            sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+        });
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
-        const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
-        const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0); dirLight2.position.set(-60, -40, -80); scene.add(dirLight2);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
+        scene.add(ambientLight);
 
-        const interactiveSensors = []; const tunnelMeshes = [];
-        const raycaster = new THREE.Raycaster(); raycaster.params.Line = { threshold: 1.5 }; raycaster.params.Points = { threshold: 1.5 };
+        const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6);
+        dirLight1.position.set(60, 100, 80);
+        scene.add(dirLight1);
+
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight2.position.set(-60, -40, -80);
+        scene.add(dirLight2);
+
+        const interactiveSensors = [];
+        const tunnelMeshes = [];
+        
+        const raycaster = new THREE.Raycaster();
+        raycaster.params.Line = { threshold: 1.5 };
+        raycaster.params.Points = { threshold: 1.5 };
+        
         const mouse = new THREE.Vector2();
 
-        function extractSensorId(name) { const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i); return m ? m[0] : name; }
-        function normalizeKey(str) { return String(str).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+        function extractSensorId(name) {
+            const m = name.match(/T[AB]-[A-Za-z0-9\-]+/i);
+            return m ? m[0] : name;
+        }
+
+        function normalizeKey(str) {
+            return String(str).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        }
+
         function getCanonicalSensorId(name) {
             const m = name.match(/(T[AB])-([A-Za-z]+)0*(\d+)-([A-Za-z0-9]+)/i);
-            if (m) return (m[1] + '-' + m[2] + parseInt(m[3], 10) + '-' + m[4]).toUpperCase();
+            if (m) {
+                return (m[1] + '-' + m[2] + parseInt(m[3], 10) + '-' + m[4]).toUpperCase();
+            }
             return name.toUpperCase();
         }
 
@@ -1010,101 +851,250 @@ with col_3d:
         }
 
         function checkSensorData(sensorId, comp) {
-            const uId = sensorId.toUpperCase(), nId = normalizeKey(sensorId), cId = getCanonicalSensorId(sensorId);
+            const uId = sensorId.toUpperCase();
+            const nId = normalizeKey(sensorId);
+            const cId = getCanonicalSensorId(sensorId);
+
             if (normalizedDataMap[uId]) return { found: true, key: normalizedDataMap[uId].canonicalKey, val: normalizedDataMap[uId].val };
             if (normalizedDataMap[cId]) return { found: true, key: normalizedDataMap[cId].canonicalKey, val: normalizedDataMap[cId].val };
             if (normalizedDataMap[nId]) return { found: true, key: normalizedDataMap[nId].canonicalKey, val: normalizedDataMap[nId].val };
+
             return { found: false, key: sensorId, val: NaN };
         }
 
         function createPortalMarker(text) {
-            const canvas = document.createElement('canvas'); canvas.width = 2048; canvas.height = 1024; const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(10, 14, 23, 0.95)'; ctx.strokeStyle = '#00C8E6'; ctx.lineWidth = 56;
-            ctx.strokeRect(40, 40, 1968, 944); ctx.fillRect(40, 40, 1968, 944);
-            ctx.font = '900 540px Syne, Chakra Petch, sans-serif'; ctx.fillStyle = '#00E5FF'; ctx.shadowColor = '#00C8E6'; ctx.shadowBlur = 72;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 1024, 512);
-            const texture = new THREE.CanvasTexture(canvas); const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-            const sprite = new THREE.Sprite(mat); sprite.scale.set(24.0, 12.0, 1); return sprite;
+            const canvas = document.createElement('canvas');
+            canvas.width = 2048;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
+            ctx.strokeStyle = '#00C8E6';
+            ctx.lineWidth = 56;
+            ctx.strokeRect(40, 40, 1968, 944);
+            ctx.fillRect(40, 40, 1968, 944);
+
+            ctx.font = '900 540px Syne, Chakra Petch, sans-serif';
+            ctx.fillStyle = '#00E5FF';
+            ctx.shadowColor = '#00C8E6';
+            ctx.shadowBlur = 72;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 1024, 512);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(24.0, 12.0, 1);
+            return sprite;
         }
 
         function createRulerLabel(text) {
-            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 128; const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(10, 14, 23, 0.9)'; ctx.strokeStyle = 'rgba(0, 229, 255, 0.85)'; ctx.lineWidth = 5;
-            ctx.strokeRect(6, 6, 244, 116); ctx.fillRect(6, 6, 244, 116);
-            ctx.font = '700 48px Chakra Petch, sans-serif'; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 128, 64);
-            const texture = new THREE.CanvasTexture(canvas); const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-            const sprite = new THREE.Sprite(mat); sprite.scale.set(2.4, 1.2, 1); return sprite;
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'rgba(10, 14, 23, 0.9)';
+            ctx.strokeStyle = 'rgba(0, 229, 255, 0.85)';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(6, 6, 244, 116);
+            ctx.fillRect(6, 6, 244, 116);
+
+            ctx.font = '700 48px Chakra Petch, sans-serif';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 128, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(2.4, 1.2, 1);
+            return sprite;
         }
 
-        const binaryStr = atob(modelB64); const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        const binaryStr = atob(modelB64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+        }
+
         let selectedMeshRef = null;
 
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.parse(bytes.buffer, '', function(gltf) {
-            const model = gltf.scene; scene.add(model); model.updateMatrixWorld(true); loaderText.style.display = 'none';
+            const model = gltf.scene;
+            scene.add(model);
+            model.updateMatrixWorld(true);
+            loaderText.style.display = 'none';
 
             const rawSensors = [];
-            model.traverse(function(child) {
-                if (child.isLine || child.isLineSegments) { child.visible = false; return; }
-                if (child.isMesh) {
-                    const name = child.name; const uName = name.toUpperCase();
-                    if (uName.includes("BOX001")) { child.visible = false; return; }
 
-                    const isSensorObject = (uName.startsWith("TA-") || uName.startsWith("TB-") || uName.includes("-CS") || uName.includes("-S") || uName.includes("-TP"));
+            model.traverse(function(child) {
+                if (child.isLine || child.isLineSegments) {
+                    child.visible = false;
+                    return;
+                }
+
+                if (child.isMesh) {
+                    const name = child.name;
+                    const uName = name.toUpperCase();
+
+                    if (uName.includes("BOX001")) {
+                        child.visible = false;
+                        return;
+                    }
+
+                    const isSensorObject = (
+                        uName.startsWith("TA-") || 
+                        uName.startsWith("TB-") || 
+                        uName.includes("-CS") || 
+                        uName.includes("-S") || 
+                        uName.includes("-TP")
+                    );
+
                     if (isSensorObject) {
                         rawSensors.push(child);
                     } else {
-                        const isTunnel = (uName.includes("TUNNEL") || uName.includes("TÜNEL") || uName === "TA" || uName === "TB" || uName.startsWith("TA_") || uName.startsWith("TB_"));
+                        const isTunnel = (
+                            uName.includes("TUNNEL") || 
+                            uName.includes("TÜNEL") || 
+                            uName === "TA" || 
+                            uName === "TB" || 
+                            uName.startsWith("TA_") || 
+                            uName.startsWith("TB_")
+                        );
+
                         if (isTunnel) {
                             tunnelMeshes.push(child);
                         } else {
-                            child.material = new THREE.MeshStandardMaterial({ color: 0x141E2D, roughness: 0.8 });
+                            child.material = new THREE.MeshStandardMaterial({
+                                color: 0x141E2D,
+                                roughness: 0.8
+                            });
                         }
                     }
                 }
             });
 
             const targetMeshes = [];
+
             rawSensors.forEach(child => {
                 child.visible = false;
-                const name = child.name; const uName = name.toUpperCase(); const sensorId = extractSensorId(name);
+
+                const name = child.name;
+                const uName = name.toUpperCase();
+                const sensorId = extractSensorId(name);
+
                 let isCategory = false;
-                if (payload.comp === "hoop" && uName.includes("-CS")) isCategory = true;
-                else if (payload.comp === "axial") { if (uName.includes("-CS")) isCategory = false; else if (uName.includes("-S") || checkSensorData(sensorId, "axial").found) isCategory = true; }
-                else if (payload.comp === "temp" && uName.includes("-TP")) isCategory = true;
+                if (payload.comp === "hoop") {
+                    if (uName.includes("-CS")) isCategory = true;
+                } else if (payload.comp === "axial") {
+                    if (uName.includes("-CS")) {
+                        isCategory = false;
+                    } else if (uName.includes("-S") || checkSensorData(sensorId, "axial").found) {
+                        isCategory = true;
+                    }
+                } else if (payload.comp === "temp") {
+                    if (uName.includes("-TP")) isCategory = true;
+                }
+
                 if (!isCategory) return;
+
                 const dataInfo = checkSensorData(sensorId, payload.comp);
-                const wPos = new THREE.Vector3(); child.getWorldPosition(wPos);
-                targetMeshes.push({ mesh: child, pos: wPos, sensorName: dataInfo.key, hasData: dataInfo.found, val: dataInfo.val });
+                const hasData = dataInfo.found;
+                const sensorName = dataInfo.key;
+                const val = dataInfo.val;
+
+                const wPos = new THREE.Vector3();
+                child.getWorldPosition(wPos);
+
+                targetMeshes.push({
+                    mesh: child,
+                    pos: wPos,
+                    sensorName: sensorName,
+                    hasData: hasData,
+                    val: val
+                });
             });
 
             const finalSensors = [];
             targetMeshes.forEach(item => {
                 let duplicate = null;
-                for (let f of finalSensors) { if (f.pos.distanceTo(item.pos) < 0.12 && getCanonicalSensorId(f.sensorName) === getCanonicalSensorId(item.sensorName)) { duplicate = f; break; } }
-                if (!duplicate) finalSensors.push(item);
-                else if (!duplicate.hasData && item.hasData) { duplicate.hasData = true; duplicate.val = item.val; duplicate.sensorName = item.sensorName; duplicate.mesh = item.mesh; }
+                for (let f of finalSensors) {
+                    if (f.pos.distanceTo(item.pos) < 0.12 && getCanonicalSensorId(f.sensorName) === getCanonicalSensorId(item.sensorName)) {
+                        duplicate = f;
+                        break;
+                    }
+                }
+
+                if (!duplicate) {
+                    finalSensors.push(item);
+                } else {
+                    if (!duplicate.hasData && item.hasData) {
+                        duplicate.hasData = true;
+                        duplicate.val = item.val;
+                        duplicate.sensorName = item.sensorName;
+                        duplicate.mesh = item.mesh;
+                    }
+                }
             });
 
             let alreadyHighlightedOne = false;
+
             finalSensors.forEach(item => {
-                if (item.hasData || payload.showNoDataRed) {
-                    const isCandidate = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && item.sensorName === payload.selectedSensor);
+                const hasData = item.hasData;
+                const sensorName = item.sensorName;
+                const val = item.val;
+
+                if (hasData || payload.showNoDataRed) {
+                    const isCandidate = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && sensorName === payload.selectedSensor);
                     const isSelected = isCandidate && !alreadyHighlightedOne;
-                    if (isSelected) alreadyHighlightedOne = true;
 
+                    if (isSelected) {
+                        alreadyHighlightedOne = true;
+                    }
+
+                    // САМИ СЕНСОРЫ ОСТАЮТСЯ БЕЛЫМИ (ИЛИ ЗОЛОТЫМИ ПРИ ВЫДЕЛЕНИИ)
                     let sensorColor = 0xFFFFFF;
-                    if (isSelected) sensorColor = 0xFFD700; else if (!item.hasData) sensorColor = 0xFF0033;
+                    if (isSelected) {
+                        sensorColor = 0xFFD700;
+                    } else if (!hasData) {
+                        sensorColor = 0xFF0033;
+                    }
 
-                    const sensorMat = new THREE.MeshBasicMaterial({ color: sensorColor, side: THREE.DoubleSide, transparent: false, opacity: 1.0, depthTest: true, depthWrite: true });
-                    const wQuat = new THREE.Quaternion(); const wScale = new THREE.Vector3();
-                    item.mesh.getWorldQuaternion(wQuat); item.mesh.getWorldScale(wScale);
+                    const sensorMat = new THREE.MeshBasicMaterial({
+                        color: sensorColor,
+                        side: THREE.DoubleSide,
+                        transparent: false,
+                        opacity: 1.0,
+                        depthTest: true,
+                        depthWrite: true
+                    });
+
+                    const wQuat = new THREE.Quaternion();
+                    const wScale = new THREE.Vector3();
+                    item.mesh.getWorldQuaternion(wQuat);
+                    item.mesh.getWorldScale(wScale);
+
                     const detachedMesh = new THREE.Mesh(item.mesh.geometry.clone(), sensorMat);
-                    detachedMesh.position.copy(item.pos); detachedMesh.quaternion.copy(wQuat); detachedMesh.scale.copy(wScale);
-                    detachedMesh.userData.sensorName = item.sensorName; detachedMesh.userData.val = item.hasData ? item.val : NaN; detachedMesh.userData.isUsable = item.hasData; detachedMesh.userData.isNoData = !item.hasData;
-                    sensorScene.add(detachedMesh); interactiveSensors.push(detachedMesh);
-                    if (isSelected) { selectedMeshRef = detachedMesh; updateHud(item.sensorName, item.val, item.hasData); }
+                    detachedMesh.position.copy(item.pos);
+                    detachedMesh.quaternion.copy(wQuat);
+                    detachedMesh.scale.copy(wScale);
+
+                    detachedMesh.userData.sensorName = sensorName;
+                    detachedMesh.userData.val = hasData ? val : NaN;
+                    detachedMesh.userData.isUsable = hasData;
+                    detachedMesh.userData.isNoData = !hasData;
+
+                    sensorScene.add(detachedMesh);
+                    interactiveSensors.push(detachedMesh);
+
+                    if (isSelected) {
+                        selectedMeshRef = detachedMesh;
+                        updateHud(sensorName, val, hasData);
+                    }
                 }
             });
 
@@ -1113,269 +1103,374 @@ with col_3d:
                 if (sMesh.userData.isUsable && !sMesh.userData.isNoData) {
                     const uName = sMesh.userData.sensorName.toUpperCase();
                     const tun = uName.startsWith("TB") ? "TB" : (uName.startsWith("TA") ? "TA" : "ALL");
-                    interpolationSensors.push({ pos: sMesh.position.clone(), val: sMesh.userData.val, tun: tun, name: sMesh.userData.sensorName });
+
+                    interpolationSensors.push({
+                        pos: sMesh.position.clone(),
+                        val: sMesh.userData.val,
+                        tun: tun,
+                        name: sMesh.userData.sensorName
+                    });
                 }
             });
 
+            // =========================================================================
+            // РАСШИРЕННАЯ ИНТЕРПОЛЯЦИЯ С ПОЛНЫМ НАЛОЖЕНИЕМ ДИАПАЗОНОВ (R = 60.0m)
+            // =========================================================================
             const R_SENSOR = 60.0; 
+
             tunnelMeshes.forEach(tMesh => {
-                const geom = tMesh.geometry; if (!geom || !geom.attributes || !geom.attributes.position) return;
-                const posAttr = geom.attributes.position; const colors = new Float32Array(posAttr.count * 3);
-                const localV = new THREE.Vector3(); const worldV = new THREE.Vector3();
-                const uName = tMesh.name.toUpperCase(); const isTB = uName.includes("TB"); const activeTun = isTB ? "TB" : "TA";
+                const geom = tMesh.geometry;
+                if (!geom || !geom.attributes || !geom.attributes.position) return;
+
+                const posAttr = geom.attributes.position;
+                const colors = new Float32Array(posAttr.count * 3);
+                const localV = new THREE.Vector3();
+                const worldV = new THREE.Vector3();
+
+                const uName = tMesh.name.toUpperCase();
+                const isTB = uName.includes("TB");
+                const activeTun = isTB ? "TB" : "TA";
+                
                 let pool = interpolationSensors.filter(s => s.tun === activeTun || s.tun === "ALL");
                 if (pool.length === 0) pool = interpolationSensors;
 
                 tMesh.updateMatrixWorld(true);
 
                 if (pool.length === 0) {
-                    for (let i = 0; i < posAttr.count; i++) { const idx = i * 3; colors[idx] = 0.08; colors[idx + 1] = 0.11; colors[idx + 2] = 0.16; }
+                    for (let i = 0; i < posAttr.count; i++) {
+                        const idx = i * 3;
+                        colors[idx] = 0.08; colors[idx + 1] = 0.11; colors[idx + 2] = 0.16;
+                    }
                 } else {
                     for (let i = 0; i < posAttr.count; i++) {
                         localV.fromBufferAttribute(posAttr, i);
                         worldV.copy(localV).applyMatrix4(tMesh.matrixWorld);
-                        let totalWeight = 0; let accumulatedVal = 0;
+
+                        let totalWeight = 0;
+                        let accumulatedVal = 0;
+
                         for (let j = 0; j < pool.length; j++) {
-                            const s = pool[j]; const d = worldV.distanceTo(s.pos);
+                            const s = pool[j];
+                            const d = worldV.distanceTo(s.pos);
+                            
                             if (d < R_SENSOR) {
                                 const normD = d / R_SENSOR;
                                 const w = Math.pow(1.0 - normD, 1.3) / (Math.pow(d, 0.85) + 0.1);
-                                accumulatedVal += s.val * w; totalWeight += w;
+                                accumulatedVal += s.val * w;
+                                totalWeight += w;
                             }
                         }
+
                         const idx = i * 3;
                         if (totalWeight > 0.00001) {
-                            const interpolatedVal = accumulatedVal / totalWeight; const c = getColorForValue(interpolatedVal, payload.clim);
-                            colors[idx] = c.r; colors[idx + 1] = c.g; colors[idx + 2] = c.b;
-                        } else { colors[idx] = 0.08; colors[idx + 1] = 0.11; colors[idx + 2] = 0.16; }
+                            const interpolatedVal = accumulatedVal / totalWeight;
+                            const c = getColorForValue(interpolatedVal, payload.clim);
+                            colors[idx] = c.r;
+                            colors[idx + 1] = c.g;
+                            colors[idx + 2] = c.b;
+                        } else {
+                            colors[idx] = 0.08;
+                            colors[idx + 1] = 0.11;
+                            colors[idx + 2] = 0.16;
+                        }
                     }
                 }
-                geom.setAttribute('color', new THREE.BufferAttribute(colors, 3)); geom.attributes.color.needsUpdate = true;
+
+                geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geom.attributes.color.needsUpdate = true;
+
                 const isTransparent = payload.tunnelOpacity < 0.98;
+
                 if (isTransparent) {
-                    const depthMaskMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, side: THREE.FrontSide });
-                    const depthMaskMesh = new THREE.Mesh(geom, depthMaskMat); depthMaskMesh.renderOrder = 0; tMesh.add(depthMaskMesh);
+                    const depthMaskMat = new THREE.MeshBasicMaterial({
+                        colorWrite: false,
+                        depthWrite: true,
+                        side: THREE.FrontSide
+                    });
+                    const depthMaskMesh = new THREE.Mesh(geom, depthMaskMat);
+                    depthMaskMesh.renderOrder = 0;
+                    tMesh.add(depthMaskMesh);
                 }
-                tMesh.material = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, transparent: isTransparent, opacity: payload.tunnelOpacity, roughness: 0.20, metalness: 0.02, depthWrite: !isTransparent, side: THREE.FrontSide });
-                tMesh.renderOrder = 1; tMesh.material.needsUpdate = true;
+
+                const visualMat = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    vertexColors: true,
+                    transparent: isTransparent,
+                    opacity: payload.tunnelOpacity,
+                    roughness: 0.20,
+                    metalness: 0.02,
+                    depthWrite: !isTransparent,
+                    side: THREE.FrontSide
+                });
+
+                tMesh.material = visualMat;
+                tMesh.renderOrder = 1;
+                tMesh.material.needsUpdate = true;
             });
 
-            const boxTA = new THREE.Box3(); const boxTB = new THREE.Box3(); let hasTA = false, hasTB = false;
+            const boxTA = new THREE.Box3();
+            const boxTB = new THREE.Box3();
+            let hasTA = false, hasTB = false;
+
             tunnelMeshes.forEach(tm => {
                 const u = tm.name.toUpperCase();
-                if (u.includes("TB")) { boxTB.expandByObject(tm); hasTB = true; } else if (u.includes("TA")) { boxTA.expandByObject(tm); hasTA = true; }
+                if (u.includes("TB")) {
+                    boxTB.expandByObject(tm);
+                    hasTB = true;
+                } else if (u.includes("TA")) {
+                    boxTA.expandByObject(tm);
+                    hasTA = true;
+                }
             });
 
             const portalsGroup = new THREE.Group();
-            if (hasTA) { const cA = boxTA.getCenter(new THREE.Vector3()); const sTA = createPortalMarker("TA"); sTA.position.set(cA.x, boxTA.max.y + 17.0, boxTA.min.z - 8.0); portalsGroup.add(sTA); }
-            if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 17.0, boxTB.min.z - 8.0); portalsGroup.add(sTB); }
+
+            if (hasTA) {
+                const cA = boxTA.getCenter(new THREE.Vector3());
+                const spriteTA = createPortalMarker("TA");
+                spriteTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0);
+                portalsGroup.add(spriteTA);
+            }
+
+            if (hasTB) {
+                const cB = boxTB.getCenter(new THREE.Vector3());
+                const spriteTB = createPortalMarker("TB");
+                spriteTB.position.set(cB.x, boxTB.max.y + 8.5, boxTB.min.z - 4.0);
+                portalsGroup.add(spriteTB);
+            }
+
             scene.add(portalsGroup);
 
-            // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
-            // =========================================================
             if (payload.showMeters) {
-                const overallBox = new THREE.Box3(); 
+                const overallBox = new THREE.Box3();
                 tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
-                
+
                 if (!overallBox.isEmpty()) {
-                    const size = overallBox.getSize(new THREE.Vector3()); 
+                    const size = overallBox.getSize(new THREE.Vector3());
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
-
-                    const isZAxis = size.z >= size.x; 
-                    const length3D = isZAxis ? size.z : size.x; 
-                    const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x; 
+                    const isZAxis = size.z >= size.x;
+                    const lengthM = isZAxis ? size.z : size.x;
+                    const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x;
                     const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
-                    
-                    const stepReal = 10.0; 
-                    const step3D = stepReal * scale; 
-                    const stepsCount = Math.floor(length3D / step3D); 
 
-                    const yRuler = overallBox.min.y - 0.2; 
-                    
-                    const lateralPos1 = isZAxis ? (overallBox.max.x + (3.5 * scale)) : (overallBox.max.z + (3.5 * scale));
-                    const lateralPos2 = isZAxis ? (overallBox.min.x - (3.5 * scale)) : (overallBox.min.z - (3.5 * scale));
+                    const step = 10.0;
+                    const stepsCount = Math.floor(lengthM / step);
+                    const totalDistanceM = stepsCount * step;
 
-                    const linePoints1 = [];
-                    const linePoints2 = [];
+                    const yRuler = overallBox.min.y - 0.2;
+                    const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
+
+                    const linePoints = [];
                     if (isZAxis) {
-                        linePoints1.push(new THREE.Vector3(lateralPos1, yRuler, startCoord));
-                        linePoints1.push(new THREE.Vector3(lateralPos1, yRuler, endCoord));
-                        linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, startCoord));
-                        linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, endCoord));
+                        linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord));
+                        linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord));
                     } else {
-                        linePoints1.push(new THREE.Vector3(startCoord, yRuler, lateralPos1));
-                        linePoints1.push(new THREE.Vector3(endCoord, yRuler, lateralPos1));
-                        linePoints2.push(new THREE.Vector3(startCoord, yRuler, lateralPos2));
-                        linePoints2.push(new THREE.Vector3(endCoord, yRuler, lateralPos2));
+                        linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos));
+                        linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos));
                     }
 
+                    const axisGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
                     const axisMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 });
-                    rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints1), axisMat));
-                    rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints2), axisMat));
-
-                    const tickSize = 0.8 * scale;
+                    rulerGroup.add(new THREE.Line(axisGeom, axisMat));
 
                     for (let i = 0; i <= stepsCount; i++) {
-                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
-                        const currentPos3D = endCoord - (i * step3D); 
-                        const distanceText = (i * stepReal).toFixed(0) + " m"; 
+                        const currentPos = startCoord + i * step;
+                        const reversedDistance = (totalDistanceM - (i * step)).toFixed(0);
+                        const distanceText = reversedDistance + " m";
 
-                        const tickPoints1 = [];
+                        const tickPoints = [];
                         if (isZAxis) {
-                            tickPoints1.push(new THREE.Vector3(lateralPos1 - tickSize, yRuler, currentPos3D));
-                            tickPoints1.push(new THREE.Vector3(lateralPos1 + tickSize, yRuler, currentPos3D));
+                            tickPoints.push(new THREE.Vector3(lateralPos - 0.8, yRuler, currentPos));
+                            tickPoints.push(new THREE.Vector3(lateralPos + 0.8, yRuler, currentPos));
                         } else {
-                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 - tickSize));
-                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 + tickSize));
+                            tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos - 0.8));
+                            tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos + 0.8));
                         }
-                        rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints1), axisMat));
-                        
-                        const label1 = createRulerLabel(distanceText);
-                        label1.scale.set(2.4 * scale, 1.2 * scale, 1);
-                        if (isZAxis) label1.position.set(lateralPos1 + (2.4 * scale), yRuler + 0.4, currentPos3D); 
-                        else label1.position.set(currentPos3D, yRuler + 0.4, lateralPos1 + (2.4 * scale));
-                        rulerGroup.add(label1);
 
-                        const tickPoints2 = [];
+                        const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
+                        rulerGroup.add(new THREE.Line(tickGeom, axisMat));
+
+                        const label = createRulerLabel(distanceText);
                         if (isZAxis) {
-                            tickPoints2.push(new THREE.Vector3(lateralPos2 - tickSize, yRuler, currentPos3D));
-                            tickPoints2.push(new THREE.Vector3(lateralPos2 + tickSize, yRuler, currentPos3D));
+                            label.position.set(lateralPos + 2.4, yRuler + 0.4, currentPos);
                         } else {
-                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 - tickSize));
-                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 + tickSize));
+                            label.position.set(currentPos, yRuler + 0.4, lateralPos + 2.4);
                         }
-                        rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints2), axisMat));
-                        
-                        const label2 = createRulerLabel(distanceText);
-                        label2.scale.set(2.4 * scale, 1.2 * scale, 1);
-                        if (isZAxis) label2.position.set(lateralPos2 - (2.4 * scale), yRuler + 0.4, currentPos3D); 
-                        else label2.position.set(currentPos3D, yRuler + 0.4, lateralPos2 - (2.4 * scale));
-                        rulerGroup.add(label2);
+                        rulerGroup.add(label);
                     }
+
                     scene.add(rulerGroup);
                 }
             }
 
-            // ====================================================================
-            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ ИЗ [SOURCE: 6])
-            // ====================================================================
-            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
+            const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
-                
-                // Перелет к датчику. isModelLoaded станет true внутри flyCameraTo
-                isModelLoaded = true;
+                sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
                 flyCameraTo(selectedMeshRef, true);
             } else {
-                if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
-                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
-                }
-
-                let cameraRestored = false;
-                try {
-                    const savedStr = window.sessionStorage.getItem('loggis_cam_v7');
-                    if (savedStr) {
-                        const st = JSON.parse(savedStr);
-                        if (st && st.pos && st.tgt && !isNaN(st.pos[0]) && !isNaN(st.tgt[0])) {
-                            camera.position.fromArray(st.pos);
-                            controls.target.fromArray(st.tgt);
-                            controls.update();
-                            cameraRestored = true;
-                        }
-                    }
-                } catch(e) {}
-                
-                if (!cameraRestored) {
-                    // ЭТО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ КОДА [SOURCE: 6]
-                    const tunnelBox = new THREE.Box3(); 
-                    if (tunnelMeshes.length > 0) {
-                        tunnelMeshes.forEach(tm => {
-                            if(tm.geometry) tm.geometry.computeBoundingBox();
-                            tunnelBox.expandByObject(tm);
-                        });
-                    } else { 
-                        model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
-                        tunnelBox.setFromObject(model); 
-                    }
-                    
-                    if (!tunnelBox.isEmpty()) {
-                        const center = tunnelBox.getCenter(new THREE.Vector3()); 
-                        const size = tunnelBox.getSize(new THREE.Vector3()); 
-                        const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                        controls.target.copy(center); 
-                        
-                        const fov = camera.fov * (Math.PI / 180);
-                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
-                        
-                        camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
+                const savedStateStr = sessionStorage.getItem('threejs_camera_state');
+                if (savedStateStr) {
+                    try {
+                        const st = JSON.parse(savedStateStr);
+                        camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
+                        controls.target.set(st.target[0], st.target[1], st.target[2]);
                         controls.update();
+                    } catch(e) {}
+                } else {
+                    const tunnelBox = new THREE.Box3();
+                    if (tunnelMeshes.length > 0) {
+                        tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
+                    } else {
+                        tunnelBox.setFromObject(model);
                     }
+
+                    const center = tunnelBox.getCenter(new THREE.Vector3());
+                    const size = tunnelBox.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+
+                    controls.target.copy(center);
+                    camera.position.set(
+                        center.x - maxDim * 0.40,
+                        center.y + maxDim * 0.45,
+                        center.z + maxDim * 0.55
+                    );
+                    controls.update();
                 }
-                
-                // РАЗРЕШАЕМ СОХРАНЯТЬ КАМЕРУ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ЗАГРУЗКИ МОДЕЛИ
-                isModelLoaded = true;
-                saveCamState();
             }
 
-        }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
+        }, undefined, function(err) {
+            loaderText.innerHTML = "Model yüklenirken hata oluştu!";
+            console.error(err);
+        });
 
         function updateHud(name, val, isUsable) {
-            selectedHud.style.display = 'block'; hudName.innerText = name;
-            if (isUsable && val !== undefined && !isNaN(val)) { const valTxt = (val > 0 ? "+" + val.toFixed(2) : val.toFixed(2)) + " " + payload.unit; hudVal.innerText = valTxt; hudVal.style.color = "#00E5FF"; }
-            else { hudVal.innerText = "-"; hudVal.style.color = "#FF0033"; }
+            selectedHud.style.display = 'block';
+            hudName.innerText = name;
+            if (isUsable && val !== undefined && !isNaN(val)) {
+                const valTxt = (val > 0 ? "+" + val.toFixed(2) : val.toFixed(2)) + " " + payload.unit;
+                hudVal.innerText = valTxt;
+                hudVal.style.color = "#00E5FF";
+            } else {
+                hudVal.innerText = "Veri Yok / Belirsiz";
+                hudVal.style.color = "#FF0033";
+            }
         }
 
         function flyCameraTo(targetMesh, animate = true) {
             const targetPos = targetMesh.position.clone();
+
             const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
             if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
+
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
-            if (!animate) { 
-                camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
-                saveCamState();
-                return; 
+
+            if (!animate) {
+                camera.position.copy(endCamPos);
+                controls.target.copy(targetPos);
+                controls.update();
+                return;
             }
-            new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
-            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-            .onComplete(saveCamState).start();
+
+            new TWEEN.Tween(controls.target)
+                .to(targetPos, 1400)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .start();
+
+            new TWEEN.Tween(camera.position)
+                .to(endCamPos, 1400)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .onUpdate(() => controls.update())
+                .onComplete(() => {
+                    const camState = {
+                        pos: [camera.position.x, camera.position.y, camera.position.z],
+                        target: [controls.target.x, controls.target.y, controls.target.z]
+                    };
+                    sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+                })
+                .start();
         }
 
         function getIntersectedSensor(e) {
             const rect = renderer.domElement.getBoundingClientRect();
             const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : (e.changedTouches ? e.changedTouches[0].clientX : 0));
             const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches ? e.changedTouches[0].clientY : 0));
-            mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1; mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera); const intersects = raycaster.intersectObjects(interactiveSensors, true);
-            if (intersects.length > 0) { let obj = intersects[0].object; while (obj && !obj.userData.sensorName && obj.parent) { obj = obj.parent; } return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null; }
+
+            mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(interactiveSensors, true);
+
+            if (intersects.length > 0) {
+                let obj = intersects[0].object;
+                while (obj && !obj.userData.sensorName && obj.parent) {
+                    obj = obj.parent;
+                }
+                return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null;
+            }
             return null;
         }
 
         function handleSensorSelection(sensorMesh) {
             if (!sensorMesh) return;
-            const sensorName = sensorMesh.userData.sensorName; const sensorVal = sensorMesh.userData.val; const isUsable = sensorMesh.userData.isUsable;
-            interactiveSensors.forEach(m => { if (m === sensorMesh) m.material.color.setHex(0xFFD700); else if (m.userData.isUsable) m.material.color.setHex(0xFFFFFF); else m.material.color.setHex(0xFF0033); });
-            flyCameraTo(sensorMesh, true); updateHud(sensorName, sensorVal, isUsable);
+            const sensorName = sensorMesh.userData.sensorName;
+            const sensorVal = sensorMesh.userData.val;
+            const isUsable = sensorMesh.userData.isUsable;
+            
+            interactiveSensors.forEach(m => {
+                if (m === sensorMesh) {
+                    m.material.color.setHex(0xFFD700);
+                } else if (m.userData.isUsable) {
+                    m.material.color.setHex(0xFFFFFF);
+                } else {
+                    m.material.color.setHex(0xFF0033);
+                }
+            });
+
+            flyCameraTo(sensorMesh, true);
+            updateHud(sensorName, sensorVal, isUsable);
         }
 
-        window.addEventListener('click', function(e) { const sensorMesh = getIntersectedSensor(e); if (sensorMesh) handleSensorSelection(sensorMesh); });
-        let touchStartTime = 0; window.addEventListener('touchstart', function() { touchStartTime = Date.now(); }, { passive: true });
-        window.addEventListener('touchend', function(e) { if (Date.now() - touchStartTime < 250) { const sensorMesh = getIntersectedSensor(e); if (sensorMesh) handleSensorSelection(sensorMesh); } });
+        window.addEventListener('click', function(e) {
+            const sensorMesh = getIntersectedSensor(e);
+            if (sensorMesh) handleSensorSelection(sensorMesh);
+        });
+
+        let touchStartTime = 0;
+        window.addEventListener('touchstart', function() {
+            touchStartTime = Date.now();
+        }, { passive: true });
+
+        window.addEventListener('touchend', function(e) {
+            if (Date.now() - touchStartTime < 250) {
+                const sensorMesh = getIntersectedSensor(e);
+                if (sensorMesh) {
+                    handleSensorSelection(sensorMesh);
+                }
+            }
+        });
+
         window.addEventListener('mousemove', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) {
-                const name = sensorMesh.userData.sensorName; const val = sensorMesh.userData.val; const isUsable = sensorMesh.userData.isUsable; const isNoData = sensorMesh.userData.isNoData;
-                tooltip.style.display = 'block'; tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY + 14) + 'px';
+                const name = sensorMesh.userData.sensorName;
+                const val = sensorMesh.userData.val;
+                const isUsable = sensorMesh.userData.isUsable;
+                const isNoData = sensorMesh.userData.isNoData;
+
+                tooltip.style.display = 'block';
+                tooltip.style.left = (e.clientX + 14) + 'px';
+                tooltip.style.top = (e.clientY + 14) + 'px';
+                
                 if (isUsable) {
                     const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">' + labelPrefix + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: -</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 }
             } else {
@@ -1383,38 +1478,28 @@ with col_3d:
                 renderer.domElement.style.cursor = 'default';
             }
         });
-        window.addEventListener('resize', function() { camera.aspect = container.clientWidth / container.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(container.clientWidth, container.clientHeight); });
-        (function animate(time) { requestAnimationFrame(animate); TWEEN.update(time); controls.update(); renderer.clear(); renderer.render(scene, camera); renderer.clearDepth(); renderer.render(sensorScene, camera); })();
+
+        window.addEventListener('resize', function() {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+            controls.update();
+
+            renderer.clear();
+            renderer.render(scene, camera);
+
+            renderer.clearDepth();
+            renderer.render(sensorScene, camera);
+        }
+        requestAnimationFrame(animate);
     </script>
 </body>
 </html>"""
 
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
         st.components.v1.html(final_html, height=600, scrolling=False)
-
-# ---------------------------------------------------------
-# АНАЛИТИЧЕСКАЯ ТАБЛИЦА (FARK RAPORU)
-# ---------------------------------------------------------
-if compare_mode and table_data:
-    st.markdown("---")
-    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
-    
-    # Создаем DataFrame из собранных данных
-    df = pd.DataFrame(table_data)
-    
-    # Сортируем по номеру сенсора для красоты
-    df = df.sort_values(by="Sensör No").reset_index(drop=True)
-    
-    # Используем возможности Streamlit для стилизации DataFrame
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        height=400,
-        column_config={
-            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
-            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
-            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
-            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
-        }
-    )
