@@ -258,9 +258,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 CATEGORIES = {
-    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"name": "Orthoradial Strains", "names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"name": "Longitudinal Strains", "names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"name": "Temperature", "names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
@@ -274,7 +274,7 @@ def ensure_playwright_installed():
     except Exception: pass
 
 # ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ТОЧНЫЙ МЕТОД ИЗ GİTHUB_3DMAX.txt)[cite: 7]
+# 1. ЖИВЫЕ ДАННЫЕ (ТОЧНО ПО ТВОЕМУ ПЕРВОМУ КОДУ)
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_data_from_web():
@@ -302,24 +302,28 @@ def fetch_live_data_from_web():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            try: page.get_by_text("Types").click(timeout=8000)
+            # Точные шаги из твоего первого сниппета живых данных
+            try: page.get_by_role("combobox").first.select_option("MONTH_02")
             except: pass
             page.wait_for_timeout(1000)
 
-            try: page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE")
             except: pass
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(1000)
 
-            try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+            try: page.get_by_text("Types").click()
             except: pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
-                except:
-                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                try:
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
+                except Exception:
+                    try:
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=3000)
                     except:
-                        try: page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
+                        try:
+                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=3000)
                         except: pass
 
                 page.wait_for_timeout(3000)
@@ -327,7 +331,7 @@ def fetch_live_data_from_web():
                 val_map = {}
                 latest_date_str = ""
 
-                for _ in range(15):
+                for _ in range(12):
                     try:
                         extracted = page.evaluate("""() => {
                             try {
@@ -369,9 +373,17 @@ def fetch_live_data_from_web():
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
+                            target_tag = cat_cfg["tag"]
 
                             for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                match_cond = False
+                                if target_tag == '-CS' and '-CS' in h: match_cond = True
+                                elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
+                                elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+
+                                if match_cond or target_tag in h:
+                                    if target_tag == "-S" and "-CS" in h: continue
+                                    if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
                                     m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                     s_name = m.group(1) if m else h.split()[0].strip()
                                     v = clean_num(v_str)
@@ -381,19 +393,19 @@ def fetch_live_data_from_web():
                             if len(val_map) > 0:
                                 break
                     except: pass
-                    page.wait_for_timeout(600)
+                    page.wait_for_timeout(500)
 
                 all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
         except Exception as e:
-            st.warning(f"LoggIS canlı veri uyarısı: {e}")
+            st.warning(f"LoggIS canlı veri hatası: {e}")
         finally:
             browser.close()
 
     return all_results
 
 # ---------------------------------------------------------
-# 2. АРХИВНЫЕ ДАННЫЕ (ЧЕРЕЗ CSV)
+# 2. АРХИВНЫЕ ДАННЫЕ (ТОЧНО ПО ТВОЕМУ ВТОРОМУ КОДУ С CSV)
 # ---------------------------------------------------------
 @st.cache_data(ttl=900)
 def fetch_csv_archive_database(mode_type="ALL"):
@@ -413,7 +425,7 @@ def fetch_csv_archive_database(mode_type="ALL"):
         context = browser.new_context(
             accept_downloads=True, viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
 
@@ -421,45 +433,35 @@ def fetch_csv_archive_database(mode_type="ALL"):
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
-            
-            page.get_by_role("combobox").first.select_option(mode_type)
+            # Точные шаги из твоего второго сниппета CSV
+            try: page.get_by_role("combobox").first.select_option(mode_type)
+            except: pass
             page.wait_for_timeout(2000)
+
+            try: page.get_by_text("Types").click()
+            except: pass
+            page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
                 target_tag = cat_cfg["tag"]
                 
-                success = False
-                for c_name in [cat_cfg["name"]]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    try:
-                        page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=2000)
-                        success = True
+                try:
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=3000)
+                except:
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=2000)
                     except: pass
                 
-                page.wait_for_timeout(4000)
+                page.wait_for_timeout(3000)
 
                 csv_path = None
-                csv_btn = page.locator("text=CSV").first
-                try: csv_btn.wait_for(state="visible", timeout=15000)
-                except: pass
-
                 try:
-                    csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1500)
-                    with page.expect_download(timeout=30000) as d_info:
+                    with page.expect_download(timeout=30000) as download_info:
+                        with page.expect_popup(timeout=8000) as page1_info:
+                            page.get_by_text("🠋CSV").click(force=True)
                         try:
-                            with page.expect_popup(timeout=8000) as p_info:
-                                csv_btn.click(force=True)
-                            p_info.value.close()
-                        except:
-                            csv_btn.click(force=True)
-                    csv_path = d_info.value.path()
+                            page1_info.value.close()
+                        except: pass
+                    csv_path = download_info.value.path()
                 except Exception as e:
                     pass
 
@@ -574,7 +576,7 @@ with col_nav:
                             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
                             latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
     else:
-        with st.spinner("En güncel canlı verيلات alınıyor..."):
+        with st.spinner("En güncel canlı veriler alınıyor..."):
             live_data = fetch_live_data_from_web()
             cur_layer = live_data.get(selected_comp, {"values": {}, "date": ""})
             target_timestamp = cur_layer["date"] if cur_layer["date"] else "Canlı"
@@ -784,7 +786,7 @@ with col_3d:
         function saveCamState() {
             if (!userInteracted) return;
             try {
-                window.sessionStorage.setItem('loggis_cam_v11', JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v12', JSON.stringify({
                     pos: camera.position.toArray(),
                     tgt: controls.target.toArray()
                 }));
