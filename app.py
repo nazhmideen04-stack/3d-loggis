@@ -368,19 +368,19 @@ with col_nav:
                         date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
 
             years = sorted(list(date_hierarchy.keys()), reverse=True)
-            sel_year = st.selectbox("📅 Yıl Seç (Год):", options=years)
+            sel_year = st.selectbox("Yıl Seçiniz:", options=years)
 
             if sel_year:
                 months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
-                sel_month = st.selectbox("📅 Ay Seç (Месяц):", options=months)
+                sel_month = st.selectbox("Ay Seçiniz:", options=months)
 
                 if sel_month:
                     days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
-                    sel_day = st.selectbox("📅 Gün Seç (День):", options=days)
+                    sel_day = st.selectbox("Gün Seçiniz:", options=days)
 
                     if sel_day:
                         times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("⏱️ Saat Seç (Время):", options=times)
+                        sel_time = st.selectbox("Saat Seçiniz:", options=times)
 
                         if sel_time:
                             target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
