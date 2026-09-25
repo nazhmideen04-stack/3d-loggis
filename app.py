@@ -6,6 +6,7 @@ import base64
 import subprocess
 from datetime import datetime
 import numpy as np
+import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
@@ -166,6 +167,22 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
+    /* Стили для таблицы */
+    [data-testid="stDataFrame"] {
+        background-color: #0E182A !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+        border: 1px solid rgba(0, 200, 230, 0.3) !important;
+    }
+    
+    [data-testid="stDataFrame"] table th {
+        color: #00C8E6 !important;
+        font-family: 'Syne', sans-serif !important;
+        font-weight: 700 !important;
+        letter-spacing: 1px !important;
+        background-color: #0A0E17 !important;
+    }
+
     /* МОБИЛЬНАЯ АДАПТАЦИЯ - УЛУЧШЕННАЯ */
     @media (max-width: 820px) {
         /* Пространство по краям для удобного скролла (чтобы пальцем не задевать 3D) */
@@ -235,7 +252,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -411,9 +428,9 @@ with col_nav:
         if not all_dates:
             st.warning("Arşiv verisi bulunamadı.")
         else:
-            latest_timestamp = all_dates[0]
+            latest_timestamp = all_dates[0]  # Самая последняя дата для сравнения
             
-            compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
+            compare_mode = st.checkbox("⚖️ En Güncel Veri ile Karşılaştır (Fark Raporu)")
 
             date_hierarchy = {}
             for d_str in all_dates:
@@ -459,6 +476,8 @@ with col_nav:
 # ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
 # ---------------------------------------------------------
 active_category_values = {}
+table_data = [] # Данные для таблицы разницы
+
 if raw_v_map:
     for s_name, val in raw_v_map.items():
         if val is None or np.isnan(val): continue
@@ -472,9 +491,24 @@ if raw_v_map:
         if is_valid_sensor:
             if compare_mode:
                 latest_val = latest_v_map.get(s_name)
+                
+                # Подготовка данных для таблицы
+                str_val = f"{float(val):.2f}"
+                str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
+                
                 if latest_val is not None and not np.isnan(latest_val):
                     delta = float(latest_val) - float(val)
                     active_category_values[s_name] = delta
+                    str_delta = f"{delta:+.2f}"
+                else:
+                    str_delta = "-"
+                    
+                table_data.append({
+                    "Sensör No": s_name,
+                    "Arşiv Değeri": str_val,
+                    "Güncel Değer": str_latest,
+                    "Fark (Δ)": str_delta
+                })
             else:
                 active_category_values[s_name] = float(val)
 
@@ -1042,3 +1076,30 @@ with col_3d:
 
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
         st.components.v1.html(final_html, height=600, scrolling=False)
+
+# ---------------------------------------------------------
+# АНАЛИТИЧЕСКАЯ ТАБЛИЦА (FARK RAPORU)
+# ---------------------------------------------------------
+if compare_mode and table_data:
+    st.markdown("---")
+    st.markdown(f"### 📊 Detaylı Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
+    
+    # Создаем DataFrame из собранных данных
+    df = pd.DataFrame(table_data)
+    
+    # Сортируем по номеру сенсора для красоты
+    df = df.sort_values(by="Sensör No").reset_index(drop=True)
+    
+    # Используем возможности Streamlit для стилизации DataFrame
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        height=400,
+        column_config={
+            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
+            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
+            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
+            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
+        }
+    )
