@@ -4,7 +4,6 @@ import sys
 import json
 import base64
 import subprocess
-import uuid
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -26,10 +25,6 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
         f.write(target_config)
 
 st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
-
-# Генерация уникального ID сессии для правильного сохранения камеры
-if "app_session_id" not in st.session_state:
-    st.session_state["app_session_id"] = str(uuid.uuid4())
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -84,6 +79,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -119,6 +115,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -170,6 +167,7 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
+    /* Стили для таблицы */
     [data-testid="stDataFrame"] {
         background-color: #0E182A !important;
         border-radius: 8px !important;
@@ -185,6 +183,7 @@ st.markdown("""
         background-color: #0A0E17 !important;
     }
 
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ - УЛУЧШЕННАЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 2rem !important;
@@ -593,8 +592,7 @@ with col_3d:
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red,
-            "isCompareMode": compare_mode,
-            "sessionId": st.session_state["app_session_id"]
+            "isCompareMode": compare_mode
         }
         json_payload = json.dumps(payload_data)
 
@@ -664,19 +662,18 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (LocalStorage)
         // =========================================================================
-        function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
-        function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
+        const STORAGE_KEY = 'loggis_cam_state_v4';
+        const SENSOR_KEY = 'loggis_sensor_state_v4';
 
-        const currentSessionId = payload.sessionId;
-        const savedSessionId = safeGetItem('threejs_session_id');
-
-        // Сбрасываем позицию камеры ТОЛЬКО если это абсолютно новая сессия (F5 или новая вкладка)
-        if (savedSessionId !== currentSessionId) {
-            safeSetItem('threejs_session_id', currentSessionId);
-            safeSetItem('threejs_camera_state', '');
-            safeSetItem('threejs_last_selected', '');
+        function saveCam() {
+            try {
+                window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    pos: camera.position.toArray(),
+                    tgt: controls.target.toArray()
+                }));
+            } catch(e) {}
         }
 
         // =========================================================================
@@ -748,10 +745,9 @@ with col_3d:
         lblMid.innerText = (finalMid !== undefined && !isNaN(finalMid)) ? ((finalMid > 0 ? "+" : "") + finalMid.toFixed(2)) : "-";
         lblMin.innerText = (finalMin !== undefined && !isNaN(finalMin)) ? ((finalMin > 0 ? "+" : "") + finalMin.toFixed(2)) : "-";
 
-        // РАСШИРЕННЫЕ ЛИМИТЫ КАМЕРЫ ДО 50000 ДЛЯ УВЕЛИЧЕННЫХ ОБЪЕКТОВ
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
         const sensorScene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 50000);
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
@@ -760,17 +756,11 @@ with col_3d:
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true; controls.dampingFactor = 0.05;
-        controls.minDistance = 0.5; controls.maxDistance = 50000;
+        controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Сохраняем положение каждый раз, когда камера двигается пользователем
-        controls.addEventListener('change', () => {
-            const camState = {
-                pos: [camera.position.x, camera.position.y, camera.position.z],
-                target: [controls.target.x, controls.target.y, controls.target.z]
-            };
-            safeSetItem('threejs_camera_state', JSON.stringify(camState));
-        });
+        // Сохраняем положение камеры при каждом движении пользователя
+        controls.addEventListener('change', saveCam);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -826,6 +816,58 @@ with col_3d:
         const binaryStr = atob(modelB64); const bytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
         let selectedMeshRef = null;
+
+        // ФУНКЦИЯ ДЛЯ УСТАНОВКИ/ВОССТАНОВЛЕНИЯ КАМЕРЫ (КАК В ИСХОДНИКЕ)
+        function restoreOrInitCamera(tunnelMeshes, model, forceInit) {
+            let cameraRestored = false;
+            
+            if (!forceInit) {
+                try {
+                    const saved = window.sessionStorage.getItem(STORAGE_KEY);
+                    if (saved) {
+                        const st = JSON.parse(saved);
+                        if (st && st.pos && st.tgt && !isNaN(st.pos[0])) {
+                            camera.position.fromArray(st.pos);
+                            controls.target.fromArray(st.tgt);
+                            controls.update();
+                            cameraRestored = true;
+                        }
+                    }
+                } catch(e) {}
+            }
+            
+            if (!cameraRestored) {
+                // ЭТО СТРОГО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ [SOURCE: 4]
+                const tunnelBox = new THREE.Box3(); 
+                if (tunnelMeshes.length > 0) {
+                    tunnelMeshes.forEach(tm => {
+                        if(tm.geometry) tm.geometry.computeBoundingBox();
+                        tunnelBox.expandByObject(tm);
+                    });
+                } else { 
+                    model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
+                    tunnelBox.setFromObject(model); 
+                }
+                
+                if (!tunnelBox.isEmpty()) {
+                    const center = tunnelBox.getCenter(new THREE.Vector3()); 
+                    const size = tunnelBox.getSize(new THREE.Vector3()); 
+                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                    controls.target.copy(center); 
+                    
+                    const fov = camera.fov * (Math.PI / 180);
+                    let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
+                    
+                    camera.position.set(
+                        center.x - maxDim * 0.1, 
+                        center.y + maxDim * 0.1, 
+                        center.z + cameraZ
+                    ); 
+                    controls.update();
+                    saveCam(); // Сохраняем это идеальное стартовое положение
+                }
+            }
+        }
 
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.parse(bytes.buffer, '', function(gltf) {
@@ -1046,71 +1088,27 @@ with col_3d:
                 }
             }
 
-            // =========================================================
-            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ ПОЛОЖЕНИЯ КАМЕРЫ (КАК В ИСХОДНИКЕ)
-            // =========================================================
-            const lastSelected = safeGetItem('threejs_last_selected');
-            const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
-
-            if (selectedMeshRef && isNewSensorSelected) {
-                safeSetItem('threejs_last_selected', payload.selectedSensor);
+            // ====================================================================
+            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ)
+            // ====================================================================
+            const currentSensor = payload.selectedSensor === "Seçiniz..." ? null : payload.selectedSensor;
+            
+            // Если выбран НОВЫЙ сенсор, летим к нему
+            let lastSensor = null;
+            try { lastSensor = window.sessionStorage.getItem(SENSOR_KEY); } catch(e) {}
+            
+            if (currentSensor && currentSensor !== lastSensor && selectedMeshRef) {
+                try { window.sessionStorage.setItem(SENSOR_KEY, currentSensor); } catch(e) {}
                 flyCameraTo(selectedMeshRef, true);
-            } else {
-                let cameraRestored = false;
-                const savedStateStr = safeGetItem('threejs_camera_state');
-                
-                // Пробуем восстановить камеру из памяти (и проверяем, что там нет NaN)
-                if (savedStateStr) {
-                    try {
-                        const st = JSON.parse(savedStateStr);
-                        if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
-                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
-                            controls.target.set(st.target[0], st.target[1], st.target[2]);
-                            controls.update();
-                            cameraRestored = true;
-                        }
-                    } catch(e) {}
-                }
-                
-                // Если камеры в памяти нет (первый запуск) или была ошибка — центрируем по твоему старому коду
-                if (!cameraRestored) {
-                    const tunnelBox = new THREE.Box3(); 
-                    if (tunnelMeshes.length > 0) {
-                        tunnelMeshes.forEach(tm => {
-                            if(tm.geometry) tm.geometry.computeBoundingBox();
-                            tunnelBox.expandByObject(tm);
-                        });
-                    } else { 
-                        model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
-                        tunnelBox.setFromObject(model); 
-                    }
-                    
-                    if (!tunnelBox.isEmpty()) {
-                        const center = tunnelBox.getCenter(new THREE.Vector3()); 
-                        const size = tunnelBox.getSize(new THREE.Vector3()); 
-                        const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                        
-                        controls.target.copy(center); 
-                        
-                        // ИСХОДНАЯ МАТЕМАТИКА КАМЕРЫ, О КОТОРОЙ ТЫ ПРОСИЛ
-                        const fov = camera.fov * (Math.PI / 180);
-                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
-                        
-                        camera.position.set(
-                            center.x - maxDim * 0.1, 
-                            center.y + maxDim * 0.1, 
-                            center.z + cameraZ
-                        ); 
-                        controls.update();
-
-                        // Сохраняем это положение, чтобы при обновлении оно не сбрасывалось
-                        const camState = {
-                            pos: [camera.position.x, camera.position.y, camera.position.z],
-                            target: [controls.target.x, controls.target.y, controls.target.z]
-                        };
-                        safeSetItem('threejs_camera_state', JSON.stringify(camState));
-                    }
-                }
+            } 
+            // Если мы СНЯЛИ выбор сенсора, возвращаем к общему виду
+            else if (!currentSensor && lastSensor) {
+                try { window.sessionStorage.removeItem(SENSOR_KEY); } catch(e) {}
+                restoreOrInitCamera(tunnelMeshes, model, true); // forceInit = true
+            } 
+            // Иначе (просто поменяли прозрачность/галочку) оставляем камеру на месте
+            else {
+                restoreOrInitCamera(tunnelMeshes, model, false);
             }
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
@@ -1126,16 +1124,14 @@ with col_3d:
             const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
             if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
-            if (!animate) { camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); return; }
+            if (!animate) { 
+                camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
+                saveCam();
+                return; 
+            }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
             new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-            .onComplete(() => {
-                const camState = {
-                    pos: [camera.position.x, camera.position.y, camera.position.z],
-                    target: [controls.target.x, controls.target.y, controls.target.z]
-                };
-                safeSetItem('threejs_camera_state', JSON.stringify(camState));
-            }).start();
+            .onComplete(saveCam).start();
         }
 
         function getIntersectedSensor(e) {
