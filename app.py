@@ -177,7 +177,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & CSV VERİTABANI</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -204,9 +204,6 @@ def ensure_playwright_installed():
     except Exception:
         pass
 
-# =========================================================================
-# УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ЧЕРЕЗ CSV С ОБРАБОТКОЙ ПРОШЕЛЫХ/АКТУАЛЬНЫХ ДАННЫХ
-# =========================================================================
 @st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
     historical_db = {k: {} for k in CATEGORIES}
@@ -335,7 +332,7 @@ with col_nav:
     
     data_mode = st.radio(
         "Veri Modu Seçimi:",
-        options=["Canlı Veriler", "Arşiv Veriler"]
+        options=["🔴 Canlı (En Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
     )
 
     selected_comp = st.radio(
@@ -344,58 +341,54 @@ with col_nav:
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    if st.button("Verileri Yenile"):
-        st.cache_data.clear()
-        st.rerun()
+    # ВЫБОР ДАТЫ ПОЯВЛЯЕТСЯ СРАЗУ ПОД ВЫБОРОМ РЕЖИМА, ТОЛЬКО ЕСЛИ ВЫБРАН АРХИВ
+    target_timestamp = "-"
+    raw_v_map = {}
+    cat_cfg = CATEGORIES[selected_comp]
 
-# ---------------------------------------------------------
-# ЛОГИКА ЗАГРУЗКИ И ПРОВЕРКИ ДАННЫХ (С ПОДСТАНОВКОЙ "-")
-# ---------------------------------------------------------
-target_timestamp = "-"
-raw_v_map = {}
-cat_cfg = CATEGORIES[selected_comp]
-
-if data_mode == "🔴 Canlı (En Güncel) Veriler":
-    with st.spinner("En güncel veriler alınıyor..."):
-        all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
-    
-    if all_dates:
-        target_timestamp = all_dates[0]
-        raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-    else:
-        target_timestamp = "-"
-else:
-    with st.spinner("Tüm tarihsel veritabanı indiriliyor (15-30 sn)..."):
-        all_dates, full_db = fetch_csv_database(mode_type="ALL")
-    
-    if not all_dates:
-        target_timestamp = "-"
-    else:
+    if data_mode == "📂 Geçmiş (Arşiv) Verileri":
         st.markdown("---")
         st.subheader("⏱️ Zaman Seçimi")
         
-        date_tree = {}
-        for d_str in all_dates:
-            if " " in d_str:
-                d_part, t_part = d_str.split(" ", 1)
-                d_part = d_part.replace("/", "-")
-                if d_part not in date_tree:
-                    date_tree[d_part] = []
-                date_tree[d_part].append(t_part)
-        for k in date_tree:
-            date_tree[k] = sorted(date_tree[k], reverse=True)
+        with st.spinner("Arşiv tarihleri yükleniyor..."):
+            all_dates, full_db = fetch_csv_database(mode_type="ALL")
             
-        unique_dates = sorted(list(date_tree.keys()), reverse=True)
-        
-        col_d, col_t = st.columns(2)
-        with col_d:
-            sel_date = st.selectbox("📅 Tarih Seç:", options=unique_dates)
-        with col_t:
-            sel_time = st.selectbox("⏱️ Saat Seç:", options=date_tree[sel_date])
-        
-        if sel_date and sel_time:
-            target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
+        if not all_dates:
+            st.warning("Arşiv verisi bulunamadı.")
+        else:
+            date_tree = {}
+            for d_str in all_dates:
+                if " " in d_str:
+                    d_part, t_part = d_str.split(" ", 1)
+                    d_part = d_part.replace("/", "-")
+                    if d_part not in date_tree:
+                        date_tree[d_part] = []
+                    date_tree[d_part].append(t_part)
+            for k in date_tree:
+                date_tree[k] = sorted(date_tree[k], reverse=True)
+                
+            unique_dates = sorted(list(date_tree.keys()), reverse=True)
+            
+            col_d, col_t = st.columns(2)
+            with col_d:
+                sel_date = st.selectbox("📅 Tarih Seç:", options=unique_dates)
+            with col_t:
+                sel_time = st.selectbox("⏱️ Saat Seç:", options=date_tree[sel_date])
+            
+            if sel_date and sel_time:
+                target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
+                raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+    else:
+        # Для режима Canlı (Güncel) подгружаем автоматически последнюю точку
+        with st.spinner("En güncel veriler alınıyor..."):
+            all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
+        if all_dates:
+            target_timestamp = all_dates[0]
             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+
+    if st.button("🔄 Verileri Yenile"):
+        st.cache_data.clear()
+        st.rerun()
 
 active_category_values = {}
 if raw_v_map:
@@ -424,7 +417,7 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜM AYARLARI")
+    st.subheader("GÖRÜNÜМ AYARLARI")
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
