@@ -341,14 +341,14 @@ with col_nav:
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    # ВЫБОР ДАТЫ ПОЯВЛЯЕТСЯ СРАЗУ ПОД ВЫБОРОМ РЕЖИМА, ТОЛЬКО ЕСЛИ ВЫБРАН АРХИВ
     target_timestamp = "-"
     raw_v_map = {}
     cat_cfg = CATEGORIES[selected_comp]
 
+    # ИЕРАРХИЧЕСКИЙ ВЫБОР ДАТЫ ПО ГОДУ, МЕСЯЦУ, ДНЮ И ВРЕМЕНИ ПРИ ВЫБОРЕ АРХИВА
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
+        st.subheader("Zaman Seçimi")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="ALL")
@@ -356,30 +356,36 @@ with col_nav:
         if not all_dates:
             st.warning("Arşiv verisi bulunamadı.")
         else:
-            date_tree = {}
+            # Создаем иерархическую структуру: Год -> Месяц -> День -> Список часов
+            date_hierarchy = {}
             for d_str in all_dates:
-                if " " in d_str:
-                    d_part, t_part = d_str.split(" ", 1)
-                    d_part = d_part.replace("/", "-")
-                    if d_part not in date_tree:
-                        date_tree[d_part] = []
-                    date_tree[d_part].append(t_part)
-            for k in date_tree:
-                date_tree[k] = sorted(date_tree[k], reverse=True)
-                
-            unique_dates = sorted(list(date_tree.keys()), reverse=True)
-            
-            col_d, col_t = st.columns(2)
-            with col_d:
-                sel_date = st.selectbox("Tarih Seç:", options=unique_dates)
-            with col_t:
-                sel_time = st.selectbox("Saat Seç:", options=date_tree[sel_date])
-            
-            if sel_date and sel_time:
-                target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
-                raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+                clean_d = d_str.replace("-", "/")
+                if " " in clean_d:
+                    date_part, time_part = clean_d.split(" ", 1)
+                    parts = date_part.split("/")
+                    if len(parts) == 3:
+                        y, m, d = parts[0], parts[1], parts[2]
+                        date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
+
+            years = sorted(list(date_hierarchy.keys()), reverse=True)
+            sel_year = st.selectbox("📅 Yıl Seç (Год):", options=years)
+
+            if sel_year:
+                months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
+                sel_month = st.selectbox("📅 Ay Seç (Месяц):", options=months)
+
+                if sel_month:
+                    days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
+                    sel_day = st.selectbox("📅 Gün Seç (День):", options=days)
+
+                    if sel_day:
+                        times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
+                        sel_time = st.selectbox("⏱️ Saat Seç (Время):", options=times)
+
+                        if sel_time:
+                            target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
+                            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
     else:
-        # Для режима Canlı (Güncel) подгружаем автоматически последнюю точку
         with st.spinner("En güncel veriler alınıyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
         if all_dates:
