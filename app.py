@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
+# 1. ТЕМА STREAMLIT
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -31,7 +31,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH с мобильной адаптацией
+# Фирменный стиль DESTECH
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -79,7 +79,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -115,7 +114,6 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
-    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -167,7 +165,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Стили для таблицы */
     [data-testid="stDataFrame"] {
         background-color: #0E182A !important;
         border-radius: 8px !important;
@@ -183,7 +180,6 @@ st.markdown("""
         background-color: #0A0E17 !important;
     }
 
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 2rem !important;
@@ -204,36 +200,16 @@ st.markdown("""
             min-width: 100% !important;
         }
 
-        h1, h2, h3 {
-            letter-spacing: 1px !important;
-        }
+        h1, h2, h3 { letter-spacing: 1px !important; }
         h2 { font-size: 1.15rem !important; }
         h3 { font-size: 1.05rem !important; }
 
-        .header-box h1 {
-            font-size: 19px !important;
-            margin-bottom: 2px !important;
-        }
-
-        .header-box div {
-            font-size: 11px !important;
-            letter-spacing: 1px !important;
-        }
-
-        .header-box img {
-            width: 110px !important;
-        }
-        
-        div[data-testid="stRadio"] div[role="radiogroup"] label p {
-            font-size: 15px !important;
-        }
-        
-        [data-testid="stMetricValue"] {
-            font-size: 24px !important;
-        }
-        [data-testid="stMetricLabel"] {
-            font-size: 11px !important;
-        }
+        .header-box h1 { font-size: 19px !important; margin-bottom: 2px !important; }
+        .header-box div { font-size: 11px !important; letter-spacing: 1px !important; }
+        .header-box img { width: 110px !important; }
+        div[data-testid="stRadio"] div[role="radiogroup"] label p { font-size: 15px !important; }
+        [data-testid="stMetricValue"] { font-size: 24px !important; }
+        [data-testid="stMetricLabel"] { font-size: 11px !important; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -257,8 +233,8 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Соответствие категорий точным опциям интерфейса
-CATEGORIES_FETCH_ORDER = [
+# Спецификация категорий датчиков
+CATEGORIES_LIST = [
     {
         "key": "axial",
         "option_name": "Longitudinal Strains",
@@ -282,7 +258,7 @@ CATEGORIES_FETCH_ORDER = [
     }
 ]
 
-CATEGORIES = {item["key"]: item for item in CATEGORIES_FETCH_ORDER}
+CATEGORIES = {item["key"]: item for item in CATEGORIES_LIST}
 
 def clean_num(s):
     if not s: return np.nan
@@ -291,8 +267,15 @@ def clean_num(s):
     return float(m.group()) if m else np.nan
 
 def ensure_playwright_installed():
-    try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-    except Exception: pass
+    try: 
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+    except Exception: 
+        pass
+
+def normalize_date_key(raw_date_str):
+    """Приводит любую строку даты к единому стандарту YYYY/MM/DD HH:MM:SS"""
+    d = raw_date_str.strip().replace("-", "/")
+    return d
 
 @st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
@@ -301,108 +284,116 @@ def fetch_csv_database(mode_type="ALL"):
 
     with sync_playwright() as p:
         browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--window-size=1920,1080"
         ]
-        try: 
+        try:
             browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
+        except Exception:
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
-            accept_downloads=True, viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+            accept_downloads=True,
+            viewport={"width": 1920, "height": 1080},
+            timezone_id="Europe/Istanbul",
+            locale="en-US"
         )
         page = context.new_page()
 
         try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
+            # 1. Открытие страницы с гарантированным ожиданием DOM
+            page.goto(URL, timeout=90000, wait_until="networkidle")
+            page.wait_for_timeout(2000)
 
-            # 1. Выбор периода (ALL или MONTH_02)
-            try:
-                page.get_by_role("combobox").first.select_option(mode_type)
+            # 2. Выбор периода (ALL / MONTH_02 / etc.)
+            combos = page.get_by_role("combobox")
+            if combos.count() > 0:
+                combos.first.select_option(mode_type)
                 page.wait_for_timeout(1500)
-            except Exception as e:
-                print(f"Combobox select error: {e}")
 
-            # 2. Клик по разделу Types для раскрытия списка
-            try:
-                page.get_by_text("Types").click()
+            # 3. Открытие Types
+            types_btn = page.get_by_text("Types", exact=False)
+            if types_btn.count() > 0:
+                types_btn.first.click()
                 page.wait_for_timeout(1000)
-            except Exception as e:
-                print(f"Types click error: {e}")
 
-            # 3. Последовательный выбор опций и скачивание CSV
-            for item in CATEGORIES_FETCH_ORDER:
+            # 4. Проход по каждому типу датчиков
+            for item in CATEGORIES_LIST:
                 cat_key = item["key"]
                 opt_name = item["option_name"]
                 target_tag = item["tag"]
 
+                # Переключение типа в listbox
                 try:
-                    # Выбираем опцию из listbox
-                    page.get_by_role("listbox").select_option(opt_name)
-                    page.wait_for_timeout(2000)
+                    listbox = page.get_by_role("listbox")
+                    listbox.select_option(opt_name)
+                except Exception:
+                    # Резервный выбор, если роль listbox изменена
+                    page.locator(f"option:has-text('{opt_name}')").first.click(force=True)
 
-                    # Локатор кнопки CSV
-                    csv_btn = page.get_by_text("🠋CSV")
-                    if not csv_btn.is_visible():
-                        csv_btn = page.locator("text=CSV").first
+                page.wait_for_timeout(2500)
 
-                    # Ловим скачивание и возможное всплывающее окно
-                    csv_path = None
-                    try:
-                        with page.expect_download(timeout=25000) as download_info:
-                            try:
-                                with page.expect_popup(timeout=5000) as page1_info:
-                                    csv_btn.click()
-                                page1 = page1_info.value
-                                page1.close()
-                            except Exception:
-                                # Если popup не появился, просто кликаем
-                                csv_btn.click()
-                        download = download_info.value
-                        csv_path = download.path()
-                    except Exception as e:
-                        print(f"CSV Download Trigger Error ({opt_name}): {e}")
+                # Поиск кнопки CSV (по точному вхождению или тексту)
+                csv_locator = page.locator("a, button, span, div").filter(has_text=re.compile(r"CSV", re.I)).first
+                if not csv_locator.is_visible():
+                    csv_locator = page.get_by_text("🠋CSV").first
 
-                    # Чтение полученного файла
+                # Перехват загрузки без жесткой блокировки на popup
+                download_target = None
+                try:
+                    with page.expect_download(timeout=20000) as download_info:
+                        # Принудительный клик по CSV
+                        csv_locator.click(force=True)
+                    download_target = download_info.value
+                except Exception as down_err:
+                    print(f"[{opt_name}] Ошибка ожидания загрузки: {down_err}")
+
+                # Если файл успешно скачан — разбираем
+                if download_target:
+                    csv_path = download_target.path()
                     if csv_path and os.path.exists(csv_path):
                         with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                             lines = f.readlines()
-                        
+
                         if len(lines) > 2:
-                            header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                            # Очистка заголовка от BOM и лишних символов
+                            header = [h.replace('\ufeff', '').strip() for h in lines[0].strip().split(';')]
+                            
                             for line in lines[2:]:
                                 parts = [p.strip() for p in line.strip().split(';')]
-                                if len(parts) == len(header):
-                                    date_str = parts[0]
-                                    if date_str: dates_set.add(date_str)
-                                            
+                                if len(parts) >= len(header) and parts[0]:
+                                    date_key = normalize_date_key(parts[0])
+                                    dates_set.add(date_key)
+                                    
                                     val_map = {}
                                     for h, v_str in zip(header[1:], parts[1:]):
+                                        # Строгая фильтрация колонок под категорию
                                         match_cond = False
-                                        if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                        elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                        elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+                                        if target_tag == '-CS' and '-CS' in h:
+                                            match_cond = True
+                                        elif target_tag == '-S' and '-S' in h and '-CS' not in h:
+                                            match_cond = True
+                                        elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h:
+                                            match_cond = True
 
-                                        if match_cond or target_tag in h:
-                                            if target_tag == "-S" and "-CS" in h: continue
-                                            if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
+                                        if match_cond:
                                             m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                             s_name = m.group(1) if m else h.split()[0].strip()
-                                            v = clean_num(v_str)
-                                            if not np.isnan(v):
-                                                val_map[s_name] = v
-                                    historical_db[cat_key][date_str] = val_map
+                                            val = clean_num(v_str)
+                                            if not np.isnan(val):
+                                                val_map[s_name] = val
+                                    
+                                    if val_map:
+                                        historical_db[cat_key][date_key] = val_map
 
-                except Exception as ex:
-                    print(f"Hata ({opt_name}): {ex}")
+                page.wait_for_timeout(1000)
 
         except Exception as e:
-            st.warning(f"LoggIS bağlantı hatası: {e}")
+            st.error(f"LoggIS синхронизация завершилась с ошибкой: {e}")
         finally:
             browser.close()
 
@@ -416,6 +407,7 @@ def get_model_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
+# UI и управление
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
@@ -441,16 +433,15 @@ with col_nav:
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
+        st.subheader("Zaman Seçimi")
         
-        with st.spinner("Arşiv tarihleri yükleniyor..."):
+        with st.spinner("Arşiv verileri yükleniyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="ALL")
             
         if not all_dates:
-            st.warning("Arşiv verisi bulunamadı.")
+            st.warning("Arşiv verisi bulunamadı veya LoggIS yanıt vermedi.")
         else:
-            latest_timestamp = all_dates[0]  
-            
+            latest_timestamp = all_dates[0]
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
             date_hierarchy = {}
@@ -464,7 +455,7 @@ with col_nav:
                         date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
 
             years = sorted(list(date_hierarchy.keys()), reverse=True)
-            sel_year = st.selectbox("Yıl Seçiniz", options=years)
+            sel_year = st.selectbox("Yıl Seçiniz:", options=years)
 
             if sel_year:
                 months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
@@ -494,25 +485,28 @@ with col_nav:
         st.rerun()
 
 # ---------------------------------------------------------
-# ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
+# ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ
 # ---------------------------------------------------------
 active_category_values = {}
 table_data = [] 
 
 if raw_v_map:
     for s_name, val in raw_v_map.items():
-        if val is None or np.isnan(val): continue
+        if val is None or np.isnan(val): 
+            continue
         u_name = s_name.upper()
         
         is_valid_sensor = False
-        if selected_comp == "hoop" and "-CS" in u_name: is_valid_sensor = True
-        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: is_valid_sensor = True
-        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: is_valid_sensor = True
+        if selected_comp == "hoop" and "-CS" in u_name: 
+            is_valid_sensor = True
+        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: 
+            is_valid_sensor = True
+        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: 
+            is_valid_sensor = True
 
         if is_valid_sensor:
             if compare_mode:
                 latest_val = latest_v_map.get(s_name)
-                
                 str_val = f"{float(val):.2f}"
                 str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
                 
@@ -532,7 +526,7 @@ if raw_v_map:
             else:
                 active_category_values[s_name] = float(val)
 
-# Расчет шкалы: Для Дельты шкала симметрична [-Max, +Max]
+# Расчет шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -581,7 +575,9 @@ with col_nav:
         limit_str = "-"
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
-# --- 3B THREE.JS ОБЛАСТЬ ---
+# ---------------------------------------------------------
+# THREE.JS 3D ОБЛАСТЬ
+# ---------------------------------------------------------
 with col_3d:
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
     
@@ -963,9 +959,7 @@ with col_3d:
             if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 17.0, boxTB.min.z - 8.0); portalsGroup.add(sTB); }
             scene.add(portalsGroup);
 
-            // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
-            // =========================================================
+            // Линейки 2X
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
                 tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
@@ -973,7 +967,6 @@ with col_3d:
                 if (!overallBox.isEmpty()) {
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
-
                     const scale = 2.0;
 
                     const isZAxis = size.z >= size.x; 
@@ -984,7 +977,6 @@ with col_3d:
                     const stepReal = 10.0; 
                     const step3D = stepReal * scale; 
                     const stepsCount = Math.floor(length3D / step3D); 
-
                     const yRuler = overallBox.min.y - 0.2; 
                     
                     const lateralPos1 = isZAxis ? (overallBox.max.x + (3.5 * scale)) : (overallBox.max.z + (3.5 * scale));
@@ -1050,9 +1042,7 @@ with col_3d:
                 }
             }
 
-            // ====================================================================
-            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ)
-            // ====================================================================
+            // Камера
             const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
