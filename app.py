@@ -9,7 +9,7 @@ import numpy as np
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ФИРМЕННАЯ ТЕМА STREAMLIT
+# 1. ФИРМЕННАЯ ТЕМА STREAMLIT (НАСТОЯЩИЙ СИНИЙ ДЛЯ ВСЕХ ЭЛЕМЕНТОВ УПРАВЛЕНИЯ)
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -78,6 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -113,6 +114,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -163,6 +165,35 @@ st.markdown("""
         border-color: #00C8E6 !important;
         color: #FFFFFF !important;
     }
+
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
+    @media (max-width: 820px) {
+        .main .block-container {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            padding-top: 1.5rem !important;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: column-reverse !important;
+            gap: 1.2rem !important;
+        }
+
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+
+        .header-box h1 {
+            font-size: 22px !important;
+        }
+
+        .header-box img {
+            width: 130px !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -204,17 +235,17 @@ def ensure_playwright_installed():
     except Exception:
         pass
 
-# =========================================================================
-# 1. ТЕКУЩИЕ ДАННЫЕ (Твой проверенный быстрый DOM-парсер из GİTHUB_3DMAX_2.txt)
-# =========================================================================
 @st.cache_data(ttl=300)
-def fetch_current_data():
+def fetch_all_categories_data():
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
         browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--window-size=1920,1080",
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
@@ -337,93 +368,6 @@ def fetch_current_data():
 
     return all_results
 
-# =========================================================================
-# 2. АРХИВНЫЕ ДАННЫЕ (Скачивание CSV через ALL с expect_download)
-# =========================================================================
-@st.cache_data(ttl=3600)
-def fetch_historical_csv_data():
-    historical_db = {k: {} for k in CATEGORIES}
-    dates_set = set()
-
-    with sync_playwright() as p:
-        browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-        ]
-        try:
-            browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
-
-        context = browser.new_context(
-            accept_downloads=True,
-            viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-
-        try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
-
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
-            
-            page.get_by_role("combobox").first.select_option("ALL")
-            page.wait_for_timeout(2000)
-
-            for cat_key, cat_cfg in CATEGORIES.items():
-                page.get_by_role("listbox").select_option(cat_cfg["name"])
-                page.wait_for_timeout(3000)
-
-                csv_btn = page.get_by_text("🠋CSV").first
-                try:
-                    csv_btn.click(timeout=5000)
-                    page.wait_for_timeout(1000)
-
-                    with page.expect_download(timeout=30000) as download_info:
-                        with page.expect_popup(timeout=15000) as page1_info:
-                            csv_btn.click()
-                        page1 = page1_info.value
-                        page1.close()
-
-                    download = download_info.value
-                    csv_path = download.path()
-
-                    if csv_path and os.path.exists(csv_path):
-                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                            lines = f.readlines()
-
-                        if len(lines) > 2:
-                            header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                            for line in lines[2:]:
-                                parts = [p.strip() for p in line.strip().split(';')]
-                                if len(parts) == len(header):
-                                    date_str = parts[0]
-                                    if date_str: dates_set.add(date_str)
-                                        
-                                    val_map = {}
-                                    for h, v_str in zip(header[1:], parts[1:]):
-                                        if "TA-" in h or "TB-" in h:
-                                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                            s_name = m.group(1) if m else h.split()[0].strip()
-                                            v = clean_num(v_str)
-                                            if not np.isnan(v):
-                                                val_map[s_name] = v
-                                    historical_db[cat_key][date_str] = val_map
-                except Exception as e:
-                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
-
-        except Exception as e:
-            st.warning(f"LoggIS bağlantı hatası: {e}")
-        finally:
-            browser.close()
-
-    sorted_dates = sorted(list(dates_set), reverse=True)
-    return sorted_dates, historical_db
-
 @st.cache_data
 def get_model_b64(path):
     if not os.path.exists(path):
@@ -433,88 +377,39 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
+with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
+    all_data = fetch_all_categories_data()
+
 with col_nav:
     st.subheader("KONTROL PANELİ")
-    
-    data_mode = st.radio(
-        "Veri Modu Seçimi:",
-        options=["🔴 Canlı (Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
-    )
-
     selected_comp = st.radio(
         "Görüntülenecek Bileşen:",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    if st.button("🔄 Ekranı Yenile"):
+    if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# ---------------------------------------------------------
-# ЛОГИКА ЗАГРУЗКИ В ЗАВИСИМОСТИ ОТ РЕЖИМА
-# ---------------------------------------------------------
-target_timestamp = None
-raw_v_map = {}
 cat_cfg = CATEGORIES[selected_comp]
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
+raw_v_map = cur_layer["values"]
 
-if data_mode == "🔴 Canlı (Güncel) Veriler":
-    with st.spinner("Güncel veriler alınıyor..."):
-        all_data = fetch_current_data()
-        cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
-        raw_v_map = cur_layer["values"]
-        target_timestamp = cur_layer["date"] if cur_layer["date"] else "En Son (Güncel)"
-else:
-    with st.spinner("Tarihsel CSV arşivi yükleniyor (15-30 sn)..."):
-        all_dates, historical_db = fetch_historical_csv_data()
-    
-    if not all_dates:
-        st.warning("Arşiv verisi alınamadı.")
-        target_timestamp = "Bulunamadı"
-    else:
-        st.markdown("---")
-        st.subheader("⏱️ Zaman Seçimi")
-        
-        date_tree = {}
-        for d_str in all_dates:
-            if " " in d_str:
-                d_part, t_part = d_str.split(" ", 1)
-                d_part = d_part.replace("/", "-")
-                if d_part not in date_tree:
-                    date_tree[d_part] = []
-                date_tree[d_part].append(t_part)
-        for k in date_tree:
-            date_tree[k] = sorted(date_tree[k], reverse=True)
-            
-        unique_dates = sorted(list(date_tree.keys()), reverse=True)
-        
-        col_d, col_t = st.columns(2)
-        with col_d:
-            sel_date = st.selectbox("📅 Tarih Seç:", options=unique_dates)
-        with col_t:
-            sel_time = st.selectbox("⏱️ Saat Seç:", options=date_tree[sel_date])
-        
-        if sel_date and sel_time:
-            target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
-            raw_v_map = historical_db[selected_comp].get(target_timestamp, {})
-
-# Строгая фильтрация по категориям без пересечений (с поддержкой суффиксов -TP у деформаций CS)
 active_category_values = {}
 for s_name, val in raw_v_map.items():
     if val is None or np.isnan(val):
         continue
     u_name = s_name.upper()
-    if selected_comp == "hoop":
-        if "-CS" in u_name:
-            active_category_values[s_name] = float(val)
+    if selected_comp == "hoop" and "-CS" in u_name:
+        active_category_values[s_name] = float(val)
     elif selected_comp == "axial":
-        if "-S" in u_name and "-CS" not in u_name:
+        if ("-S" in u_name) and ("-CS" not in u_name):
             active_category_values[s_name] = float(val)
-    elif selected_comp == "temp":
-        if "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
-            active_category_values[s_name] = float(val)
+    elif selected_comp == "temp" and "-TP" in u_name:
+        active_category_values[s_name] = float(val)
 
-# Точный расчет диапазона шкалы
+# Точный расчёт диапазона clim с технологическим буфером для стопроцентного попадания в пиковые цвета легенды
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -537,8 +432,8 @@ with col_nav:
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp}</span>", unsafe_allow_html=True)
+    st.write("**En Son Veri Zamanı:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
@@ -788,6 +683,7 @@ with col_3d:
         // МНОГОТОНОВЫЕ ВЫРАЗИТЕЛЬНЫЕ СПЕКТРЫ ДЛЯ КАЖДОЙ КАТЕГОРИИ
         // =========================================================================
 
+        // 1. Çevresel gerinim (CS): Индиго -> Синий -> Циан -> Зеленый -> Желтый -> Оранжевый -> Красный
         const hoopStops = [
             new THREE.Color("#050833"),
             new THREE.Color("#0044FF"),
@@ -798,16 +694,18 @@ with col_3d:
             new THREE.Color("#FF0022")
         ];
 
+        // 2. Boyuna gerinim (S): МНОГОСЛОЙНЫЙ ГРАДИЕНТ (ГЛУБОКИЙ ИНДИГО -> ПУРПУР -> МАЛИНОВЫЙ -> КОРАЛЛОВЫЙ -> ЯНТАРНЫЙ)
         const axialStops = [
-            new THREE.Color("#080038"),
-            new THREE.Color("#2A0A5E"),
-            new THREE.Color("#630F78"),
-            new THREE.Color("#9E1B7F"),
-            new THREE.Color("#D32B6E"),
-            new THREE.Color("#F55447"),
-            new THREE.Color("#FF9500") 
+            new THREE.Color("#080038"), // 0%: Глубокий ночной индиго (Минимум)
+            new THREE.Color("#2A0A5E"), // 16%: Королевский фиолетовый
+            new THREE.Color("#630F78"), // 33%: Глубокий пурпур
+            new THREE.Color("#9E1B7F"), // 50%: Насыщенная маджента
+            new THREE.Color("#D32B6E"), // 66%: Сочный малиново-рубиновый
+            new THREE.Color("#F55447"), // 83%: Горячий коралловый
+            new THREE.Color("#FF9500")  // 100%: Плотный янтарный огонь (Максимум, без белого!)
         ];
 
+        // 3. Sıcaklık (TP): Классический термо-инфракрасный
         const temperatureStops = [
             new THREE.Color("#020024"),
             new THREE.Color("#0033FF"),
@@ -831,6 +729,7 @@ with col_3d:
             legendTitle.innerText = "Çevresel [µm/m]";
         }
 
+        // ТОЧНАЯ СИНХРОНИЗАЦИЯ ЛЕГЕНДЫ С ТЕКУЩЕЙ ПАЛИТРОЙ (СВЕРХУ ВНИЗ: MAX -> MIN)
         function buildExactLegendGradient(stops) {
             const n = stops.length;
             const items = [];
@@ -845,6 +744,7 @@ with col_3d:
 
         legendBar.style.background = buildExactLegendGradient(currentStops);
 
+        // ОБЩАЯ ВЫБОРКА ЦВЕТА
         function sampleColorRamp(stops, t) {
             t = Math.max(0.0, Math.min(1.0, t));
             const scaled = t * (stops.length - 1);
@@ -864,6 +764,7 @@ with col_3d:
             return sampleColorRamp(currentStops, t);
         }
 
+        // Синхронизация числовых меток шкалы с Python-диапазоном
         const finalMin = payload.clim[0];
         const finalMax = payload.clim[1];
         const finalMid = (finalMin + finalMax) / 2.0;
@@ -1155,6 +1056,7 @@ with col_3d:
                         alreadyHighlightedOne = true;
                     }
 
+                    // САМИ СЕНСОРЫ ОСТАЮТСЯ БЕЛЫМИ (ИЛИ ЗОЛОТЫМИ ПРИ ВЫДЕЛЕНИИ)
                     let sensorColor = 0xFFFFFF;
                     if (isSelected) {
                         sensorColor = 0xFFD700;
@@ -1211,6 +1113,9 @@ with col_3d:
                 }
             });
 
+            // =========================================================================
+            // РАСШИРЕННАЯ ИНТЕРПОЛЯЦИЯ С ПОЛНЫМ НАЛОЖЕНИЕМ ДИАПАЗОНОВ (R = 60.0m)
+            // =========================================================================
             const R_SENSOR = 60.0; 
 
             tunnelMeshes.forEach(tMesh => {
@@ -1591,7 +1496,7 @@ with col_3d:
             renderer.clearDepth();
             renderer.render(sensorScene, camera);
         }
-        animate();
+        requestAnimationFrame(animate);
     </script>
 </body>
 </html>"""
