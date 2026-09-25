@@ -183,7 +183,7 @@ st.markdown("""
         background-color: #0A0E17 !important;
     }
 
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ - УЛУЧШЕННАЯ */
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 2rem !important;
@@ -257,11 +257,32 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-CATEGORIES = {
-    "hoop": {"names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
-}
+# Соответствие категорий точным опциям интерфейса
+CATEGORIES_FETCH_ORDER = [
+    {
+        "key": "axial",
+        "option_name": "Longitudinal Strains",
+        "tag": "-S",
+        "title": "Boyuna gerinim (S)",
+        "unit": "µm/m"
+    },
+    {
+        "key": "hoop",
+        "option_name": "Othoradial Strains",
+        "tag": "-CS",
+        "title": "Çevresel gerinim (CS)",
+        "unit": "µm/m"
+    },
+    {
+        "key": "temp",
+        "option_name": "Temperature",
+        "tag": "-TP",
+        "title": "Sıcaklık (TP)",
+        "unit": "°C"
+    }
+]
+
+CATEGORIES = {item["key"]: item for item in CATEGORIES_FETCH_ORDER}
 
 def clean_num(s):
     if not s: return np.nan
@@ -283,7 +304,8 @@ def fetch_csv_database(mode_type="ALL"):
             "--no-sandbox", "--disable-setuid-sandbox",
             "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
         ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
+        try: 
+            browser = p.chromium.launch(headless=True, args=browser_args)
         except:
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
@@ -299,83 +321,85 @@ def fetch_csv_database(mode_type="ALL"):
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
-            
-            page.get_by_role("combobox").first.select_option(mode_type)
-            page.wait_for_timeout(2000)
+            # 1. Выбор периода (ALL или MONTH_02)
+            try:
+                page.get_by_role("combobox").first.select_option(mode_type)
+                page.wait_for_timeout(1500)
+            except Exception as e:
+                print(f"Combobox select error: {e}")
 
-            for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                            success = True; break
-                        except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                            success = True; break
-                        except: pass
-                
-                page.wait_for_timeout(4000)
+            # 2. Клик по разделу Types для раскрытия списка
+            try:
+                page.get_by_text("Types").click()
+                page.wait_for_timeout(1000)
+            except Exception as e:
+                print(f"Types click error: {e}")
 
-                csv_path = None
-                csv_btn = page.locator("text=CSV").first
-                try: csv_btn.wait_for(state="visible", timeout=15000)
-                except: pass
+            # 3. Последовательный выбор опций и скачивание CSV
+            for item in CATEGORIES_FETCH_ORDER:
+                cat_key = item["key"]
+                opt_name = item["option_name"]
+                target_tag = item["tag"]
 
                 try:
-                    csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1500)
-                    with page.expect_download(timeout=30000) as d_info:
-                        try:
-                            with page.expect_popup(timeout=8000) as p_info:
-                                csv_btn.click(force=True)
-                            p_info.value.close()
-                        except:
-                            csv_btn.click(force=True)
-                    csv_path = d_info.value.path()
-                except Exception as e:
-                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
+                    # Выбираем опцию из listbox
+                    page.get_by_role("listbox").select_option(opt_name)
+                    page.wait_for_timeout(2000)
 
-                if csv_path and os.path.exists(csv_path):
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                    
-                    if len(lines) > 2:
-                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                        for line in lines[2:]:
-                            parts = [p.strip() for p in line.strip().split(';')]
-                            if len(parts) == len(header):
-                                date_str = parts[0]
-                                if date_str: dates_set.add(date_str)
-                                        
-                                val_map = {}
-                                for h, v_str in zip(header[1:], parts[1:]):
-                                    match_cond = False
-                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+                    # Локатор кнопки CSV
+                    csv_btn = page.get_by_text("🠋CSV")
+                    if not csv_btn.is_visible():
+                        csv_btn = page.locator("text=CSV").first
 
-                                    if match_cond or target_tag in h:
-                                        if target_tag == "-S" and "-CS" in h: continue
-                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                        s_name = m.group(1) if m else h.split()[0].strip()
-                                        v = clean_num(v_str)
-                                        if not np.isnan(v):
-                                            val_map[s_name] = v
-                                historical_db[cat_key][date_str] = val_map
+                    # Ловим скачивание и возможное всплывающее окно
+                    csv_path = None
+                    try:
+                        with page.expect_download(timeout=25000) as download_info:
+                            try:
+                                with page.expect_popup(timeout=5000) as page1_info:
+                                    csv_btn.click()
+                                page1 = page1_info.value
+                                page1.close()
+                            except Exception:
+                                # Если popup не появился, просто кликаем
+                                csv_btn.click()
+                        download = download_info.value
+                        csv_path = download.path()
+                    except Exception as e:
+                        print(f"CSV Download Trigger Error ({opt_name}): {e}")
+
+                    # Чтение полученного файла
+                    if csv_path and os.path.exists(csv_path):
+                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                            lines = f.readlines()
+                        
+                        if len(lines) > 2:
+                            header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                            for line in lines[2:]:
+                                parts = [p.strip() for p in line.strip().split(';')]
+                                if len(parts) == len(header):
+                                    date_str = parts[0]
+                                    if date_str: dates_set.add(date_str)
+                                            
+                                    val_map = {}
+                                    for h, v_str in zip(header[1:], parts[1:]):
+                                        match_cond = False
+                                        if target_tag == '-CS' and '-CS' in h: match_cond = True
+                                        elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
+                                        elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+
+                                        if match_cond or target_tag in h:
+                                            if target_tag == "-S" and "-CS" in h: continue
+                                            if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
+                                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                            s_name = m.group(1) if m else h.split()[0].strip()
+                                            v = clean_num(v_str)
+                                            if not np.isnan(v):
+                                                val_map[s_name] = v
+                                    historical_db[cat_key][date_str] = val_map
+
+                except Exception as ex:
+                    print(f"Hata ({opt_name}): {ex}")
 
         except Exception as e:
             st.warning(f"LoggIS bağlantı hatası: {e}")
@@ -532,7 +556,7 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜМ AYARLARI")
+    st.subheader("GÖRÜNÜM AYARLARI")
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
@@ -661,13 +685,10 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ
-        // =========================================================================
         let isModelLoaded = false;
         
         function saveCamState() {
-            if (!isModelLoaded) return; // Не сохраняем дефолтные нули во время загрузки!
+            if (!isModelLoaded) return;
             try {
                 window.sessionStorage.setItem('loggis_cam_v7', JSON.stringify({
                     pos: camera.position.toArray(),
@@ -675,10 +696,6 @@ with col_3d:
                 }));
             } catch(e) {}
         }
-
-        // =========================================================================
-        // ЦВЕТОВЫЕ ШКАЛЫ
-        // =========================================================================
 
         const hoopStops = [
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
@@ -758,7 +775,6 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Сохранение вызывается при любом вращении пользователем
         controls.addEventListener('change', saveCamState);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
@@ -958,7 +974,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
+                    const scale = 2.0;
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -995,7 +1011,6 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
-                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
                         const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
@@ -1036,15 +1051,13 @@ with col_3d:
             }
 
             // ====================================================================
-            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ ИЗ [SOURCE: 6])
+            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ)
             // ====================================================================
             const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
                 try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
-                
-                // Перелет к датчику. isModelLoaded станет true внутри flyCameraTo
                 isModelLoaded = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
@@ -1067,7 +1080,6 @@ with col_3d:
                 } catch(e) {}
                 
                 if (!cameraRestored) {
-                    // ЭТО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ КОДА [SOURCE: 6]
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1093,7 +1105,6 @@ with col_3d:
                     }
                 }
                 
-                // РАЗРЕШАЕМ СОХРАНЯТЬ КАМЕРУ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ЗАГРУЗКИ МОДЕЛИ
                 isModelLoaded = true;
                 saveCamState();
             }
@@ -1175,13 +1186,9 @@ if compare_mode and table_data:
     st.markdown("---")
     st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
-    # Создаем DataFrame из собранных данных
     df = pd.DataFrame(table_data)
+    df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
-    # Сортируем по номеру сенсора для красоты
-    df = df.sort_values(by="Sensör No").reset_index(drop=True)Ф
-    
-    # Используем возможности Streamlit для стилизации DataFrame
     st.dataframe(
         df,
         use_container_width=True,
