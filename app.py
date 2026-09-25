@@ -258,9 +258,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 CATEGORIES = {
-    "hoop": {"name": "Othoradial Strains", "names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"name": "Longitudinal Strains", "names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"name": "Temperature", "names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
@@ -273,26 +273,28 @@ def ensure_playwright_installed():
     try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     except Exception: pass
 
-# ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ИЗ GİTHUB_3DMAX.txt - ПРЯМОЙ ПАРСИНГ ТАБЛИЦЫ)[cite: 7]
-# ---------------------------------------------------------
 @st.cache_data(ttl=300)
-def fetch_live_data_from_web():
+def fetch_all_categories_data():
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
         browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--window-size=1920,1080",
         ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
+        try:
+            browser = p.chromium.launch(headless=True, args=browser_args)
+        except Exception:
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
             viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
+            timezone_id="Europe/Istanbul",
+            locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
@@ -302,25 +304,35 @@ def fetch_live_data_from_web():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            try: page.get_by_text("Types").click(timeout=8000)
-            except: pass
+            try:
+                page.get_by_text("Types").click(timeout=8000)
+            except Exception:
+                pass
             page.wait_for_timeout(1000)
 
-            try: page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
-            except: pass
+            try:
+                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            except Exception:
+                pass
             page.wait_for_timeout(800)
 
-            try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
-            except: pass
+            try:
+                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+            except Exception:
+                pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
-                except:
-                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
-                    except:
-                        try: page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
-                        except: pass
+                try:
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                except Exception:
+                    try:
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                    except Exception:
+                        try:
+                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
+                        except Exception:
+                            pass
 
                 page.wait_for_timeout(3000)
 
@@ -380,23 +392,22 @@ def fetch_live_data_from_web():
 
                             if len(val_map) > 0:
                                 break
-                    except: pass
+                    except Exception:
+                        pass
+
                     page.wait_for_timeout(600)
 
                 all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
         except Exception as e:
-            st.warning(f"LoggIS canlı veri uyarısı: {e}")
+            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
         finally:
             browser.close()
 
     return all_results
 
-# ---------------------------------------------------------
-# 2. АРХИВНЫЕ ДАННЫЕ (ИЗ CSV ВЫГРУЗКИ)
-# ---------------------------------------------------------
 @st.cache_data(ttl=900)
-def fetch_csv_archive_database(mode_type="ALL"):
+def fetch_csv_database(mode_type="ALL"):
     historical_db = {k: {} for k in CATEGORIES}
     dates_set = set()
 
@@ -468,7 +479,7 @@ def fetch_csv_archive_database(mode_type="ALL"):
                             csv_btn.click(force=True)
                     csv_path = d_info.value.path()
                 except Exception as e:
-                    pass
+                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
 
                 if csv_path and os.path.exists(csv_path):
                     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -500,7 +511,7 @@ def fetch_csv_archive_database(mode_type="ALL"):
                                 historical_db[cat_key][date_str] = val_map
 
         except Exception as e:
-            pass
+            st.warning(f"LoggIS bağlantı hatası: {e}")
         finally:
             browser.close()
 
@@ -542,7 +553,7 @@ with col_nav:
         st.subheader("Zaman SeçİMİ")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
-            all_dates, full_db = fetch_csv_archive_database(mode_type="ALL")
+            all_dates, full_db = fetch_csv_database(mode_type="ALL")
             
         if not all_dates:
             st.warning("Arşiv verisi bulunamadı.")
@@ -581,11 +592,14 @@ with col_nav:
                             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
                             latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
     else:
-        with st.spinner("En güncel canlı veriler alınıyor..."):
-            live_data = fetch_live_data_from_web()
-            cur_layer = live_data.get(selected_comp, {"values": {}, "date": ""})
-            target_timestamp = cur_layer["date"] if cur_layer["date"] else "Canlı"
-            raw_v_map = cur_layer["values"]
+        # CANLI VERİLER: брать напрямую из таблицы LoggIS по проверенной логике
+        # из GİTHUB_3DMAX. Архив здесь НЕ используется.
+        with st.spinner("En güncel veriler alınıyor..."):
+            live_data = fetch_all_categories_data()
+
+        cur_live = live_data.get(selected_comp, {"values": {}, "date": ""})
+        target_timestamp = cur_live.get("date", "-") or "-"
+        raw_v_map = cur_live.get("values", {})
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
@@ -784,14 +798,14 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (АКТИВАЦИЯ ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ)
+        // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ
         // =========================================================================
-        let userInteracted = false;
+        let isModelLoaded = false;
         
         function saveCamState() {
-            if (!userInteracted) return;
+            if (!isModelLoaded) return; // Не сохраняем дефолтные нули во время загрузки!
             try {
-                window.sessionStorage.setItem('loggis_cam_v10', JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v7', JSON.stringify({
                     pos: camera.position.toArray(),
                     tgt: controls.target.toArray()
                 }));
@@ -880,8 +894,8 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        controls.addEventListener('start', () => { userInteracted = true; });
-        controls.addEventListener('end', saveCamState);
+        // Сохранение вызывается при любом вращении пользователем
+        controls.addEventListener('change', saveCamState);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -1080,7 +1094,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; 
+                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -1117,6 +1131,7 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
+                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
                         const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
@@ -1157,24 +1172,30 @@ with col_3d:
             }
 
             // ====================================================================
-            // ЛОГИКА КАМЕРЫ (ВОССТАНОВЛЕНИЕ ПОЗИЦИИ ИЛИ ИСХОДНЫЙ ЦЕНТР)
+            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ ИЗ [SOURCE: 6])
             // ====================================================================
-            const lastSelected = safeGetItem('threejs_last_selected');
+            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                safeSetItem('threejs_last_selected', payload.selectedSensor);
-                userInteracted = true;
+                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
+                
+                // Перелет к датчику. isModelLoaded станет true внутри flyCameraTo
+                isModelLoaded = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
+                if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
+                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
+                }
+
                 let cameraRestored = false;
                 try {
-                    const savedStr = window.sessionStorage.getItem('loggis_cam_v10');
+                    const savedStr = window.sessionStorage.getItem('loggis_cam_v7');
                     if (savedStr) {
                         const st = JSON.parse(savedStr);
-                        if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
-                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
-                            controls.target.set(st.target[0], st.target[1], st.target[2]);
+                        if (st && st.pos && st.tgt && !isNaN(st.pos[0]) && !isNaN(st.tgt[0])) {
+                            camera.position.fromArray(st.pos);
+                            controls.target.fromArray(st.tgt);
                             controls.update();
                             cameraRestored = true;
                         }
@@ -1182,6 +1203,7 @@ with col_3d:
                 } catch(e) {}
                 
                 if (!cameraRestored) {
+                    // ЭТО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ КОДА [SOURCE: 6]
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1206,6 +1228,10 @@ with col_3d:
                         controls.update();
                     }
                 }
+                
+                // РАЗРЕШАЕМ СОХРАНЯТЬ КАМЕРУ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ЗАГРУЗКИ МОДЕЛИ
+                isModelLoaded = true;
+                saveCamState();
             }
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
@@ -1223,16 +1249,12 @@ with col_3d:
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
             if (!animate) { 
                 camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
-                userInteracted = true;
                 saveCamState();
                 return; 
             }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
             new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-            .onComplete(() => {
-                userInteracted = true;
-                saveCamState();
-            }).start();
+            .onComplete(saveCamState).start();
         }
 
         function getIntersectedSensor(e) {
@@ -1289,9 +1311,13 @@ if compare_mode and table_data:
     st.markdown("---")
     st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
+    # Создаем DataFrame из собранных данных
     df = pd.DataFrame(table_data)
+    
+    # Сортируем по номеру сенсора для красоты
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
+    # Используем возможности Streamlit для стилизации DataFrame
     st.dataframe(
         df,
         use_container_width=True,
