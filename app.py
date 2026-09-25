@@ -589,7 +589,7 @@ with col_3d:
             "unit": cat_cfg["unit"],
             "clim": clim,
             "comp": selected_comp,
-            "tunnelOpacity": float(tunnel_opacity),
+            "tunnelOpacity": float(tunnelOpacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red,
             "isCompareMode": compare_mode
@@ -616,19 +616,7 @@ with col_3d:
         .legend-bar-container { display: flex; align-items: stretch; height: 180px; }
         #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
-        #reset-cam-btn { position: absolute; bottom: 14px; right: 14px; background: rgba(10, 14, 23, 0.92); border: 1px solid rgba(0, 200, 230, 0.55); padding: 8px 14px; border-radius: 6px; color: #00E5FF; font-size: 11px; font-weight: 700; cursor: pointer; z-index: 95; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s ease; box-shadow: 0 4px 16px rgba(0, 200, 230, 0.25); }
-        #reset-cam-btn:hover { background: #00C8E6; color: #0A0E17; }
-        @media (max-width: 600px) { 
-            #color-legend { padding: 6px 8px; top: 10px; right: 10px; } 
-            .legend-bar-container { height: 130px; } 
-            #legend-bar { width: 12px; } 
-            #legend-title { font-size: 10px; } 
-            .legend-labels { font-size: 9px; } 
-            #selected-hud { top: 10px; left: 10px; padding: 6px 10px; } 
-            #selected-hud .hud-name { font-size: 13px; } 
-            #selected-hud .hud-val { font-size: 15px; } 
-            #reset-cam-btn { bottom: 10px; right: 10px; padding: 6px 10px; font-size: 10px; } 
-        }
+        @media (max-width: 600px) { #color-legend { padding: 6px 8px; top: 10px; right: 10px; } .legend-bar-container { height: 130px; } #legend-bar { width: 12px; } #legend-title { font-size: 10px; } .legend-labels { font-size: 9px; } #selected-hud { top: 10px; left: 10px; padding: 6px 10px; } #selected-hud .hud-name { font-size: 13px; } #selected-hud .hud-val { font-size: 15px; } }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -655,7 +643,6 @@ with col_3d:
                 </div>
             </div>
         </div>
-        <div id="reset-cam-btn">📸 Görünümü Sıfırla</div>
     </div>
 
     <script>
@@ -673,15 +660,10 @@ with col_3d:
         const selectedHud = document.getElementById('selected-hud');
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
-        const resetBtn = document.getElementById('reset-cam-btn');
 
-        // Safe localStorage wrappers to persist camera state across re-renders
-        function safeSetItem(key, val) {
-            try { window.localStorage.setItem(key, val); } catch (e) {}
-        }
-        function safeGetItem(key) {
-            try { return window.localStorage.getItem(key); } catch (e) { return null; }
-        }
+        // СБРОС И СОХРАНЕНИЕ КАМЕРЫ (LocalStorage wrapper)
+        function safeSetItem(key, val) { try { window.sessionStorage.setItem(key, val); } catch (e) {} }
+        function safeGetItem(key) { try { return window.sessionStorage.getItem(key); } catch (e) { return null; } }
 
         // =========================================================================
         // ЦВЕТОВЫЕ ШКАЛЫ
@@ -705,7 +687,7 @@ with col_3d:
         const compareStops = [
             new THREE.Color("#0055FF"), // Уменьшение
             new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений) - идеально посередине
+            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений)
             new THREE.Color("#FFDD00"), 
             new THREE.Color("#FF0033")  // Увеличение
         ];
@@ -766,7 +748,7 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Save camera state on manual move
+        // Сохранение позиции камеры при любых вращениях пользователя
         controls.addEventListener('change', () => {
             const camState = {
                 pos: [camera.position.x, camera.position.y, camera.position.z],
@@ -962,7 +944,7 @@ with col_3d:
             scene.add(portalsGroup);
 
             // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
+            // ЛИНЕЙКИ С УЧЕТОМ МАСШТАБА 2.0 И ПЕРЕВОРОТА (0 НА КОНЧИКЕ)
             // =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
@@ -972,7 +954,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
+                    const scale = 2.0; 
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -1009,7 +991,6 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
-                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
                         const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
@@ -1049,7 +1030,7 @@ with col_3d:
                 }
             }
 
-            // Restore camera logic using localStorage
+            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ (КАК В ИСХОДНИКЕ, НО С СОХРАНЕНИЕМ ПОЛОЖЕНИЯ)
             const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1066,6 +1047,7 @@ with col_3d:
                         controls.update();
                     } catch(e) {}
                 } else {
+                    // НАЧАЛЬНЫЙ ЭКРАН КАК ЕСТЬ ИЗ ТВОЕГО КОДА [SOURCE: 7]
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1091,42 +1073,6 @@ with col_3d:
                     }
                 }
             }
-
-            // Bind Reset Camera Button
-            document.getElementById('reset-cam-btn').addEventListener('click', () => {
-                safeSetItem('threejs_camera_state', ''); 
-                safeSetItem('threejs_last_selected', '');
-                
-                const tunnelBox = new THREE.Box3(); 
-                if (tunnelMeshes.length > 0) {
-                    tunnelMeshes.forEach(tm => {
-                        if(tm.geometry) tm.geometry.computeBoundingBox();
-                        tunnelBox.expandByObject(tm);
-                    });
-                } else { 
-                    model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
-                    tunnelBox.setFromObject(model); 
-                }
-                
-                if (!tunnelBox.isEmpty()) {
-                    const center = tunnelBox.getCenter(new THREE.Vector3()); 
-                    const size = tunnelBox.getSize(new THREE.Vector3()); 
-                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                    
-                    const fov = camera.fov * (Math.PI / 180);
-                    let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
-                    
-                    const targetPos = center.clone();
-                    const endCamPos = new THREE.Vector3(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ);
-                    
-                    new TWEEN.Tween(controls.target).to(targetPos, 1000).easing(TWEEN.Easing.Cubic.InOut).start();
-                    new TWEEN.Tween(camera.position).to(endCamPos, 1000).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-                    .onComplete(() => {
-                        const camState = { pos: [camera.position.x, camera.position.y, camera.position.z], target: [controls.target.x, controls.target.y, controls.target.z] };
-                        safeSetItem('threejs_camera_state', JSON.stringify(camState));
-                    }).start();
-                }
-            });
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
 
