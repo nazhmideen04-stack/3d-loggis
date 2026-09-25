@@ -27,7 +27,7 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
 
 st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
 
-# Генерация уникального ID сессии для сохранения положения камеры без багов при обновлении страницы
+# Генерация уникального ID сессии для сохранения положения камеры без сбросов
 if "app_session_id" not in st.session_state:
     st.session_state["app_session_id"] = str(uuid.uuid4())
 
@@ -667,16 +667,14 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (LocalStorage)
-        // =========================================================================
-        function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
-        function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (LocalStorage привязан к сессии)
+        function safeSetItem(key, val) { try { window.sessionStorage.setItem(key, val); } catch (e) {} }
+        function safeGetItem(key) { try { return window.sessionStorage.getItem(key); } catch (e) { return null; } }
 
         const currentSessionId = payload.sessionId;
         const savedSessionId = safeGetItem('threejs_session_id');
 
-        // Сбрасываем позицию камеры ТОЛЬКО если это абсолютно новая вкладка браузера или нажато F5
+        // Сбрасываем позицию камеры ТОЛЬКО если это абсолютно новая сессия (F5 или новая вкладка)
         if (savedSessionId !== currentSessionId) {
             safeSetItem('threejs_session_id', currentSessionId);
             safeSetItem('threejs_camera_state', '');
@@ -766,7 +764,7 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Сохраняем положение камеры при каждом движении
+        // Сохраняем положение каждый раз, когда камера двигается пользователем
         controls.addEventListener('change', () => {
             const camState = {
                 pos: [camera.position.x, camera.position.y, camera.position.z],
@@ -962,7 +960,7 @@ with col_3d:
             scene.add(portalsGroup);
 
             // =========================================================
-            // ЛИНЕЙКИ С УЧЕТОМ МАСШТАБА 2.0 И ПЕРЕВОРОТА (0 НА КОНЧИКЕ)
+            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
             // =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
@@ -1009,6 +1007,7 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
+                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
                         const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
@@ -1048,9 +1047,7 @@ with col_3d:
                 }
             }
 
-            // =========================================================
-            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ ПОЛОЖЕНИЯ КАМЕРЫ
-            // =========================================================
+            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ
             const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1061,7 +1058,6 @@ with col_3d:
                 let cameraRestored = false;
                 const savedStateStr = safeGetItem('threejs_camera_state');
                 
-                // Пробуем восстановить камеру из памяти
                 if (savedStateStr) {
                     try {
                         const st = JSON.parse(savedStateStr);
@@ -1074,8 +1070,8 @@ with col_3d:
                     } catch(e) {}
                 }
                 
-                // Если не получилось (первый запуск) — выставляем по центру КАК В ИСХОДНИКЕ
                 if (!cameraRestored) {
+                    // ВОССТАНОВЛЕНО ИСХОДНОЕ (ИДЕАЛЬНОЕ) ПОЛОЖЕНИЕ ИЗ ПЕРВОГО КОДА
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1091,15 +1087,17 @@ with col_3d:
                         const center = tunnelBox.getCenter(new THREE.Vector3()); 
                         const size = tunnelBox.getSize(new THREE.Vector3()); 
                         const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                        
                         controls.target.copy(center); 
                         
-                        const fov = camera.fov * (Math.PI / 180);
-                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
-                        
-                        camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
+                        // СТАРЫЕ, ПРОВЕРЕННЫЕ КОЭФФИЦИЕНТЫ, КОТОРЫЕ ТЫ ПРОСИЛ ВЕРНУТЬ
+                        camera.position.set(
+                            center.x - maxDim * 0.40, 
+                            center.y + maxDim * 0.45, 
+                            center.z + maxDim * 0.55
+                        ); 
                         controls.update();
 
-                        // Сохраняем это положение, чтобы при обновлении оно не сбрасывалось
                         const camState = {
                             pos: [camera.position.x, camera.position.y, camera.position.z],
                             target: [controls.target.x, controls.target.y, controls.target.z]
