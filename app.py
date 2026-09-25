@@ -667,14 +667,16 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // СИСТЕМА СОХРАНЕНИЯ КАМЕРЫ (localStorage привязан к сессии Streamlit)
+        // =========================================================================
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (LocalStorage)
+        // =========================================================================
         function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
         function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
 
         const currentSessionId = payload.sessionId;
         const savedSessionId = safeGetItem('threejs_session_id');
 
-        // Сбрасываем позицию камеры ТОЛЬКО если открыта новая вкладка или нажато F5
+        // Сбрасываем позицию камеры ТОЛЬКО если это абсолютно новая вкладка браузера или нажато F5
         if (savedSessionId !== currentSessionId) {
             safeSetItem('threejs_session_id', currentSessionId);
             safeSetItem('threejs_camera_state', '');
@@ -699,12 +701,13 @@ with col_3d:
             new THREE.Color("#FF4400"), new THREE.Color("#D50000")
         ];
 
+        // Шкала для Дельты (Разницы): СИНИЙ (-) -> СЕРЫЙ (0) -> КРАСНЫЙ (+)
         const compareStops = [
-            new THREE.Color("#0055FF"), 
+            new THREE.Color("#0055FF"), // Уменьшение
             new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), 
+            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений) - идеально посередине
             new THREE.Color("#FFDD00"), 
-            new THREE.Color("#FF0033")  
+            new THREE.Color("#FF0033")  // Увеличение
         ];
 
         let currentStops = hoopStops;
@@ -763,7 +766,7 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Сохраняем положение каждый раз, когда камера двигается
+        // Сохраняем положение камеры при каждом движении
         controls.addEventListener('change', () => {
             const camState = {
                 pos: [camera.position.x, camera.position.y, camera.position.z],
@@ -959,7 +962,7 @@ with col_3d:
             scene.add(portalsGroup);
 
             // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
+            // ЛИНЕЙКИ С УЧЕТОМ МАСШТАБА 2.0 И ПЕРЕВОРОТА (0 НА КОНЧИКЕ)
             // =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
@@ -1045,7 +1048,9 @@ with col_3d:
                 }
             }
 
-            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ
+            // =========================================================
+            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ ПОЛОЖЕНИЯ КАМЕРЫ
+            // =========================================================
             const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1053,17 +1058,24 @@ with col_3d:
                 safeSetItem('threejs_last_selected', payload.selectedSensor);
                 flyCameraTo(selectedMeshRef, true);
             } else {
+                let cameraRestored = false;
                 const savedStateStr = safeGetItem('threejs_camera_state');
+                
+                // Пробуем восстановить камеру из памяти
                 if (savedStateStr) {
-                    // ЕСЛИ КАМЕРА УЖЕ БЫЛА СДВИНУТА В ТЕКУЩЕЙ СЕССИИ - ВОССТАНАВЛИВАЕМ
                     try {
                         const st = JSON.parse(savedStateStr);
-                        camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
-                        controls.target.set(st.target[0], st.target[1], st.target[2]);
-                        controls.update();
+                        if (st && st.pos && st.target) {
+                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
+                            controls.target.set(st.target[0], st.target[1], st.target[2]);
+                            controls.update();
+                            cameraRestored = true;
+                        }
                     } catch(e) {}
-                } else {
-                    // ЕСЛИ ЭТО ПЕРВАЯ ЗАГРУЗКА ИЛИ F5 - ОСТАВЛЯЕМ НАЧАЛЬНЫЙ ЭКРАН СТРОГО КАК БЫЛО
+                }
+                
+                // Если не получилось (первый запуск) — выставляем по центру КАК В ИСХОДНИКЕ
+                if (!cameraRestored) {
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1087,7 +1099,7 @@ with col_3d:
                         camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
                         controls.update();
 
-                        // СОХРАНЯЕМ ЭТО ПОЛОЖЕНИЕ, ЧТОБЫ ОНО НЕ СБРАСЫВАЛОСЬ ПРИ СЛЕДУЮЩЕМ КЛИКЕ
+                        // Сохраняем это положение, чтобы при обновлении оно не сбрасывалось
                         const camState = {
                             pos: [camera.position.x, camera.position.y, camera.position.z],
                             target: [controls.target.x, controls.target.y, controls.target.z]
