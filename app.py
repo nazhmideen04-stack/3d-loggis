@@ -177,7 +177,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -192,17 +192,14 @@ CATEGORIES = {
 }
 
 def clean_num(s):
-    if not s:
-        return np.nan
+    if not s: return np.nan
     s = str(s).replace(",", ".").replace(" ", "").strip()
     m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
     return float(m.group()) if m else np.nan
 
 def ensure_playwright_installed():
-    try:
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-    except Exception:
-        pass
+    try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+    except Exception: pass
 
 @st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
@@ -214,15 +211,13 @@ def fetch_csv_database(mode_type="ALL"):
             "--no-sandbox", "--disable-setuid-sandbox",
             "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
         ]
-        try:
-            browser = p.chromium.launch(headless=True, args=browser_args)
+        try: browser = p.chromium.launch(headless=True, args=browser_args)
         except:
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
-            accept_downloads=True,
-            viewport={"width": 1920, "height": 1080},
+            accept_downloads=True, viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul", locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
         )
@@ -342,10 +337,12 @@ with col_nav:
     )
 
     target_timestamp = "-"
+    latest_timestamp = None
     raw_v_map = {}
+    latest_v_map = {}
     cat_cfg = CATEGORIES[selected_comp]
+    compare_mode = False
 
-    # ИЕРАРХИЧЕСКИЙ ВЫБОР ДАТЫ ПО ГОДУ, МЕСЯЦУ, ДНЮ И ВРЕМЕНИ ПРИ ВЫБОРЕ АРХИВА
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
         st.subheader("Zaman Seçimi")
@@ -356,7 +353,11 @@ with col_nav:
         if not all_dates:
             st.warning("Arşiv verisi bulunamadı.")
         else:
-            # Создаем иерархическую структуру: Год -> Месяц -> День -> Список часов
+            latest_timestamp = all_dates[0]  # Самая последняя дата для сравнения
+            
+            # Чекбокс для режима сравнения (Дельты)
+            compare_mode = st.checkbox("Karşılaştır")
+
             date_hierarchy = {}
             for d_str in all_dates:
                 clean_d = d_str.replace("-", "/")
@@ -385,6 +386,7 @@ with col_nav:
                         if sel_time:
                             target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
                             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+                            latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
     else:
         with st.spinner("En güncel veriler alınıyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
@@ -396,30 +398,51 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
+# ---------------------------------------------------------
+# ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
+# ---------------------------------------------------------
 active_category_values = {}
 if raw_v_map:
     for s_name, val in raw_v_map.items():
         if val is None or np.isnan(val): continue
         u_name = s_name.upper()
-        if selected_comp == "hoop" and "-CS" in u_name:
-            active_category_values[s_name] = float(val)
-        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name:
-            active_category_values[s_name] = float(val)
-        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
-            active_category_values[s_name] = float(val)
+        
+        is_valid_sensor = False
+        if selected_comp == "hoop" and "-CS" in u_name: is_valid_sensor = True
+        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: is_valid_sensor = True
+        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: is_valid_sensor = True
 
+        if is_valid_sensor:
+            if compare_mode:
+                # Режим сравнения: Дельта = Текущее (Последнее) - Прошлое (Архивное)
+                latest_val = latest_v_map.get(s_name)
+                if latest_val is not None and not np.isnan(latest_val):
+                    delta = float(latest_val) - float(val)
+                    active_category_values[s_name] = delta
+            else:
+                active_category_values[s_name] = float(val)
+
+# Расчет шкалы: Для Дельты шкала симметрична [-Max, +Max]
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
 else:
-    real_min = float(min(vals))
-    real_max = float(max(vals))
-    diff = abs(real_max - real_min)
-    if diff < 0.001:
-        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
+    if compare_mode:
+        max_abs = max(abs(min(vals)), abs(max(vals)))
+        if max_abs < 0.001:
+            clim = [-0.5, 0.5]
+        else:
+            buf = max_abs * 0.05
+            clim = [-round(max_abs + buf, 2), round(max_abs + buf, 2)]
     else:
-        buf = diff * 0.02
-        clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
+        real_min = float(min(vals))
+        real_max = float(max(vals))
+        diff = abs(real_max - real_min)
+        if diff < 0.001:
+            clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
+        else:
+            buf = diff * 0.02
+            clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
 
 with col_nav:
     st.markdown("---")
@@ -430,14 +453,18 @@ with col_nav:
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
+    if compare_mode:
+        st.write("**Karşılaştırma (Fark Analizi):**")
+        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  {latest_timestamp}</span>", unsafe_allow_html=True)
+    else:
+        st.write("**Aktif Periyot:**")
+        st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     sensor_count_str = str(len(active_category_values)) if active_category_values else "-"
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{sensor_count_str}</span>", unsafe_allow_html=True)
     
-    st.write("**Skala Limitleri (Gerçek Min / Maks):**")
+    st.write("**Skala Limitleri:**")
     if vals:
         limit_str = f"Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}"
     else:
@@ -457,12 +484,13 @@ with col_3d:
         )
     with sel_col2:
         if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
+            val_label = "Değişim (Δ)" if compare_mode else "Ölçüm"
             st.metric(
-                label=f"Ölçüm ({selected_sensor})",
+                label=f"{val_label} ({selected_sensor})",
                 value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
             )
         else:
-            st.metric(label="Ölçüm", value="-")
+            st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -477,7 +505,8 @@ with col_3d:
             "comp": selected_comp,
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
-            "showNoDataRed": show_no_data_red
+            "showNoDataRed": show_no_data_red,
+            "isCompareMode": compare_mode
         }
         json_payload = json.dumps(payload_data)
 
@@ -546,6 +575,10 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
+        // =========================================================================
+        // ЦВЕТОВЫЕ ШКАЛЫ
+        // =========================================================================
+
         const hoopStops = [
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
             new THREE.Color("#00FF66"), new THREE.Color("#FFEE00"), new THREE.Color("#FF7700"), new THREE.Color("#FF0022")
@@ -560,10 +593,26 @@ with col_3d:
             new THREE.Color("#FF4400"), new THREE.Color("#D50000")
         ];
 
+        // Шкала для Дельты (Разницы): СИНИЙ (-) -> СЕРЫЙ (0) -> КРАСНЫЙ (+)
+        const compareStops = [
+            new THREE.Color("#0055FF"), // Уменьшение
+            new THREE.Color("#00E5FF"), 
+            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений) - идеально посередине
+            new THREE.Color("#FFDD00"), 
+            new THREE.Color("#FF0033")  // Увеличение
+        ];
+
         let currentStops = hoopStops;
-        if (payload.comp === "axial") { currentStops = axialStops; legendTitle.innerText = "Boyuna [µm/m]"; }
-        else if (payload.comp === "temp") { currentStops = temperatureStops; legendTitle.innerText = "Sıcaklık [°C]"; }
-        else { currentStops = hoopStops; legendTitle.innerText = "Çevresel [µm/m]"; }
+        if (payload.isCompareMode) {
+            currentStops = compareStops;
+            legendTitle.innerText = "Δ Fark [" + payload.unit + "]";
+        } else {
+            if (payload.comp === "axial") { currentStops = axialStops; legendTitle.innerText = "Boyuna [" + payload.unit + "]"; }
+            else if (payload.comp === "temp") { currentStops = temperatureStops; legendTitle.innerText = "Sıcaklık [" + payload.unit + "]"; }
+            else { currentStops = hoopStops; legendTitle.innerText = "Çevresel [" + payload.unit + "]"; }
+        }
+
+        const labelPrefix = payload.isCompareMode ? "Fark (Δ): " : "Ölçüm: ";
 
         function buildExactLegendGradient(stops) {
             const n = stops.length; const items = [];
@@ -841,7 +890,6 @@ with col_3d:
                         }
                         rulerGroup.add(label);
                     }
-
                     scene.add(rulerGroup);
                 }
             }
@@ -919,7 +967,7 @@ with col_3d:
                 tooltip.style.display = 'block'; tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY + 14) + 'px';
                 if (isUsable) {
                     const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Ölçüm: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">' + labelPrefix + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
                     tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: -</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
