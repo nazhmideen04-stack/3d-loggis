@@ -274,7 +274,7 @@ def ensure_playwright_installed():
     except Exception: pass
 
 # ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ИЗ ПЕРВОГО ФАЙЛА - ПРЯМОЙ ПАРСИНГ ТАБЛИЦЫ САЙТА)
+# 1. ЖИВЫЕ ДАННЫЕ (ИЗ САМОГО ПЕРВОГО ФАЙЛА GİTHUB_3DMAX.txt)
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_data_from_web():
@@ -784,14 +784,14 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (АКТИВАЦИЯ ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ)
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ
         // =========================================================================
         let userInteracted = false;
         
         function saveCamState() {
             if (!userInteracted) return;
             try {
-                window.sessionStorage.setItem('loggis_cam_v9', JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v10', JSON.stringify({
                     pos: camera.position.toArray(),
                     tgt: controls.target.toArray()
                 }));
@@ -1159,14 +1159,18 @@ with col_3d:
             // ====================================================================
             // ЛОГИКА КАМЕРЫ (ВОССТАНОВЛЕНИЕ ПОЗИЦИИ ИЛИ ИСХОДНЫЙ ЦЕНТР)
             // ====================================================================
-            const lastSelected = safeGetItem('threejs_last_selected');
+            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                safeSetItem('threejs_last_selected', payload.selectedSensor);
+                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
                 userInteracted = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
+                if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
+                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
+                }
+
                 let cameraRestored = false;
                 try {
                     const savedStr = window.sessionStorage.getItem('loggis_cam_v9');
