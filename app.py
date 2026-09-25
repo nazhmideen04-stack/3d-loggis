@@ -185,7 +185,6 @@ st.markdown("""
 
     /* МОБИЛЬНАЯ АДАПТАЦИЯ - УЛУЧШЕННАЯ */
     @media (max-width: 820px) {
-        /* Пространство по краям для удобного скролла (чтобы пальцем не задевать 3D) */
         .main .block-container {
             padding-left: 2rem !important;
             padding-right: 2rem !important;
@@ -205,7 +204,6 @@ st.markdown("""
             min-width: 100% !important;
         }
 
-        /* Уменьшаем шрифты заголовков */
         h1, h2, h3 {
             letter-spacing: 1px !important;
         }
@@ -230,7 +228,6 @@ st.markdown("""
             font-size: 15px !important;
         }
         
-        /* Уменьшаем текст метрик */
         [data-testid="stMetricValue"] {
             font-size: 24px !important;
         }
@@ -428,7 +425,7 @@ with col_nav:
         if not all_dates:
             st.warning("Arşiv verisi bulunamadı.")
         else:
-            latest_timestamp = all_dates[0]  # Самая последняя дата для сравнения
+            latest_timestamp = all_dates[0]  
             
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
@@ -476,7 +473,7 @@ with col_nav:
 # ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
 # ---------------------------------------------------------
 active_category_values = {}
-table_data = [] # Данные для таблицы разницы
+table_data = [] 
 
 if raw_v_map:
     for s_name, val in raw_v_map.items():
@@ -492,7 +489,6 @@ if raw_v_map:
             if compare_mode:
                 latest_val = latest_v_map.get(s_name)
                 
-                # Подготовка данных для таблицы
                 str_val = f"{float(val):.2f}"
                 str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
                 
@@ -934,51 +930,99 @@ with col_3d:
             if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 8.5, boxTB.min.z - 4.0); portalsGroup.add(sTB); }
             scene.add(portalsGroup);
 
+            // =========================================================
+            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 0.5
+            // =========================================================
             if (payload.showMeters) {
-                const overallBox = new THREE.Box3(); tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
+                const overallBox = new THREE.Box3(); 
+                tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
+                
                 if (!overallBox.isEmpty()) {
-                    const size = overallBox.getSize(new THREE.Vector3()); const rulerGroup = new THREE.Group();
-                    const isZAxis = size.z >= size.x; const lengthM = isZAxis ? size.z : size.x;
-                    const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x; const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
-                    const step = 10.0; const stepsCount = Math.floor(lengthM / step); const totalDistanceM = stepsCount * step;
-                    const yRuler = overallBox.min.y - 0.2; const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
-                    const linePoints = [];
+                    const size = overallBox.getSize(new THREE.Vector3()); 
+                    const rulerGroup = new THREE.Group();
+
+                    const isZAxis = size.z >= size.x; 
+                    const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x; 
+                    const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
+                    
+                    // Длина рассчитывается с учетом того, что модель увеличена в 2 раза.
+                    // Значит, физическое расстояние в 3D надо умножить на 0.5
+                    const physicalLength = Math.abs(endCoord - startCoord);
+                    const realMeters = physicalLength * 0.5;
+
+                    // Шаг линейки - каждые 10 метров (в координатах модели это 20 единиц)
+                    const stepReal = 10.0; 
+                    const step3D = stepReal / 0.5; 
+                    const stepsCount = Math.floor(physicalLength / step3D); 
+                    const totalDistanceM = stepsCount * stepReal;
+
+                    const yRuler = overallBox.min.y - 0.2; 
+                    
+                    // Первая линейка (с одной стороны)
+                    const lateralPos1 = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
+                    // Вторая линейка (с противоположной стороны, зеркально)
+                    const lateralPos2 = isZAxis ? (overallBox.min.x - 3.5) : (overallBox.min.z - 3.5);
+
+                    // Линия 1
+                    const linePoints1 = [];
                     if (isZAxis) {
-                        linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord));
-                        linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord));
+                        linePoints1.push(new THREE.Vector3(lateralPos1, yRuler, startCoord));
+                        linePoints1.push(new THREE.Vector3(lateralPos1, yRuler, endCoord));
                     } else {
-                        linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos));
-                        linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos));
+                        linePoints1.push(new THREE.Vector3(startCoord, yRuler, lateralPos1));
+                        linePoints1.push(new THREE.Vector3(endCoord, yRuler, lateralPos1));
                     }
 
-                    const axisGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+                    // Линия 2
+                    const linePoints2 = [];
+                    if (isZAxis) {
+                        linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, startCoord));
+                        linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, endCoord));
+                    } else {
+                        linePoints2.push(new THREE.Vector3(startCoord, yRuler, lateralPos2));
+                        linePoints2.push(new THREE.Vector3(endCoord, yRuler, lateralPos2));
+                    }
+
                     const axisMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 });
-                    rulerGroup.add(new THREE.Line(axisGeom, axisMat));
+                    rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints1), axisMat));
+                    rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints2), axisMat));
 
                     for (let i = 0; i <= stepsCount; i++) {
-                        const currentPos = startCoord + i * step;
-                        const reversedDistance = (totalDistanceM - (i * step)).toFixed(0);
+                        const currentPos3D = startCoord + i * step3D; 
+                        const reversedDistance = (totalDistanceM - (i * stepReal)).toFixed(0); 
                         const distanceText = reversedDistance + " m";
 
-                        const tickPoints = [];
+                        // Метки и текст для Первой линейки
+                        const tickPoints1 = [];
                         if (isZAxis) {
-                            tickPoints.push(new THREE.Vector3(lateralPos - 0.8, yRuler, currentPos));
-                            tickPoints.push(new THREE.Vector3(lateralPos + 0.8, yRuler, currentPos));
+                            tickPoints1.push(new THREE.Vector3(lateralPos1 - 0.8, yRuler, currentPos3D));
+                            tickPoints1.push(new THREE.Vector3(lateralPos1 + 0.8, yRuler, currentPos3D));
                         } else {
-                            tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos - 0.8));
-                            tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos + 0.8));
+                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 - 0.8));
+                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 + 0.8));
                         }
+                        rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints1), axisMat));
+                        
+                        const label1 = createRulerLabel(distanceText);
+                        if (isZAxis) label1.position.set(lateralPos1 + 2.4, yRuler + 0.4, currentPos3D); 
+                        else label1.position.set(currentPos3D, yRuler + 0.4, lateralPos1 + 2.4);
+                        rulerGroup.add(label1);
 
-                        const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
-                        rulerGroup.add(new THREE.Line(tickGeom, axisMat));
-
-                        const label = createRulerLabel(distanceText);
+                        // Метки и текст для Второй линейки (зеркально)
+                        const tickPoints2 = [];
                         if (isZAxis) {
-                            label.position.set(lateralPos + 2.4, yRuler + 0.4, currentPos);
+                            tickPoints2.push(new THREE.Vector3(lateralPos2 - 0.8, yRuler, currentPos3D));
+                            tickPoints2.push(new THREE.Vector3(lateralPos2 + 0.8, yRuler, currentPos3D));
                         } else {
-                            label.position.set(currentPos, yRuler + 0.4, lateralPos + 2.4);
+                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 - 0.8));
+                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 + 0.8));
                         }
-                        rulerGroup.add(label);
+                        rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints2), axisMat));
+                        
+                        const label2 = createRulerLabel(distanceText);
+                        if (isZAxis) label2.position.set(lateralPos2 - 2.4, yRuler + 0.4, currentPos3D); 
+                        else label2.position.set(currentPos3D, yRuler + 0.4, lateralPos2 - 2.4);
+                        rulerGroup.add(label2);
                     }
                     scene.add(rulerGroup);
                 }
@@ -1084,13 +1128,9 @@ if compare_mode and table_data:
     st.markdown("---")
     st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
-    # Создаем DataFrame из собранных данных
     df = pd.DataFrame(table_data)
-    
-    # Сортируем по номеру сенсора для красоты
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
-    # Используем возможности Streamlit для стилизации DataFrame
     st.dataframe(
         df,
         use_container_width=True,
