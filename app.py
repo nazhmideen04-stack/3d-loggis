@@ -1,8 +1,6 @@
 import os
 import re
 import sys
-import csv
-import unicodedata
 import json
 import base64
 import subprocess
@@ -265,674 +263,127 @@ CATEGORIES = {
     "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
-# ---------------------------------------------------------
-# ОБЩИЕ ПОМОЩНИКИ: ЧИСЛА, ДАТЫ, ИМЕНА СЕНСОРОВ
-# ---------------------------------------------------------
-SENSOR_RE = re.compile(r"(?<![A-Za-z0-9])(T[AB]-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)", re.IGNORECASE)
-
-TR_MONTHS = {
-    "01": "Ocak", "02": "Şubat", "03": "Mart", "04": "Nisan", "05": "Mayıs", "06": "Haziran",
-    "07": "Temmuz", "08": "Ağustos", "09": "Eylül", "10": "Ekim", "11": "Kasım", "12": "Aralık",
-}
-
-DATE_FORMATS = [
-    "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y",
-    "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y",
-    "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%d-%m-%Y",
-    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
-    "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d",
-    "%d/%m/%y %H:%M:%S", "%d/%m/%y %H:%M",
-]
-
-
 def clean_num(s):
-    """Число из ячейки LoggIS: '12,5', '-1 234,56', '−3,2 µm/m', '1\u202f024,0' и т.п."""
-    if s is None:
-        return np.nan
-    if isinstance(s, (int, float, np.integer, np.floating)):
-        return float(s)
-    s = str(s).strip()
-    if not s:
-        return np.nan
-    s = s.replace("\u2212", "-").replace("\u2013", "-")          # юникод-минусы
-    s = re.sub(r"[\s\u00a0\u202f\u2009']", "", s)               # пробелы-разделители тысяч
-    if "," in s and "." in s:
-        if s.rfind(",") > s.rfind("."):
-            s = s.replace(".", "").replace(",", ".")               # 1.234,5
-        else:
-            s = s.replace(",", "")                                 # 1,234.5
-    else:
-        s = s.replace(",", ".")
-    m = re.search(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", s)
+    if not s: return np.nan
+    s = str(s).replace(",", ".").replace(" ", "").strip()
+    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
     return float(m.group()) if m else np.nan
-
-
-def parse_ts(s):
-    """Строка даты LoggIS -> datetime (день идёт первым, как в fr-FR)."""
-    if s is None:
-        return None
-    t = str(s).replace("\ufeff", "").strip()
-    if not t or not re.search(r"\d", t):
-        return None
-    t = re.sub(r"\s+", " ", t.replace("T", " "))
-    t = re.sub(r"(\.\d+)?(Z|[+-]\d{2}:?\d{2})$", "", t).strip()
-    for fmt in DATE_FORMATS:
-        try:
-            return datetime.strptime(t, fmt)
-        except ValueError:
-            pass
-    if not re.search(r"\d{1,4}[./-]\d{1,2}[./-]\d{1,4}", t):
-        return None
-    try:
-        ts = pd.to_datetime(t, dayfirst=True, errors="coerce")
-        if pd.notna(ts):
-            return ts.to_pydatetime().replace(tzinfo=None)
-    except Exception:
-        pass
-    return None
-
-
-def ts_key(dt):
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def fmt_ts(key):
-    """'2026-09-25 10:00:00' -> '25.09.2026 10:00' для показа."""
-    if not key or key == "-":
-        return "-"
-    try:
-        return datetime.strptime(key, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
-    except ValueError:
-        return str(key)
-
-
-SENSOR_RE_ALT = re.compile(r"(?<![A-Za-z0-9])([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-(?:CS|S|TP)\d[A-Za-z0-9]*(?:-[A-Za-z0-9]+)*)")
-
-
-def extract_sensor_name(header):
-    if header is None:
-        return None
-    h = str(header).replace("\ufeff", "")
-    m = SENSOR_RE.search(h) or SENSOR_RE_ALT.search(h)
-    return m.group(1).strip("-") if m else None
-
-
-def classify_sensor(name):
-    """Категория по имени сенсора: -TP -> temp, -CS -> hoop, -S.. -> axial."""
-    if not name:
-        return None
-    # Температурные сенсоры LoggIS: TA-CS1-L-TP, TA-S1-L1-TP -> суффикс -TP важнее всего
-    segs = name.upper().split("-")[1:]
-    if any(s.startswith("TP") for s in segs):
-        return "temp"
-    if any(s.startswith("CS") for s in segs):
-        return "hoop"
-    if any(s.startswith("S") for s in segs):
-        return "axial"
-    return None
-
 
 def ensure_playwright_installed():
     try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     except Exception: pass
 
-
-# ---------------------------------------------------------
-# ОБЩИЕ ШАГИ PLAYWRIGHT
-# ---------------------------------------------------------
-BROWSER_ARGS = [
-    "--no-sandbox", "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-]
-
-
-def _launch_browser(p):
-    try:
-        return p.chromium.launch(headless=True, args=BROWSER_ARGS)
-    except Exception:
-        ensure_playwright_installed()
-        return p.chromium.launch(headless=True, args=BROWSER_ARGS)
-
-
-def _new_page(browser):
-    context = browser.new_context(
-        accept_downloads=True, viewport={"width": 1920, "height": 1080},
-        timezone_id="Europe/Istanbul", locale="fr-FR",
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
-    )
-    return context.new_page()
-
-
-def _select_combo(page, index, value, log, label):
-    """Выбор в выпадающем списке: сначала как в записи (combobox.nth), затем по наличию option."""
-    try:
-        page.wait_for_selector(f'select option[value="{value}"]', state="attached", timeout=30000)
-    except Exception:
-        pass
-    try:
-        page.get_by_role("combobox").nth(index).select_option(value, timeout=15000)
-        return True
-    except Exception:
-        pass
-    try:
-        page.locator(f'select:has(option[value="{value}"])').first.select_option(value, timeout=10000)
-        return True
-    except Exception as e:
-        log.append(f"{label}='{value}' seçilemedi ({type(e).__name__})")
-        return False
-
-
-def _click_types(page, log):
-    for kwargs in ({}, {"force": True}):
-        try:
-            page.get_by_text("Types", exact=True).first.click(timeout=10000, **kwargs)
-            break
-        except Exception:
-            continue
-    else:
-        log.append("'Types' tıklanamadı")
-    try:
-        page.get_by_role("listbox").first.wait_for(state="attached", timeout=15000)
-    except Exception:
-        log.append("Kategori listesi (listbox) bulunamadı")
-
-
-def _get_view_options(page):
-    try:
-        return page.get_by_role("combobox").nth(1).locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim(), s: e.selected}))")
-    except Exception:
-        return []
-
-
-def _csv_view_value(page, table_view):
-    """Вид «Affichage», в котором доступна кнопка CSV (по умолчанию — Graphiques)."""
-    opts = _get_view_options(page)
-    for o in opts:
-        if "graph" in _norm(o["t"]) or "graph" in _norm(o["v"]) or "chart" in _norm(o["v"]):
-            return o["v"]
-    for o in opts:
-        if o["v"] and o["v"] != table_view:
-            return o["v"]
-    return None
-
-
-def _open_loggis(page, mode_type, view_type=None, log=None):
-    """Порядок как в записи Playwright: Durée -> (Affichage) -> Types.
-    Возвращает значение «Affichage» с кнопкой CSV (для запасного пути)."""
-    log = log if log is not None else []
-    page.goto(URL, timeout=90000, wait_until="domcontentloaded")
-    try: page.wait_for_load_state("networkidle", timeout=30000)
-    except Exception: pass
-    page.wait_for_timeout(2000)
-    _select_combo(page, 0, mode_type, log, "Durée")
-    page.wait_for_timeout(1500)
-    csv_view = None
-    if view_type:
-        csv_view = _csv_view_value(page, view_type)
-        _select_combo(page, 1, view_type, log, "Affichage")
-        page.wait_for_timeout(1500)
-    _click_types(page, log)
-    page.wait_for_timeout(1000)
-    return csv_view
-
-
-def _norm(t):
-    t = unicodedata.normalize("NFKD", str(t)).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"\s+", " ", t).strip()
-
-
-CATEGORY_KEYWORDS = {
-    "hoop": ["orthoradial", "othoradial", "ortho", "circonf", "hoop"],
-    "axial": ["longitudinal", "longitud", "axial"],
-    "temp": ["temperature", "temp"],
-}
-
-
-def _select_category(page, cat_cfg, log=None):
-    lb = page.get_by_role("listbox").first
-    # 1) точное значение (как в записи Playwright)
-    for c_name in cat_cfg["names"]:
-        try:
-            lb.select_option(c_name, timeout=2000)
-            return True
-        except Exception: pass
-    # 2) по тексту опции без учёта регистра/акцентов (Température, Températures, ...)
-    cat_key = next((k for k, v in CATEGORIES.items() if v is cat_cfg), None)
-    try:
-        opts = lb.locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim()}))")
-    except Exception:
-        opts = []
-    wanted = [_norm(n) for n in cat_cfg["names"]] + CATEGORY_KEYWORDS.get(cat_key, [])
-    for w in wanted:
-        for o in opts:
-            if w and (w in _norm(o["t"]) or w in _norm(o["v"])):
-                try:
-                    lb.select_option(o["v"], timeout=2000)
-                    return True
-                except Exception: pass
-    if log is not None:
-        log.append(f"Kategori bulunamadı: {cat_cfg['names'][0]} (listede: {', '.join(o['t'] for o in opts[:10])})")
-    return False
-
-
-# ---------------------------------------------------------
-# CANLI VERİLER: ТАБЛИЦА LoggIS (MONTH_02, заголовки TA-/TB-, последняя строка)
-# ---------------------------------------------------------
-_TABLE_JS = r"""
-() => {
-  const txt = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-  const expand = cells => {
-    const out = [];
-    cells.forEach(c => {
-      const n = parseInt(c.getAttribute('colspan') || '1', 10) || 1;
-      const t = txt(c);
-      for (let i = 0; i < n; i++) out.push(t);
-    });
-    return out;
-  };
-  const result = [];
-  document.querySelectorAll('table').forEach(t => {
-    const headRows = [], bodyRows = [];
-    t.querySelectorAll('tr').forEach(tr => {
-      if (tr.closest('table') !== t) return;               // пропускаем вложенные таблицы
-      const cells = Array.from(tr.children).filter(c => c.tagName === 'TH' || c.tagName === 'TD');
-      if (!cells.length) return;
-      const inHead = !!tr.closest('thead') || cells.every(c => c.tagName === 'TH');
-      (inHead ? headRows : bodyRows).push(expand(cells));
-    });
-    result.push({ headRows, bodyRows });
-  });
-  document.querySelectorAll('[role="grid"],[role="table"],[role="treegrid"]').forEach(g => {
-    if (g.tagName === 'TABLE') return;
-    const headRows = [], bodyRows = [];
-    g.querySelectorAll('[role="row"]').forEach(r => {
-      const hc = Array.from(r.querySelectorAll('[role="columnheader"]'));
-      const bc = Array.from(r.querySelectorAll('[role="gridcell"],[role="cell"],[role="rowheader"]'));
-      if (hc.length && !bc.length) headRows.push(hc.map(txt));
-      else if (bc.length) bodyRows.push(bc.map(txt));
-    });
-    result.push({ headRows, bodyRows });
-  });
-  return result;
-}
-"""
-
-_SCROLL_JS = r"""
-() => {
-  document.querySelectorAll('*').forEach(el => {
-    if (el.scrollHeight > el.clientHeight + 20 && el.querySelector('table,[role="row"]')) {
-      el.scrollTop = el.scrollHeight;
-    }
-  });
-  window.scrollTo(0, document.body.scrollHeight);
-}
-"""
-
-
-def _sensor_tables(raw_tables):
-    """Все таблицы/строки заголовков, где есть колонки сенсоров."""
-    out = []
-    for tbl in raw_tables or []:
-        head_rows = list(tbl.get("headRows") or [])
-        body_rows = list(tbl.get("bodyRows") or [])
-        candidates = [(h, body_rows) for h in head_rows]
-        if not head_rows and body_rows:
-            candidates.append((body_rows[0], body_rows[1:]))
-        for header, rows in candidates:
-            cols = [(j, extract_sensor_name(h)) for j, h in enumerate(header)]
-            cols = [(j, n) for j, n in cols if n]
-            if cols:
-                out.append({"header": header, "cols": cols, "rows": rows})
-    return out
-
-
-def _pick_sensor_table(raw_tables):
-    tables = _sensor_tables(raw_tables)
-    return max(tables, key=lambda t: len(t["cols"])) if tables else None
-
-
-def _values_for_category(vals, cat_key):
-    """Оставляет сенсоры нужной категории; сенсоры без распознанного типа относятся к выбранной категории."""
-    out = {}
-    for name, v in vals.items():
-        c = classify_sensor(name)
-        if c == cat_key or c is None:
-            out[name] = v
-    return out
-
-
-def _read_table_for_category(page, cat_key, timeout_s=45, log=None):
-    """Читает таблицу, пока в ней не появятся значения ИМЕННО этой категории
-    (защита от старой таблицы предыдущей категории, которая ещё на экране)."""
-    waited, seen = 0.0, []
-    while waited < timeout_s:
-        try:
-            page.evaluate(_SCROLL_JS)
-        except Exception:
-            pass
-        try:
-            best_ts, best_vals = None, {}
-            for tbl in _sensor_tables(page.evaluate(_TABLE_JS)):
-                seen = [n for _, n in tbl["cols"]][:6] or seen
-                dt, vals, _ = _last_row_values(tbl)
-                vals = {n: v for n, v in vals.items() if classify_sensor(n) in (cat_key, None)}
-                if len(vals) > len(best_vals):
-                    best_ts, best_vals = dt, vals
-            if best_vals:
-                return (ts_key(best_ts) if best_ts else None), best_vals
-        except Exception:
-            pass
-        page.wait_for_timeout(1500)
-        waited += 1.5
-    if log is not None:
-        log.append(f"{cat_key}: tabloda uygun sensör yok" + (f" (görülen: {', '.join(seen)})" if seen else " (tablo boş)"))
-    return None, {}
-
-
-def _last_row_values(tbl):
-    """Самые последние данные таблицы TABLE_ROW_DATE (строка = дата).
-
-    Строки сортируются по дате от новой к старой (без даты — по положению, нижняя = новее).
-    Каждому сенсору берётся самое свежее непустое значение.
-    Возвращает (время самой свежей строки, {сенсор: значение}, {сенсор: время значения}).
-    """
-    header_len = len(tbl["header"])
-    rows = []
-    for idx, row in enumerate(tbl["rows"]):
-        offset = len(row) - header_len if len(row) > header_len else 0
-        vals = {}
-        for j, name in tbl["cols"]:
-            k = j + offset
-            if k < len(row):
-                v = clean_num(row[k])
-                if not np.isnan(v):
-                    vals[name] = v
-        if not vals:
-            continue
-        dt = None
-        for cell in row[:3]:
-            dt = parse_ts(cell)
-            if dt: break
-        rows.append((idx, dt, vals))
-    if not rows:
-        return None, {}, {}
-
-    dated = [r for r in rows if r[1]]
-    if dated:
-        ordered = sorted(dated, key=lambda r: (r[1], r[0]), reverse=True)
-    else:
-        ordered = sorted(rows, key=lambda r: r[0], reverse=True)
-
-    latest_dt = ordered[0][1]
-    vals, times = {}, {}
-    for _, dt, row_vals in ordered:
-        for name, v in row_vals.items():
-            if name not in vals:
-                vals[name] = v
-                times[name] = ts_key(dt) if dt else None
-    return latest_dt, vals, times
-
-
-def _wait_data_loaded(page, timeout=30000):
-    """Ждём, пока исчезнет «Récupération des données...» (видимый текст)."""
-    try:
-        page.wait_for_function(
-            """() => !Array.from(document.querySelectorAll('body *')).some(e =>
-                   e.children.length === 0 && e.offsetParent !== null &&
-                   /Récupération des données/i.test(e.textContent || ''))""",
-            timeout=timeout)
-    except Exception:
-        pass
-    page.wait_for_timeout(1000)
-
-
-def _download_csv(page, log=None, tag=""):
-    """Клик '🠋CSV' и перехват скачивания с ЛЮБОЙ вкладки (основной или попапа)."""
-    ctx = page.context
-    downloads = []
-    on_download = lambda d: downloads.append(d)
-    def on_page(new_page):
-        try: new_page.on("download", on_download)
-        except Exception: pass
-    page.on("download", on_download)
-    ctx.on("page", on_page)
-    pages_before = set(ctx.pages)
-
-    btn = page.get_by_text("🠋CSV").first
-    try:
-        btn.wait_for(state="attached", timeout=20000)
-    except Exception:
-        btn = page.locator("text=CSV").first
-        if btn.count() == 0:
-            if log is not None:
-                log.append(f"'🠋CSV' düğmesi bulunamadı {tag}".strip())
-            try: page.remove_listener("download", on_download)
-            except Exception: pass
-            try: ctx.remove_listener("page", on_page)
-            except Exception: pass
-            return None
-
-    path = None
-    try:
-        for attempt, wait_steps in enumerate((90, 30)):   # ~45 с, затем ещё ~15 с
-            try:
-                btn.click(timeout=10000)
-            except Exception:
-                try: btn.click(force=True, timeout=5000)
-                except Exception:
-                    try: btn.dispatch_event("click")
-                    except Exception: pass
-            for _ in range(wait_steps):
-                if downloads: break
-                page.wait_for_timeout(500)
-            if downloads: break
-        if downloads:
-            path = downloads[-1].path()              # ждёт окончания скачивания
-        elif log is not None:
-            log.append(f"CSV indirilemedi {tag}".strip())
-    except Exception as e:
-        if log is not None:
-            log.append(f"CSV hatası {tag}: {type(e).__name__}".strip())
-    finally:
-        try: page.remove_listener("download", on_download)
-        except Exception: pass
-        try: ctx.remove_listener("page", on_page)
-        except Exception: pass
-        for pg in list(ctx.pages):                   # закрываем попапы
-            if pg is not page and pg not in pages_before:
-                try: pg.close()
-                except Exception: pass
-    return path if path and os.path.exists(path) else None
-
-
-def _latest_from_parsed(parsed):
-    """{ts: {sensor: v}} -> (самый свежий ts, {sensor: последнее значение})."""
-    if not parsed:
-        return None, {}
-    keys = sorted(parsed.keys(), reverse=True)
-    vals = {}
-    for k in keys:
-        for s_name, v in parsed[k].items():
-            vals.setdefault(s_name, v)
-    return keys[0], vals
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def _fetch_live_cached(mode_type):
-    live_db = {k: {} for k in CATEGORIES}
-    latest_key = None
-    log = []
-
-    with sync_playwright() as p:
-        browser = _launch_browser(p)
-        page = _new_page(browser)
-        try:
-            csv_view = _open_loggis(page, mode_type, view_type="TABLE_ROW_DATE", log=log)
-            if page.get_by_role("listbox").count() == 0:
-                raise RuntimeError(" | ".join(log) or "LoggIS sayfası açılamadı")
-
-            for cat_key, cat_cfg in CATEGORIES.items():
-                selected = _select_category(page, cat_cfg, log)
-                if not selected:
-                    continue
-                page.wait_for_timeout(2000)
-                _wait_data_loaded(page)
-
-                # 1) таблица на странице (ждём, пока появятся сенсоры этой категории)
-                cat_ts, vals = _read_table_for_category(page, cat_key, log=log)
-
-                # 2) запасной путь: CSV того же периода (MONTH_02), последняя строка.
-                #    В режиме «Tableau» кнопки CSV нет, поэтому временно возвращаем исходный вид.
-                if not vals:
-                    switched = False
-                    if csv_view:
-                        switched = _select_combo(page, 1, csv_view, log, "Affichage")
-                        page.wait_for_timeout(1500)
-                        _wait_data_loaded(page)
-                    path = _download_csv(page, log, f"({cat_key})")
-                    if switched:
-                        _select_combo(page, 1, "TABLE_ROW_DATE", log, "Affichage")
-                        page.wait_for_timeout(1500)
-                    if path:
-                        parsed, _, head = parse_loggis_csv(path)
-                        cat_ts, vals = _latest_from_parsed(parsed)
-                        vals = _values_for_category(vals, cat_key)
-                        if not vals:
-                            log.append(f"{cat_key}: CSV'de uygun sütun yok, başlık: {head[:150]}")
-
-                live_db[cat_key].update(vals)
-                if cat_ts and (latest_key is None or cat_ts > latest_key):
-                    latest_key = cat_ts
-        except RuntimeError:
-            raise
-        except Exception as e:
-            log.append(f"{type(e).__name__}: {str(e).splitlines()[0][:150]}")
-        finally:
-            browser.close()
-
-    if not any(live_db.values()):
-        raise RuntimeError(" | ".join(log) or "Canlı veri alınamadı")   # пустое не кэшируется
-    return live_db, latest_key or datetime.now().strftime("%Y-%m-%d %H:%M:%S"), log
-
-
-def fetch_live_table(mode_type="MONTH_02"):
-    try:
-        live_db, ts, log = _fetch_live_cached(mode_type)
-        return live_db, {"timestamp": ts, "error": None, "log": log}
-    except Exception as e:
-        return {k: {} for k in CATEGORIES}, {"timestamp": None, "error": str(e), "log": []}
-
-
-# ---------------------------------------------------------
-# ARŞİV VERİLER: CSV (скачивание, разбор дат и значений)
-# ---------------------------------------------------------
-def _read_text_any(path):
-    with open(path, "rb") as f:
-        raw = f.read()
-    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
-        return raw.decode("utf-16", errors="ignore")
-    for enc in ("utf-8-sig", "cp1252"):
-        try:
-            return raw.decode(enc)
-        except UnicodeDecodeError:
-            pass
-    return raw.decode("latin-1", errors="ignore")
-
-
-def parse_loggis_csv(path):
-    """CSV LoggIS -> {ts_key: {sensor: value}}. Строки без даты (единицы и т.п.) пропускаются."""
-    text = _read_text_any(path).replace("\ufeff", "")
-    lines = [ln for ln in text.splitlines() if ln.strip()]
-    if not lines:
-        return {}, 0, ""
-
-    sample = "\n".join(lines[:5])
-    delim = max([";", "\t"], key=sample.count)
-    if sample.count(delim) == 0:
-        delim = ","
-    rows = list(csv.reader(lines, delimiter=delim))
-
-    # строка заголовков = строка с максимумом имён TA-/TB- среди первых 15
-    header_idx, best_cols = None, []
-    for i, row in enumerate(rows[:15]):
-        cols = [(j, extract_sensor_name(h)) for j, h in enumerate(row)]
-        cols = [(j, n) for j, n in cols if n]
-        if len(cols) > len(best_cols):
-            header_idx, best_cols = i, cols
-    if header_idx is None:
-        return {}, 0, lines[0]
-
-    out = {}
-    for row in rows[header_idx + 1:]:
-        dt = None
-        for cell in row[:3]:
-            dt = parse_ts(cell)
-            if dt: break
-        if not dt:
-            continue
-        vals = {}
-        for j, name in best_cols:
-            if j < len(row):
-                v = clean_num(row[j])
-                if not np.isnan(v):
-                    vals[name] = v
-        if vals:
-            out.setdefault(ts_key(dt), {}).update(vals)
-    return out, len(best_cols), lines[header_idx]
-
-
-@st.cache_data(ttl=900, show_spinner=False)
-def _fetch_csv_cached(mode_type):
-    historical_db = {k: {} for k in CATEGORIES}
-    log = []
-
-    with sync_playwright() as p:
-        browser = _launch_browser(p)
-        page = _new_page(browser)
-        try:
-            _open_loggis(page, mode_type, log=log)
-            if page.get_by_role("listbox").count() == 0:
-                raise RuntimeError(" | ".join(log) or "LoggIS sayfası açılamadı")
-
-            for cat_key, cat_cfg in CATEGORIES.items():
-                if not _select_category(page, cat_cfg, log):
-                    continue
-                page.wait_for_timeout(2000)
-                _wait_data_loaded(page)
-
-                path = _download_csv(page, log, f"({cat_key})")
-                if not path:
-                    continue
-                parsed, n_cols, head = parse_loggis_csv(path)
-                if not parsed:
-                    log.append(f"CSV ({cat_key}) okunamadı, başlık: {head[:120]}")
-                for key, vals in parsed.items():
-                    for s_name, v in _values_for_category(vals, cat_key).items():
-                        historical_db[cat_key].setdefault(key, {})[s_name] = v
-        except RuntimeError:
-            raise
-        except Exception as e:
-            log.append(f"{type(e).__name__}: {str(e).splitlines()[0][:150]}")
-        finally:
-            browser.close()
-
-    all_keys = set()
-    for cat_rows in historical_db.values():
-        all_keys.update(k for k, v in cat_rows.items() if v)
-    if not all_keys:
-        raise RuntimeError(" | ".join(log) or "CSV arşiv verisi alınamadı")   # пустое не кэшируется
-    return sorted(all_keys, reverse=True), historical_db
-
-
+@st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
-    try:
-        dates, db = _fetch_csv_cached(mode_type)
-        return dates, db, {"error": None}
-    except Exception as e:
-        return [], {k: {} for k in CATEGORIES}, {"error": str(e)}
+    historical_db = {k: {} for k in CATEGORIES}
+    dates_set = set()
 
+    with sync_playwright() as p:
+        browser_args = [
+            "--no-sandbox", "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+        ]
+        try: browser = p.chromium.launch(headless=True, args=browser_args)
+        except:
+            ensure_playwright_installed()
+            browser = p.chromium.launch(headless=True, args=browser_args)
+
+        context = browser.new_context(
+            accept_downloads=True, viewport={"width": 1920, "height": 1080},
+            timezone_id="Europe/Istanbul", locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+
+        try:
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
+
+            page.get_by_text("Types").click()
+            page.wait_for_timeout(1000)
+            
+            page.get_by_role("combobox").first.select_option(mode_type)
+            page.wait_for_timeout(2000)
+
+            for cat_key, cat_cfg in CATEGORIES.items():
+                target_tag = cat_cfg["tag"]
+                
+                success = False
+                for c_name in cat_cfg["names"]:
+                    try: 
+                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
+                        success = True; break
+                    except: pass
+                if not success:
+                    for c_name in cat_cfg["names"]:
+                        try:
+                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
+                            success = True; break
+                        except: pass
+                if not success:
+                    for c_name in cat_cfg["names"]:
+                        try:
+                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
+                            success = True; break
+                        except: pass
+                
+                page.wait_for_timeout(4000)
+
+                csv_path = None
+                csv_btn = page.locator("text=CSV").first
+                try: csv_btn.wait_for(state="visible", timeout=15000)
+                except: pass
+
+                try:
+                    csv_btn.click(force=True, timeout=5000)
+                    page.wait_for_timeout(1500)
+                    with page.expect_download(timeout=30000) as d_info:
+                        try:
+                            with page.expect_popup(timeout=8000) as p_info:
+                                csv_btn.click(force=True)
+                            p_info.value.close()
+                        except:
+                            csv_btn.click(force=True)
+                    csv_path = d_info.value.path()
+                except Exception as e:
+                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
+
+                if csv_path and os.path.exists(csv_path):
+                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                        lines = f.readlines()
+                    
+                    if len(lines) > 2:
+                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                        for line in lines[2:]:
+                            parts = [p.strip() for p in line.strip().split(';')]
+                            if len(parts) == len(header):
+                                date_str = parts[0]
+                                if date_str: dates_set.add(date_str)
+                                        
+                                val_map = {}
+                                for h, v_str in zip(header[1:], parts[1:]):
+                                    match_cond = False
+                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
+                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
+                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+
+                                    if match_cond or target_tag in h:
+                                        if target_tag == "-S" and "-CS" in h: continue
+                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
+                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                        s_name = m.group(1) if m else h.split()[0].strip()
+                                        v = clean_num(v_str)
+                                        if not np.isnan(v):
+                                            val_map[s_name] = v
+                                historical_db[cat_key][date_str] = val_map
+
+        except Exception as e:
+            st.warning(f"LoggIS bağlantı hatası: {e}")
+        finally:
+            browser.close()
+
+    sorted_dates = sorted(list(dates_set), reverse=True)
+    return sorted_dates, historical_db
 
 @st.cache_data
 def get_model_b64(path):
@@ -964,71 +415,59 @@ with col_nav:
     cat_cfg = CATEGORIES[selected_comp]
     compare_mode = False
 
-    diag = None
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman Seçimi")
+        st.subheader("Zaman SeçİMİ")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
-            all_dates, full_db, diag = fetch_csv_database(mode_type="ALL")
-        if diag.get("error"):
-            st.warning(f"LoggIS bağlantı hatası: {diag['error']}")
-
-        cat_rows = full_db[selected_comp]
-        cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)
+            all_dates, full_db = fetch_csv_database(mode_type="ALL")
             
-        if not cat_dates:
+        if not all_dates:
             st.warning("Arşiv verisi bulunamadı.")
         else:
-            latest_key = cat_dates[0]   # самая свежая дата с данными ЭТОЙ категории
-            latest_timestamp = fmt_ts(latest_key)
+            latest_timestamp = all_dates[0]  
             
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
-            # ключи вида 'YYYY-MM-DD HH:MM:SS'
             date_hierarchy = {}
-            for k in cat_dates:
-                y, m, d, t = k[0:4], k[5:7], k[8:10], k[11:]
-                date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(t)
+            for d_str in all_dates:
+                clean_d = d_str.replace("-", "/")
+                if " " in clean_d:
+                    date_part, time_part = clean_d.split(" ", 1)
+                    parts = date_part.split("/")
+                    if len(parts) == 3:
+                        y, m, d = parts[0], parts[1], parts[2]
+                        date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
 
-            years = sorted(date_hierarchy.keys(), reverse=True)
+            years = sorted(list(date_hierarchy.keys()), reverse=True)
             sel_year = st.selectbox("Yıl Seçiniz", options=years)
 
             if sel_year:
-                months = sorted(date_hierarchy[sel_year].keys(), reverse=True)
-                sel_month = st.selectbox("Ay Seçiniz:", options=months,
-                                         format_func=lambda mm: f"{mm} - {TR_MONTHS.get(mm, mm)}")
+                months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
+                sel_month = st.selectbox("Ay Seçiniz:", options=months)
 
                 if sel_month:
-                    days = sorted(date_hierarchy[sel_year][sel_month].keys(), reverse=True)
+                    days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
                     sel_day = st.selectbox("Gün Seçiniz:", options=days)
 
                     if sel_day:
                         times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("Saat Seçiniz:", options=times, format_func=lambda t: t[:5])
+                        sel_time = st.selectbox("Saat Seçiniz:", options=times)
 
                         if sel_time:
-                            target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            target_timestamp = fmt_ts(target_key)
-                            raw_v_map = cat_rows.get(target_key, {})
-                            latest_v_map = cat_rows.get(latest_key, {})
+                            target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
+                            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+                            latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
     else:
         with st.spinner("En güncel veriler alınıyor..."):
-            live_db, diag = fetch_live_table(mode_type="MONTH_02")
-        if diag.get("error"):
-            st.warning(f"LoggIS bağlantı hatası: {diag['error']}")
-        raw_v_map = live_db.get(selected_comp, {})
-        if raw_v_map:
-            target_timestamp = fmt_ts(diag.get("timestamp"))
-        else:
-            reason = " | ".join(m for m in diag.get("log", [])
-                                if selected_comp in m or not any(k in m for k in CATEGORIES))
-            st.warning("Canlı tabloda bu kategori için veri bulunamadı." + (f"\n\n{reason}" if reason else ""))
+            all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
+        if all_dates:
+            target_timestamp = all_dates[0]
+            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
-
 
 # ---------------------------------------------------------
 # ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
@@ -1039,7 +478,14 @@ table_data = []
 if raw_v_map:
     for s_name, val in raw_v_map.items():
         if val is None or np.isnan(val): continue
-        if classify_sensor(s_name) == selected_comp:
+        u_name = s_name.upper()
+        
+        is_valid_sensor = False
+        if selected_comp == "hoop" and "-CS" in u_name: is_valid_sensor = True
+        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: is_valid_sensor = True
+        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: is_valid_sensor = True
+
+        if is_valid_sensor:
             if compare_mode:
                 latest_val = latest_v_map.get(s_name)
                 
@@ -1086,7 +532,7 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜM AYARLARI")
+    st.subheader("GÖRÜNÜМ AYARLARI")
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
@@ -1400,11 +846,9 @@ with col_3d:
                 child.visible = false;
                 const name = child.name; const uName = name.toUpperCase(); const sensorId = extractSensorId(name);
                 let isCategory = false;
-                const isTP = uName.includes("-TP");
-                if (payload.comp === "temp") isCategory = isTP;
-                else if (isTP) isCategory = false;
-                else if (payload.comp === "hoop" && uName.includes("-CS")) isCategory = true;
+                if (payload.comp === "hoop" && uName.includes("-CS")) isCategory = true;
                 else if (payload.comp === "axial") { if (uName.includes("-CS")) isCategory = false; else if (uName.includes("-S") || checkSensorData(sensorId, "axial").found) isCategory = true; }
+                else if (payload.comp === "temp" && uName.includes("-TP")) isCategory = true;
                 if (!isCategory) return;
                 const dataInfo = checkSensorData(sensorId, payload.comp);
                 const wPos = new THREE.Vector3(); child.getWorldPosition(wPos);
@@ -1735,7 +1179,7 @@ if compare_mode and table_data:
     df = pd.DataFrame(table_data)
     
     # Сортируем по номеру сенсора для красоты
-    df = df.sort_values(by="Sensör No").reset_index(drop=True)
+    df = df.sort_values(by="Sensör No").reset_index(drop=True)Ф
     
     # Используем возможности Streamlit для стилизации DataFrame
     st.dataframe(
