@@ -345,7 +345,7 @@ with col_nav:
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman Seçimi")
+        st.subheader("Zaman SeçİMİ")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="ALL")
