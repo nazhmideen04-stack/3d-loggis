@@ -403,7 +403,7 @@ with col_nav:
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman Seçimi")
+        st.subheader("Zaman SeçİMİ")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="ALL")
@@ -413,7 +413,7 @@ with col_nav:
         else:
             latest_timestamp = all_dates[0]
             
-            compare_mode = st.checkbox("⚖️ En Güncel Veri ile Karşılaştır (Fark Analizi)")
+            compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
             date_hierarchy = {}
             for d_str in all_dates:
@@ -426,19 +426,19 @@ with col_nav:
                         date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
 
             years = sorted(list(date_hierarchy.keys()), reverse=True)
-            sel_year = st.selectbox("📅 Yıl Seç:", options=years)
+            sel_year = st.selectbox("Yıl Seçiniz", options=years)
 
             if sel_year:
                 months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
-                sel_month = st.selectbox("📅 Ay Seç:", options=months)
+                sel_month = st.selectbox("Ay Seçiniz:", options=months)
 
                 if sel_month:
                     days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
-                    sel_day = st.selectbox("📅 Gün Seç:", options=days)
+                    sel_day = st.selectbox("Gün Seçiniz:", options=days)
 
                     if sel_day:
                         times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("⏱️ Saat Seç:", options=times)
+                        sel_time = st.selectbox("Saat Seçiniz:", options=times)
 
                         if sel_time:
                             target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
@@ -595,7 +595,7 @@ with col_3d:
 </head>
 <body>
     <div id="canvas-container">
-        <div id="loader">3B MODEL VE TÜNEL İNTERPOLASYONU YÜKLENİYOR...</div>
+        <div id="loader">3B MODEL YÜKLENİYOR...</div>
         <div id="sensor-tooltip"></div>
         <div id="selected-hud">
             <div class="hud-title">Seçilen Sensör</div>
