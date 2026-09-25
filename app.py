@@ -616,7 +616,19 @@ with col_3d:
         .legend-bar-container { display: flex; align-items: stretch; height: 180px; }
         #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
-        @media (max-width: 600px) { #color-legend { padding: 6px 8px; top: 10px; right: 10px; } .legend-bar-container { height: 130px; } #legend-bar { width: 12px; } #legend-title { font-size: 10px; } .legend-labels { font-size: 9px; } #selected-hud { top: 10px; left: 10px; padding: 6px 10px; } #selected-hud .hud-name { font-size: 13px; } #selected-hud .hud-val { font-size: 15px; } }
+        #reset-cam-btn { position: absolute; bottom: 14px; right: 14px; background: rgba(10, 14, 23, 0.92); border: 1px solid rgba(0, 200, 230, 0.55); padding: 8px 14px; border-radius: 6px; color: #00E5FF; font-size: 11px; font-weight: 700; cursor: pointer; z-index: 95; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.2s ease; box-shadow: 0 4px 16px rgba(0, 200, 230, 0.25); }
+        #reset-cam-btn:hover { background: #00C8E6; color: #0A0E17; }
+        @media (max-width: 600px) { 
+            #color-legend { padding: 6px 8px; top: 10px; right: 10px; } 
+            .legend-bar-container { height: 130px; } 
+            #legend-bar { width: 12px; } 
+            #legend-title { font-size: 10px; } 
+            .legend-labels { font-size: 9px; } 
+            #selected-hud { top: 10px; left: 10px; padding: 6px 10px; } 
+            #selected-hud .hud-name { font-size: 13px; } 
+            #selected-hud .hud-val { font-size: 15px; } 
+            #reset-cam-btn { bottom: 10px; right: 10px; padding: 6px 10px; font-size: 10px; } 
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -643,6 +655,7 @@ with col_3d:
                 </div>
             </div>
         </div>
+        <div id="reset-cam-btn">📸 Görünümü Sıfırla</div>
     </div>
 
     <script>
@@ -660,6 +673,15 @@ with col_3d:
         const selectedHud = document.getElementById('selected-hud');
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
+        const resetBtn = document.getElementById('reset-cam-btn');
+
+        // Safe localStorage wrappers to persist camera state across re-renders
+        function safeSetItem(key, val) {
+            try { window.localStorage.setItem(key, val); } catch (e) {}
+        }
+        function safeGetItem(key) {
+            try { return window.localStorage.getItem(key); } catch (e) { return null; }
+        }
 
         // =========================================================================
         // ЦВЕТОВЫЕ ШКАЛЫ
@@ -743,6 +765,15 @@ with col_3d:
         controls.enableDamping = true; controls.dampingFactor = 0.05;
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+        // Save camera state on manual move
+        controls.addEventListener('change', () => {
+            const camState = {
+                pos: [camera.position.x, camera.position.y, camera.position.z],
+                target: [controls.target.x, controls.target.y, controls.target.z]
+            };
+            safeSetItem('threejs_camera_state', JSON.stringify(camState));
+        });
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -1018,9 +1049,54 @@ with col_3d:
                 }
             }
 
-            if (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && selectedMeshRef) {
+            // Restore camera logic using localStorage
+            const lastSelected = safeGetItem('threejs_last_selected');
+            const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
+
+            if (selectedMeshRef && isNewSensorSelected) {
+                safeSetItem('threejs_last_selected', payload.selectedSensor);
                 flyCameraTo(selectedMeshRef, true);
             } else {
+                const savedStateStr = safeGetItem('threejs_camera_state');
+                if (savedStateStr) {
+                    try {
+                        const st = JSON.parse(savedStateStr);
+                        camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
+                        controls.target.set(st.target[0], st.target[1], st.target[2]);
+                        controls.update();
+                    } catch(e) {}
+                } else {
+                    const tunnelBox = new THREE.Box3(); 
+                    if (tunnelMeshes.length > 0) {
+                        tunnelMeshes.forEach(tm => {
+                            if(tm.geometry) tm.geometry.computeBoundingBox();
+                            tunnelBox.expandByObject(tm);
+                        });
+                    } else { 
+                        model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
+                        tunnelBox.setFromObject(model); 
+                    }
+                    
+                    if (!tunnelBox.isEmpty()) {
+                        const center = tunnelBox.getCenter(new THREE.Vector3()); 
+                        const size = tunnelBox.getSize(new THREE.Vector3()); 
+                        const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                        controls.target.copy(center); 
+                        
+                        const fov = camera.fov * (Math.PI / 180);
+                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
+                        
+                        camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
+                        controls.update();
+                    }
+                }
+            }
+
+            // Bind Reset Camera Button
+            document.getElementById('reset-cam-btn').addEventListener('click', () => {
+                safeSetItem('threejs_camera_state', ''); 
+                safeSetItem('threejs_last_selected', '');
+                
                 const tunnelBox = new THREE.Box3(); 
                 if (tunnelMeshes.length > 0) {
                     tunnelMeshes.forEach(tm => {
@@ -1036,15 +1112,21 @@ with col_3d:
                     const center = tunnelBox.getCenter(new THREE.Vector3()); 
                     const size = tunnelBox.getSize(new THREE.Vector3()); 
                     const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                    controls.target.copy(center); 
                     
                     const fov = camera.fov * (Math.PI / 180);
                     let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
                     
-                    camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
-                    controls.update();
+                    const targetPos = center.clone();
+                    const endCamPos = new THREE.Vector3(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ);
+                    
+                    new TWEEN.Tween(controls.target).to(targetPos, 1000).easing(TWEEN.Easing.Cubic.InOut).start();
+                    new TWEEN.Tween(camera.position).to(endCamPos, 1000).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
+                    .onComplete(() => {
+                        const camState = { pos: [camera.position.x, camera.position.y, camera.position.z], target: [controls.target.x, controls.target.y, controls.target.z] };
+                        safeSetItem('threejs_camera_state', JSON.stringify(camState));
+                    }).start();
                 }
-            }
+            });
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
 
@@ -1061,7 +1143,14 @@ with col_3d:
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
             if (!animate) { camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); return; }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
-            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update()).start();
+            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
+            .onComplete(() => {
+                const camState = {
+                    pos: [camera.position.x, camera.position.y, camera.position.z],
+                    target: [controls.target.x, controls.target.y, controls.target.z]
+                };
+                safeSetItem('threejs_camera_state', JSON.stringify(camState));
+            }).start();
         }
 
         function getIntersectedSensor(e) {
