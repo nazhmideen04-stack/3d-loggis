@@ -589,7 +589,7 @@ with col_3d:
             "unit": cat_cfg["unit"],
             "clim": clim,
             "comp": selected_comp,
-            "tunnelOpacity": float(tunnelOpacity),
+            "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red,
             "isCompareMode": compare_mode
@@ -687,7 +687,7 @@ with col_3d:
         const compareStops = [
             new THREE.Color("#0055FF"), // Уменьшение
             new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений)
+            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений) - идеально посередине
             new THREE.Color("#FFDD00"), 
             new THREE.Color("#FF0033")  // Увеличение
         ];
@@ -944,7 +944,7 @@ with col_3d:
             scene.add(portalsGroup);
 
             // =========================================================
-            // ЛИНЕЙКИ С УЧЕТОМ МАСШТАБА 2.0 И ПЕРЕВОРОТА (0 НА КОНЧИКЕ)
+            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
             // =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
@@ -954,7 +954,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; 
+                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -991,6 +991,7 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
+                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
                         const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
@@ -1030,7 +1031,7 @@ with col_3d:
                 }
             }
 
-            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ (КАК В ИСХОДНИКЕ, НО С СОХРАНЕНИЕМ ПОЛОЖЕНИЯ)
+            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ (С СОХРАНЕНИЕМ ПОЛОЖЕНИЯ)
             const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1047,7 +1048,7 @@ with col_3d:
                         controls.update();
                     } catch(e) {}
                 } else {
-                    // НАЧАЛЬНЫЙ ЭКРАН КАК ЕСТЬ ИЗ ТВОЕГО КОДА [SOURCE: 7]
+                    // НАЧАЛЬНЫЙ ЭКРАН КАК ЕСТЬ ИЗ ТВОЕГО КОДА
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
