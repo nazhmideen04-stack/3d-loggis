@@ -931,7 +931,7 @@ with col_3d:
             scene.add(portalsGroup);
 
             // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА И ТОЧНОГО НУЛЯ
+            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
             // =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
@@ -941,7 +941,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0;
+                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -978,9 +978,8 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
-                        const currentPos3D = startCoord + i * step3D; 
-                        
-                        // НОЛЬ НАЧИНАЕТСЯ РОВНО НА КОНЧИКЕ (startCoord)
+                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
+                        const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
                         const tickPoints1 = [];
