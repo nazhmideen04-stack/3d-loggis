@@ -335,7 +335,7 @@ with col_nav:
     
     data_mode = st.radio(
         "Veri Modu Seçimi:",
-        options=["🔴 Canlı (En Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
+        options=["Canlı Veriler", "Arşiv Veriler"]
     )
 
     selected_comp = st.radio(
@@ -344,7 +344,7 @@ with col_nav:
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    if st.button("🔄 Verileri Yenile"):
+    if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
