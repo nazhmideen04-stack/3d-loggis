@@ -30,6 +30,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
+# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -204,11 +205,10 @@ def ensure_playwright_installed():
         pass
 
 # =========================================================================
-# 1. ОТДЕЛЬНЫЙ ПУТЬ ДЛЯ САМЫХ КРАЙНИХ (СВЕЖИХ) ДАННЫХ
+# 1. ТЕКУЩИЕ ДАННЫЕ (Быстрый DOM-парсер для Canlı)
 # =========================================================================
 @st.cache_data(ttl=120)
-def fetch_latest_live_data():
-    """Скачивает CSV для текущего режима и берет самую последнюю строку (крайние данные)"""
+def fetch_current_data():
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
@@ -218,17 +218,17 @@ def fetch_latest_live_data():
         ]
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
+        except Exception:
             ensure_playwright_installed()
             browser = p.chromium.launch(headless=True, args=browser_args)
 
         context = browser.new_context(
-            accept_downloads=True,
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul", locale="fr-FR",
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
@@ -238,14 +238,15 @@ def fetch_latest_live_data():
             except: pass
             page.wait_for_timeout(1000)
 
-            # Для свежих данных берем TABLE_ROW_DATE и оставляем месяц по умолчанию
+            try: page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            except: pass
+            page.wait_for_timeout(800)
+
             try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
             except: pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
                 success = False
                 for c_name in cat_cfg["names"]:
                     try:
@@ -264,75 +265,76 @@ def fetch_latest_live_data():
                             page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
                             success = True; break
                         except: pass
-                
+
                 page.wait_for_timeout(3000)
 
                 val_map = {}
-                found_date = ""
+                latest_date_str = ""
 
-                # Используем скачивание CSV для гарантии получения всех колонок (включая CS с суффиксом -TP)
-                csv_path = None
-                csv_btn = page.locator("text=CSV").first
-                try: csv_btn.wait_for(state="visible", timeout=15000)
-                except: pass
+                for _ in range(15):
+                    try:
+                        extracted = page.evaluate("""() => {
+                            try {
+                                const table = document.querySelector('table');
+                                if (!table) return null;
 
-                try:
-                    csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1500)
-                    with page.expect_download(timeout=25000) as d_info:
-                        try:
-                            with page.expect_popup(timeout=8000) as p_info:
-                                csv_btn.click(force=True)
-                            p_info.value.close()
-                        except:
-                            csv_btn.click(force=True)
-                    csv_path = d_info.value.path()
-                except Exception as e:
-                    pass
+                                const trs = Array.from(table.querySelectorAll('tr'));
+                                let headerCells = [];
+                                for (const tr of trs) {
+                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.textContent || '').trim());
+                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
+                                        headerCells = cells; break;
+                                    }
+                                }
+                                if (headerCells.length === 0 && trs.length > 0) {
+                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.textContent || '').trim());
+                                }
 
-                if csv_path and os.path.exists(csv_path):
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                    
-                    if len(lines) > 2:
-                        header = [h.replace('\ufeff', '').strip() for h in lines[0].strip().split(';')]
-                        rows_data = []
-                        for line in lines[2:]:
-                            parts = [p.strip() for p in line.strip().split(';')]
-                            if len(parts) == len(header):
-                                rows_data.append(parts)
+                                const tbody = table.querySelector('tbody') || table;
+                                const rows = Array.from(tbody.querySelectorAll('tr'));
+                                let dataCells = [];
+                                for (const r of rows) {
+                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.textContent || '').trim());
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-') || /\\d{4}/.test(cells[0]))) {
+                                        dataCells = cells;
+                                    }
+                                }
 
-                        if rows_data:
-                            # САМАЯ КРАЙНЯЯ (ПОСЛЕДНЯЯ) СТРОКА В ФАЙЛЕ
-                            target_row = rows_data[-1]
-                            found_date = target_row[0]
-                            
-                            for h, v_str in zip(header[1:], target_row[1:]):
-                                match_cond = False
-                                if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+                                if (headerCells.length === 0 || dataCells.length === 0) return null;
+                                return { headers: headerCells, values: dataCells };
+                            } catch(e) { return null; }
+                        }""")
 
-                                if match_cond or target_tag in h:
-                                    if target_tag == '-S' and '-CS' in h: continue
-                                    if target_tag == '-TP' and ('-CS' in h or '-S' in h): continue
+                        if extracted and extracted.get("values") and extracted.get("headers"):
+                            headers = extracted["headers"]
+                            values = extracted["values"]
+                            latest_date_str = values[0]
+
+                            for h, v_str in zip(headers[1:], values[1:]):
+                                if "TA-" in h or "TB-" in h:
                                     m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                     s_name = m.group(1) if m else h.split()[0].strip()
                                     v = clean_num(v_str)
                                     if not np.isnan(v):
                                         val_map[s_name] = v
 
-                all_results[cat_key] = {"values": val_map, "date": found_date}
+                            if len(val_map) > 0:
+                                break
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(600)
+
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
         except Exception as e:
-            st.warning(f"Canlı veri alınırken hata oluştu: {e}")
+            st.warning(f"Güncel veri alınırken hata oluştu: {e}")
         finally:
             browser.close()
-            
+
     return all_results
 
 # =========================================================================
-# 2. ОТДЕЛЬНЫЙ ПУТЬ ДЛЯ АРХИВНЫХ ДАННЫХ (Через ALL)
+# 2. АРХИВНЫЕ ДАННЫЕ (Скачивание CSV для Geçmiş)
 # =========================================================================
 @st.cache_data(ttl=3600)
 def fetch_historical_csv_data():
@@ -360,22 +362,20 @@ def fetch_historical_csv_data():
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(3500)
 
-            try: page.get_by_text("Types").click(timeout=8000)
+            try: page.get_by_text("Types").click()
             except: pass
             page.wait_for_timeout(1000)
-
-            try: page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
+            
+            try: page.get_by_role("combobox").first.select_option("ALL")
             except: pass
             page.wait_for_timeout(2000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
                 success = False
                 for c_name in cat_cfg["names"]:
-                    try: 
+                    try:
                         page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
                         success = True; break
                     except: pass
@@ -391,56 +391,46 @@ def fetch_historical_csv_data():
                             page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
                             success = True; break
                         except: pass
-                
-                page.wait_for_timeout(4000)
 
-                csv_path = None
-                csv_btn = page.locator("text=CSV").first
-                try: csv_btn.wait_for(state="visible", timeout=15000)
-                except: pass
+                page.wait_for_timeout(3000)
 
+                csv_btn = page.get_by_text("🠋CSV").first
                 try:
-                    csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1500)
-                    with page.expect_download(timeout=30000) as d_info:
-                        try:
-                            with page.expect_popup(timeout=8000) as p_info:
-                                csv_btn.click(force=True)
-                            p_info.value.close()
-                        except:
-                            csv_btn.click(force=True)
-                    csv_path = d_info.value.path()
+                    csv_btn.click(timeout=5000)
+                    page.wait_for_timeout(1000)
+
+                    with page.expect_download(timeout=30000) as download_info:
+                        with page.expect_popup(timeout=15000) as page1_info:
+                            csv_btn.click()
+                        page1 = page1_info.value
+                        page1.close()
+
+                    download = download_info.value
+                    csv_path = download.path()
+
+                    if csv_path and os.path.exists(csv_path):
+                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                            lines = f.readlines()
+
+                        if len(lines) > 2:
+                            header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                            for line in lines[2:]:
+                                parts = [p.strip() for p in line.strip().split(';')]
+                                if len(parts) == len(header):
+                                    date_str = parts[0]
+                                    if date_str: dates_set.add(date_str)
+                                        
+                                    val_map = {}
+                                    for h, v_str in zip(header[1:], parts[1:]):
+                                        if "TA-" in h or "TB-" in h:
+                                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                            s_name = m.group(1) if m else h.split()[0].strip()
+                                            v = clean_num(v_str)
+                                            if not np.isnan(v):
+                                                val_map[s_name] = v
+                                    historical_db[cat_key][date_str] = val_map
                 except Exception as e:
-                    pass
-
-                if csv_path and os.path.exists(csv_path):
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                    
-                    if len(lines) > 2:
-                        header = [h.replace('\ufeff', '').strip() for h in lines[0].strip().split(';')]
-                        for line in lines[2:]:
-                            parts = [p.strip() for p in line.strip().split(';')]
-                            if len(parts) == len(header):
-                                d_str = parts[0]
-                                if d_str: dates_set.add(d_str)
-                                
-                                val_map = {}
-                                for h, v_str in zip(header[1:], parts[1:]):
-                                    match_cond = False
-                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                    if match_cond or target_tag in h:
-                                        if target_tag == "-S" and "-CS" in h: continue
-                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                        s_name = m.group(1) if m else h.split()[0].strip()
-                                        v = clean_num(v_str)
-                                        if not np.isnan(v):
-                                            val_map[s_name] = v
-                                historical_db[cat_key][d_str] = val_map
+                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
 
         except Exception as e:
             st.warning(f"LoggIS bağlantı hatası: {e}")
@@ -478,36 +468,25 @@ with col_nav:
         st.rerun()
 
 # ---------------------------------------------------------
-# ЛОГИКА ОБОРОТА ДАННЫХ
+# ЛОГИКА ОПРЕДЕЛЕНИЯ ДАННЫХ В ЗАВИСИМОСТИ ОТ РЕЖИМА
 # ---------------------------------------------------------
 target_timestamp = None
-active_category_values = {}
+raw_v_map = {}
 cat_cfg = CATEGORIES[selected_comp]
 
 if data_mode == "🔴 Canlı (Güncel) Veriler":
-    with st.spinner("En yeni canlı veriler (en son ölçüm) alınıyor..."):
-        all_data = fetch_latest_live_data()
-        cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
+    with st.spinner("Güncel veriler alınıyor..."):
+        all_current = fetch_current_data()
+        cur_layer = all_current.get(selected_comp, {"values": {}, "date": ""})
         raw_v_map = cur_layer["values"]
         target_timestamp = cur_layer["date"] if cur_layer["date"] else "En Son (Güncel)"
-        
-        for s_name, val in raw_v_map.items():
-            if val is None or np.isnan(val): continue
-            u_name = s_name.upper()
-            if selected_comp == "hoop" and "-CS" in u_name:
-                active_category_values[s_name] = float(val)
-            elif selected_comp == "axial":
-                if ("-S" in u_name) and ("-CS" not in u_name):
-                    active_category_values[s_name] = float(val)
-            elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
-                active_category_values[s_name] = float(val)
-
 else:
-    with st.spinner("Tüm tarihsel veritabanı indiriliyor (Bu işlem 15-30 sn sürebilir)..."):
-        all_dates, full_db = fetch_historical_csv_data()
+    with st.spinner("Tarihsel CSV arşivi yükleniyor..."):
+        all_dates, historical_db = fetch_historical_csv_data()
     
     if not all_dates:
-        st.error("Veri bulunamadı. Lütfen 'Ekranı Yenile' butonuna basınız.")
+        st.warning("Arşiv verisi alınamadı.")
+        target_timestamp = "Bulunamadı"
     else:
         st.markdown("---")
         st.subheader("⏱️ Zaman Seçimi")
@@ -533,19 +512,25 @@ else:
         
         if sel_date and sel_time:
             target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
-            
-            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-            for s_name, val in raw_v_map.items():
-                if val is None or np.isnan(val): continue
-                u_name = s_name.upper()
-                if selected_comp == "hoop" and "-CS" in u_name:
-                    active_category_values[s_name] = float(val)
-                elif selected_comp == "axial":
-                    if ("-S" in u_name) and ("-CS" not in u_name):
-                        active_category_values[s_name] = float(val)
-                elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
-                    active_category_values[s_name] = float(val)
+            raw_v_map = historical_db[selected_comp].get(target_timestamp, {})
 
+# Строгая и надежная фильтрация датчиков по категориям (без пересечений и пустых полей)
+active_category_values = {}
+for s_name, val in raw_v_map.items():
+    if val is None or np.isnan(val):
+        continue
+    u_name = s_name.upper()
+    if selected_comp == "hoop":
+        if "-CS" in u_name:
+            active_category_values[s_name] = float(val)
+    elif selected_comp == "axial":
+        if "-S" in u_name and "-CS" not in u_name:
+            active_category_values[s_name] = float(val)
+    elif selected_comp == "temp":
+        if "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
+            active_category_values[s_name] = float(val)
+
+# Точный расчет диапазона шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -568,7 +553,7 @@ with col_nav:
 
     st.markdown("---")
     st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp else 'Bulunamadı'}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
@@ -1029,7 +1014,10 @@ with col_3d:
                     tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 }
-            } else { tooltip.style.display = 'none'; renderer.domElement.style.cursor = 'default'; }
+            } else {
+                tooltip.style.display = 'none';
+                renderer.domElement.style.cursor = 'default';
+            }
         });
         window.addEventListener('resize', function() { camera.aspect = container.clientWidth / container.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(container.clientWidth, container.clientHeight); });
         (function animate(time) { requestAnimationFrame(animate); TWEEN.update(time); controls.update(); renderer.clear(); renderer.render(scene, camera); renderer.clearDepth(); renderer.render(sensorScene, camera); })();
