@@ -205,7 +205,7 @@ def ensure_playwright_installed():
         pass
 
 # =========================================================================
-# ЕДИНАЯ ФУНКЦИЯ ЗАГРУЗКИ ЧЕРЕЗ CSV С ЗАЩИТОЙ И ПУСТЫМИ ЗНАЧЕНИЯМИ "-"
+# УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ЧЕРЕЗ CSV С ОБРАБОТКОЙ ПРОШЕЛЫХ/АКТУАЛЬНЫХ ДАННЫХ
 # =========================================================================
 @st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
@@ -349,7 +349,7 @@ with col_nav:
         st.rerun()
 
 # ---------------------------------------------------------
-# ЛОГИКА ЗАГРУЗКИ ДАННЫХ С ПУСТЫМИ ЗНАЧЕНИЯМИ "-"
+# ЛОГИКА ЗАГРУЗКИ И ПРОВЕРКИ ДАННЫХ (С ПОДСТАНОВКОЙ "-")
 # ---------------------------------------------------------
 target_timestamp = "-"
 raw_v_map = {}
@@ -398,15 +398,16 @@ else:
             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
 
 active_category_values = {}
-for s_name, val in raw_v_map.items():
-    if val is None or np.isnan(val): continue
-    u_name = s_name.upper()
-    if selected_comp == "hoop" and "-CS" in u_name:
-        active_category_values[s_name] = float(val)
-    elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name:
-        active_category_values[s_name] = float(val)
-    elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
-        active_category_values[s_name] = float(val)
+if raw_v_map:
+    for s_name, val in raw_v_map.items():
+        if val is None or np.isnan(val): continue
+        u_name = s_name.upper()
+        if selected_comp == "hoop" and "-CS" in u_name:
+            active_category_values[s_name] = float(val)
+        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name:
+            active_category_values[s_name] = float(val)
+        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
+            active_category_values[s_name] = float(val)
 
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
