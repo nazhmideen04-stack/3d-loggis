@@ -274,7 +274,7 @@ def ensure_playwright_installed():
     except Exception: pass
 
 # ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ИЗ САМОГО ПЕРВОГО ФАЙЛА - ПРЯМОЙ ПАРСИНГ WEB-ТАБЛИЦЫ)
+# 1. ЖИВЫЕ ДАННЫЕ (ИЗ ПЕРВОГО ФАЙЛА - ПРЯМОЙ ПАРСИНГ ТАБЛИЦЫ САЙТА)
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_data_from_web():
@@ -714,8 +714,7 @@ with col_3d:
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red,
-            "isCompareMode": compare_mode,
-            "sessionId": st.session_state["app_session_id"]
+            "isCompareMode": compare_mode
         }
         json_payload = json.dumps(payload_data)
 
@@ -785,27 +784,16 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ ПОЛЬЗОВАТЕЛЕМ)
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (АКТИВАЦИЯ ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ)
         // =========================================================================
-        function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
-        function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
-
-        const currentSessionId = payload.sessionId;
-        const savedSessionId = safeGetItem('loggis_session_id');
-
-        if (savedSessionId !== currentSessionId) {
-            safeSetItem('loggis_session_id', currentSessionId);
-            safeSetItem('threejs_camera_state_v9', '');
-            safeSetItem('threejs_last_selected', '');
-        }
-
         let userInteracted = false;
+        
         function saveCamState() {
             if (!userInteracted) return;
             try {
-                window.localStorage.setItem('threejs_camera_state_v9', JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v9', JSON.stringify({
                     pos: camera.position.toArray(),
-                    target: controls.target.toArray()
+                    tgt: controls.target.toArray()
                 }));
             } catch(e) {}
         }
@@ -880,7 +868,7 @@ with col_3d:
 
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
         const sensorScene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 50000);
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
@@ -889,7 +877,7 @@ with col_3d:
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true; controls.dampingFactor = 0.05;
-        controls.minDistance = 0.5; controls.maxDistance = 50000;
+        controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
         controls.addEventListener('start', () => { userInteracted = true; });
@@ -1169,7 +1157,7 @@ with col_3d:
             }
 
             // ====================================================================
-            // ЛОГИКА КАМЕРЫ (СОХРАНЕНИЕ ПОЗИЦИИ И ИСХОДНЫЙ ЦЕНТР)
+            // ЛОГИКА КАМЕРЫ (ВОССТАНОВЛЕНИЕ ПОЗИЦИИ ИЛИ ИСХОДНЫЙ ЦЕНТР)
             // ====================================================================
             const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
@@ -1181,7 +1169,7 @@ with col_3d:
             } else {
                 let cameraRestored = false;
                 try {
-                    const savedStr = safeGetItem('threejs_camera_state_v8');
+                    const savedStr = window.sessionStorage.getItem('loggis_cam_v9');
                     if (savedStr) {
                         const st = JSON.parse(savedStr);
                         if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
