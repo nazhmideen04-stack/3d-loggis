@@ -205,11 +205,10 @@ def ensure_playwright_installed():
         pass
 
 # =========================================================================
-# УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ЗАГРУЗКИ ЧЕРЕЗ CSV (ИДЕНТИЧНО ВАШЕМУ РАБОЧЕМУ СКРИПТУ)
+# ЕДИНАЯ ФУНКЦИЯ ЗАГРУЗКИ ЧЕРЕЗ CSV С ЗАЩИТОЙ И ПУСТЫМИ ЗНАЧЕНИЯМИ "-"
 # =========================================================================
 @st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
-    """Скачивает CSV для каждой категории через Playwright и сохраняет историю"""
     historical_db = {k: {} for k in CATEGORIES}
     dates_set = set()
 
@@ -239,7 +238,6 @@ def fetch_csv_database(mode_type="ALL"):
             page.get_by_text("Types").click()
             page.wait_for_timeout(1000)
             
-            # Если архив - берем ALL, если свежие - можно оставить дефолт
             page.get_by_role("combobox").first.select_option(mode_type)
             page.wait_for_timeout(2000)
 
@@ -267,50 +265,53 @@ def fetch_csv_database(mode_type="ALL"):
                 
                 page.wait_for_timeout(4000)
 
-                csv_btn = page.get_by_text("🠋CSV").first
+                csv_path = None
+                csv_btn = page.locator("text=CSV").first
+                try: csv_btn.wait_for(state="visible", timeout=15000)
+                except: pass
+
                 try:
-                    csv_btn.click(timeout=5000)
-                    page.wait_for_timeout(1000)
-
-                    with page.expect_download(timeout=45000) as download_info:
-                        with page.expect_popup(timeout=20000) as page1_info:
-                            csv_btn.click()
-                        page1 = page1_info.value
-                        page1.close()
-
-                    download = download_info.value
-                    csv_path = download.path()
-
-                    if csv_path and os.path.exists(csv_path):
-                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                            lines = f.readlines()
-
-                        if len(lines) > 2:
-                            header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                            for line in lines[2:]:
-                                parts = [p.strip() for p in line.strip().split(';')]
-                                if len(parts) == len(header):
-                                    date_str = parts[0]
-                                    if date_str: dates_set.add(date_str)
-                                        
-                                    val_map = {}
-                                    for h, v_str in zip(header[1:], parts[1:]):
-                                        match_cond = False
-                                        if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                        elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                        elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                        if match_cond or target_tag in h:
-                                            if target_tag == "-S" and "-CS" in h: continue
-                                            if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                            s_name = m.group(1) if m else h.split()[0].strip()
-                                            v = clean_num(v_str)
-                                            if not np.isnan(v):
-                                                val_map[s_name] = v
-                                    historical_db[cat_key][date_str] = val_map
+                    csv_btn.click(force=True, timeout=5000)
+                    page.wait_for_timeout(1500)
+                    with page.expect_download(timeout=30000) as d_info:
+                        try:
+                            with page.expect_popup(timeout=8000) as p_info:
+                                csv_btn.click(force=True)
+                            p_info.value.close()
+                        except:
+                            csv_btn.click(force=True)
+                    csv_path = d_info.value.path()
                 except Exception as e:
                     print(f"CSV İndirme Hatası ({cat_key}): {e}")
+
+                if csv_path and os.path.exists(csv_path):
+                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                        lines = f.readlines()
+                    
+                    if len(lines) > 2:
+                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
+                        for line in lines[2:]:
+                            parts = [p.strip() for p in line.strip().split(';')]
+                            if len(parts) == len(header):
+                                date_str = parts[0]
+                                if date_str: dates_set.add(date_str)
+                                        
+                                val_map = {}
+                                for h, v_str in zip(header[1:], parts[1:]):
+                                    match_cond = False
+                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
+                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
+                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+
+                                    if match_cond or target_tag in h:
+                                        if target_tag == "-S" and "-CS" in h: continue
+                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
+                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                        s_name = m.group(1) if m else h.split()[0].strip()
+                                        v = clean_num(v_str)
+                                        if not np.isnan(v):
+                                            val_map[s_name] = v
+                                historical_db[cat_key][date_str] = val_map
 
         except Exception as e:
             st.warning(f"LoggIS bağlantı hatası: {e}")
@@ -348,25 +349,27 @@ with col_nav:
         st.rerun()
 
 # ---------------------------------------------------------
-# ЛОГИКА ЗАГРУЗКИ ДАННЫХ
+# ЛОГИКА ЗАГРУЗКИ ДАННЫХ С ПУСТЫМИ ЗНАЧЕНИЯМИ "-"
 # ---------------------------------------------------------
-target_timestamp = None
+target_timestamp = "-"
 raw_v_map = {}
 cat_cfg = CATEGORIES[selected_comp]
 
 if data_mode == "🔴 Canlı (En Güncel) Veriler":
-    with st.spinner("En güncel CSV verileri alınıyor..."):
-        all_dates, full_db = fetch_csv_database(mode_type="MONTH_02") # Быстрая выгрузка за текущий месяц
+    with st.spinner("En güncel veriler alınıyor..."):
+        all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
     
     if all_dates:
-        target_timestamp = all_dates[0] # Самая крайняя точка внизу файла / первая в списке
+        target_timestamp = all_dates[0]
         raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+    else:
+        target_timestamp = "-"
 else:
-    with st.spinner("Tüm tarihsel veritabanı indiriliyor (Bu işlem 15-30 sn sürebilir)..."):
-        all_dates, full_db = fetch_csv_database(mode_type="ALL") # Полный архив
+    with st.spinner("Tüm tarihsel veritabanı indiriliyor (15-30 sn)..."):
+        all_dates, full_db = fetch_csv_database(mode_type="ALL")
     
     if not all_dates:
-        st.error("Veri bulunamadı. Lütfen 'Verileri Yenile' butonuna basınız.")
+        target_timestamp = "-"
     else:
         st.markdown("---")
         st.subheader("⏱️ Zaman Seçimi")
@@ -394,23 +397,17 @@ else:
             target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
 
-# Строгая фильтрация датчиков без пересечений
 active_category_values = {}
 for s_name, val in raw_v_map.items():
-    if val is None or np.isnan(val):
-        continue
+    if val is None or np.isnan(val): continue
     u_name = s_name.upper()
-    if selected_comp == "hoop":
-        if "-CS" in u_name:
-            active_category_values[s_name] = float(val)
-    elif selected_comp == "axial":
-        if "-S" in u_name and "-CS" not in u_name:
-            active_category_values[s_name] = float(val)
-    elif selected_comp == "temp":
-        if "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
-            active_category_values[s_name] = float(val)
+    if selected_comp == "hoop" and "-CS" in u_name:
+        active_category_values[s_name] = float(val)
+    elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name:
+        active_category_values[s_name] = float(val)
+    elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name:
+        active_category_values[s_name] = float(val)
 
-# Расчет шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -434,13 +431,18 @@ with col_nav:
 
     st.markdown("---")
     st.write("**Aktif Periyot:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp else 'Bulunamadı'}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
-    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{len(active_category_values)}</span>", unsafe_allow_html=True)
+    sensor_count_str = str(len(active_category_values)) if active_category_values else "-"
+    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{sensor_count_str}</span>", unsafe_allow_html=True)
     
     st.write("**Skala Limitleri (Gerçek Min / Maks):**")
-    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}</span>", unsafe_allow_html=True)
+    if vals:
+        limit_str = f"Min: {clim[0]:+.2f} | Maks: {clim[1]:+.2f} {cat_cfg['unit']}"
+    else:
+        limit_str = "-"
+    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
 # --- 3B THREE.JS ОБЛАСТЬ ---
 with col_3d:
@@ -460,7 +462,7 @@ with col_3d:
                 value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
             )
         else:
-            st.metric(label="Ölçüm", value="--")
+            st.metric(label="Ölçüm", value="-")
 
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -513,16 +515,16 @@ with col_3d:
         <div id="selected-hud">
             <div class="hud-title">Seçilen Sensör</div>
             <div id="hud-sensor-name" class="hud-name">--</div>
-            <div id="hud-sensor-val" class="hud-val">--</div>
+            <div id="hud-sensor-val" class="hud-val">-</div>
         </div>
         <div id="color-legend">
             <div id="legend-title"></div>
             <div class="legend-bar-container">
                 <div id="legend-bar"></div>
                 <div class="legend-labels">
-                    <span id="lbl-max">--</span>
-                    <span id="lbl-mid">--</span>
-                    <span id="lbl-min">--</span>
+                    <span id="lbl-max">-</span>
+                    <span id="lbl-mid">-</span>
+                    <span id="lbl-min">-</span>
                 </div>
             </div>
         </div>
@@ -589,9 +591,9 @@ with col_3d:
         }
 
         const finalMin = payload.clim[0]; const finalMax = payload.clim[1]; const finalMid = (finalMin + finalMax) / 2.0;
-        lblMax.innerText = (finalMax > 0 ? "+" : "") + finalMax.toFixed(2);
-        lblMid.innerText = (finalMid > 0 ? "+" : "") + finalMid.toFixed(2);
-        lblMin.innerText = (finalMin > 0 ? "+" : "") + finalMin.toFixed(2);
+        lblMax.innerText = (finalMax !== undefined && !isNaN(finalMax)) ? ((finalMax > 0 ? "+" : "") + finalMax.toFixed(2)) : "-";
+        lblMid.innerText = (finalMid !== undefined && !isNaN(finalMid)) ? ((finalMid > 0 ? "+" : "") + finalMid.toFixed(2)) : "-";
+        lblMin.innerText = (finalMin !== undefined && !isNaN(finalMin)) ? ((finalMin > 0 ? "+" : "") + finalMin.toFixed(2)) : "-";
 
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
         const sensorScene = new THREE.Scene();
@@ -802,25 +804,48 @@ with col_3d:
                     const step = 10.0; const stepsCount = Math.floor(lengthM / step); const totalDistanceM = stepsCount * step;
                     const yRuler = overallBox.min.y - 0.2; const lateralPos = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
                     const linePoints = [];
-                    if (isZAxis) { linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord)); linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord)); }
-                    else { linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos)); linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos)); }
-                    rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 })));
+                    if (isZAxis) {
+                        linePoints.push(new THREE.Vector3(lateralPos, yRuler, startCoord));
+                        linePoints.push(new THREE.Vector3(lateralPos, yRuler, endCoord));
+                    } else {
+                        linePoints.push(new THREE.Vector3(startCoord, yRuler, lateralPos));
+                        linePoints.push(new THREE.Vector3(endCoord, yRuler, lateralPos));
+                    }
+
+                    const axisGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+                    const axisMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 });
+                    rulerGroup.add(new THREE.Line(axisGeom, axisMat));
 
                     for (let i = 0; i <= stepsCount; i++) {
-                        const currentPos = startCoord + i * step; const reversedDistance = (totalDistanceM - (i * step)).toFixed(0); const distanceText = reversedDistance + " m";
+                        const currentPos = startCoord + i * step;
+                        const reversedDistance = (totalDistanceM - (i * step)).toFixed(0);
+                        const distanceText = reversedDistance + " m";
+
                         const tickPoints = [];
-                        if (isZAxis) { tickPoints.push(new THREE.Vector3(lateralPos - 0.8, yRuler, currentPos)); tickPoints.push(new THREE.Vector3(lateralPos + 0.8, yRuler, currentPos)); }
-                        else { tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos - 0.8)); tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos + 0.8)); }
-                        rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints), new THREE.LineBasicMaterial({ color: 0x00E5FF, linewidth: 3 })));
+                        if (isZAxis) {
+                            tickPoints.push(new THREE.Vector3(lateralPos - 0.8, yRuler, currentPos));
+                            tickPoints.push(new THREE.Vector3(lateralPos + 0.8, yRuler, currentPos));
+                        } else {
+                            tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos - 0.8));
+                            tickPoints.push(new THREE.Vector3(currentPos, yRuler, lateralPos + 0.8));
+                        }
+
+                        const tickGeom = new THREE.BufferGeometry().setFromPoints(tickPoints);
+                        rulerGroup.add(new THREE.Line(tickGeom, axisMat));
+
                         const label = createRulerLabel(distanceText);
-                        if (isZAxis) label.position.set(lateralPos + 2.4, yRuler + 0.4, currentPos); else label.position.set(currentPos, yRuler + 0.4, lateralPos + 2.4);
+                        if (isZAxis) {
+                            label.position.set(lateralPos + 2.4, yRuler + 0.4, currentPos);
+                        } else {
+                            label.position.set(currentPos, yRuler + 0.4, lateralPos + 2.4);
+                        }
                         rulerGroup.add(label);
                     }
+
                     scene.add(rulerGroup);
                 }
             }
 
-            # МАКСИМАЛЬНОЕ ПРИБЛИЖЕНИЕ ЦЕНТРА КАМЕРЫ
             if (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && selectedMeshRef) {
                 flyCameraTo(selectedMeshRef, true);
             } else {
@@ -854,7 +879,7 @@ with col_3d:
         function updateHud(name, val, isUsable) {
             selectedHud.style.display = 'block'; hudName.innerText = name;
             if (isUsable && val !== undefined && !isNaN(val)) { const valTxt = (val > 0 ? "+" + val.toFixed(2) : val.toFixed(2)) + " " + payload.unit; hudVal.innerText = valTxt; hudVal.style.color = "#00E5FF"; }
-            else { hudVal.innerText = "Veri Yok / Belirsiz"; hudVal.style.color = "#FF0033"; }
+            else { hudVal.innerText = "-"; hudVal.style.color = "#FF0033"; }
         }
 
         function flyCameraTo(targetMesh, animate = true) {
@@ -897,7 +922,7 @@ with col_3d:
                     tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Ölçüm: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: -</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 }
             } else {
