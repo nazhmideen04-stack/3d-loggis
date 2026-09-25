@@ -275,6 +275,12 @@ def ensure_playwright_installed():
 
 @st.cache_data(ttl=300)
 def fetch_all_categories_data():
+    """
+    LIVE DATA ONLY.
+    This follows the working GİTHUB_3DMAX logic:
+    MONTH_02 -> TABLE_ROW_DATE -> category -> HTML table -> first data row.
+    Archive/CSV is deliberately not used here.
+    """
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
@@ -285,6 +291,7 @@ def fetch_all_categories_data():
             "--disable-gpu",
             "--window-size=1920,1080",
         ]
+
         try:
             browser = p.chromium.launch(headless=True, args=browser_args)
         except Exception:
@@ -295,10 +302,12 @@ def fetch_all_categories_data():
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
             locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+            ),
         )
         page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
@@ -310,27 +319,54 @@ def fetch_all_categories_data():
                 pass
             page.wait_for_timeout(1000)
 
+            # Exactly as in the working version.
             try:
-                page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+                page.get_by_role("combobox").first.select_option(
+                    "MONTH_02", timeout=5000
+                )
             except Exception:
                 pass
             page.wait_for_timeout(800)
 
             try:
-                page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+                page.get_by_role("combobox").nth(1).select_option(
+                    "TABLE_ROW_DATE", timeout=5000
+                )
             except Exception:
                 pass
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
+                # Use the exact category name first, as in GİTHUB_3DMAX.
+                selected = False
                 try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                    page.get_by_role("listbox").select_option(
+                        cat_cfg["names"][0], timeout=6000
+                    )
+                    selected = True
                 except Exception:
-                    try:
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
-                    except Exception:
+                    pass
+
+                # Fallbacks for installations where the visible label differs.
+                if not selected:
+                    for name in cat_cfg["names"]:
                         try:
-                            page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
+                            page.get_by_role("listbox").select_option(
+                                name, timeout=3000
+                            )
+                            selected = True
+                            break
+                        except Exception:
+                            pass
+
+                if not selected:
+                    for name in cat_cfg["names"]:
+                        try:
+                            page.locator(
+                                f"option:has-text('{name}')"
+                            ).first.click(force=True, timeout=3000)
+                            selected = True
+                            break
                         except Exception:
                             pass
 
@@ -339,68 +375,114 @@ def fetch_all_categories_data():
                 val_map = {}
                 latest_date_str = ""
 
-                for _ in range(15):
+                # Give the table time to update after category selection.
+                for _ in range(20):
                     try:
                         extracted = page.evaluate("""() => {
                             try {
-                                const table = document.querySelector('table');
-                                if (!table) return null;
+                                const tables = Array.from(document.querySelectorAll('table'));
 
-                                const trs = Array.from(table.querySelectorAll('tr'));
-                                let headerCells = [];
-                                for (const tr of trs) {
-                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
-                                        headerCells = cells;
-                                        break;
+                                for (const table of tables) {
+                                    const trs = Array.from(table.querySelectorAll('tr'));
+                                    if (!trs.length) continue;
+
+                                    let headerCells = [];
+                                    for (const tr of trs) {
+                                        const cells = Array.from(
+                                            tr.querySelectorAll('th, td')
+                                        ).map(c => (c.innerText || '').trim());
+
+                                        if (cells.some(c =>
+                                            c.includes('TA-') ||
+                                            c.includes('TB-')
+                                        )) {
+                                            headerCells = cells;
+                                            break;
+                                        }
+                                    }
+
+                                    if (!headerCells.length) continue;
+
+                                    const tbody = table.querySelector('tbody') || table;
+                                    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+                                    // Prefer the first real data row.
+                                    for (const r of rows) {
+                                        const cells = Array.from(
+                                            r.querySelectorAll('td')
+                                        ).map(c => (c.innerText || '').trim());
+
+                                        if (
+                                            cells.length > 1 &&
+                                            (
+                                                cells[0].includes('/') ||
+                                                cells[0].includes(':') ||
+                                                cells[0].includes('-')
+                                            )
+                                        ) {
+                                            return {
+                                                headers: headerCells,
+                                                values: cells
+                                            };
+                                        }
                                     }
                                 }
-                                if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                }
 
-                                const tbody = table.querySelector('tbody') || table;
-                                const rows = Array.from(tbody.querySelectorAll('tr'));
-                                let dataCells = [];
-                                for (const r of rows) {
-                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
-                                        dataCells = cells;
-                                        break;
-                                    }
-                                }
-
-                                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                                return { headers: headerCells, values: dataCells };
+                                return null;
                             } catch(e) {
                                 return null;
                             }
                         }""")
 
-                        if extracted and extracted.get("values") and extracted.get("headers"):
-                            headers = extracted["headers"]
-                            values = extracted["values"]
-                            latest_date_str = values[0]
+                        if extracted:
+                            headers = extracted.get("headers", [])
+                            values = extracted.get("values", [])
 
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
-                                    v = clean_num(v_str)
-                                    if not np.isnan(v):
-                                        val_map[s_name] = v
+                            if headers and values and len(values) > 1:
+                                latest_date_str = values[0]
 
-                            if len(val_map) > 0:
-                                break
+                                for h, v_str in zip(headers[1:], values[1:]):
+                                    # Keep the original GİTHUB_3DMAX sensor-name extraction.
+                                    if (
+                                        "TA-" in h
+                                        or "TB-" in h
+                                        or cat_cfg["tag"] in h
+                                    ):
+                                        m = re.search(
+                                            r"(T[AB]-[A-Za-z0-9\-]+)", h
+                                        )
+                                        s_name = (
+                                            m.group(1)
+                                            if m
+                                            else h.split()[0].strip()
+                                        )
+
+                                        v = clean_num(v_str)
+                                        if not np.isnan(v):
+                                            val_map[s_name] = v
+
+                                if val_map:
+                                    break
+
                     except Exception:
                         pass
 
                     page.wait_for_timeout(600)
 
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+                all_results[cat_key] = {
+                    "values": val_map,
+                    "date": latest_date_str
+                }
+
+                # Important: do not silently continue with empty live data.
+                if not val_map:
+                    print(
+                        f"[LIVE] Veri alınamadı: {cat_key} | "
+                        f"category={cat_cfg['names'][0]}"
+                    )
 
         except Exception as e:
-            st.warning(f"LoggIS verisi alınırken gecikme oluştu: {e}")
+            st.warning(f"LoggIS canlı veri hatası: {e}")
         finally:
             browser.close()
 
@@ -600,6 +682,12 @@ with col_nav:
         cur_live = live_data.get(selected_comp, {"values": {}, "date": ""})
         target_timestamp = cur_live.get("date", "-") or "-"
         raw_v_map = cur_live.get("values", {})
+
+        if not raw_v_map:
+            st.error(
+                "LoggIS canlı tablosundan veri alınamadı. "
+                "Sayfa açıldı ancak seçilen kategori için tablo satırı okunamadı."
+            )
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
