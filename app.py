@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import csv
 import json
 import base64
 import subprocess
@@ -263,256 +264,507 @@ CATEGORIES = {
     "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
+# ---------------------------------------------------------
+# ОБЩИЕ ПОМОЩНИКИ: ЧИСЛА, ДАТЫ, ИМЕНА СЕНСОРОВ
+# ---------------------------------------------------------
+SENSOR_RE = re.compile(r"(?<![A-Za-z0-9])(T[AB]-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)", re.IGNORECASE)
+
+TR_MONTHS = {
+    "01": "Ocak", "02": "Şubat", "03": "Mart", "04": "Nisan", "05": "Mayıs", "06": "Haziran",
+    "07": "Temmuz", "08": "Ağustos", "09": "Eylül", "10": "Ekim", "11": "Kasım", "12": "Aralık",
+}
+
+DATE_FORMATS = [
+    "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y",
+    "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y",
+    "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%d-%m-%Y",
+    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+    "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d",
+    "%d/%m/%y %H:%M:%S", "%d/%m/%y %H:%M",
+]
+
+
 def clean_num(s):
-    if not s: return np.nan
-    s = str(s).replace(",", ".").replace(" ", "").strip()
-    m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
+    """Число из ячейки LoggIS: '12,5', '-1 234,56', '−3,2 µm/m', '1\u202f024,0' и т.п."""
+    if s is None:
+        return np.nan
+    if isinstance(s, (int, float, np.integer, np.floating)):
+        return float(s)
+    s = str(s).strip()
+    if not s:
+        return np.nan
+    s = s.replace("\u2212", "-").replace("\u2013", "-")          # юникод-минусы
+    s = re.sub(r"[\s\u00a0\u202f\u2009']", "", s)               # пробелы-разделители тысяч
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")               # 1.234,5
+        else:
+            s = s.replace(",", "")                                 # 1,234.5
+    else:
+        s = s.replace(",", ".")
+    m = re.search(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", s)
     return float(m.group()) if m else np.nan
+
+
+def parse_ts(s):
+    """Строка даты LoggIS -> datetime (день идёт первым, как в fr-FR)."""
+    if s is None:
+        return None
+    t = str(s).replace("\ufeff", "").strip()
+    if not t or not re.search(r"\d", t):
+        return None
+    t = re.sub(r"\s+", " ", t.replace("T", " "))
+    t = re.sub(r"(\.\d+)?(Z|[+-]\d{2}:?\d{2})$", "", t).strip()
+    for fmt in DATE_FORMATS:
+        try:
+            return datetime.strptime(t, fmt)
+        except ValueError:
+            pass
+    if not re.search(r"\d{1,4}[./-]\d{1,2}[./-]\d{1,4}", t):
+        return None
+    try:
+        ts = pd.to_datetime(t, dayfirst=True, errors="coerce")
+        if pd.notna(ts):
+            return ts.to_pydatetime().replace(tzinfo=None)
+    except Exception:
+        pass
+    return None
+
+
+def ts_key(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def fmt_ts(key):
+    """'2026-09-25 10:00:00' -> '25.09.2026 10:00' для показа."""
+    if not key or key == "-":
+        return "-"
+    try:
+        return datetime.strptime(key, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+    except ValueError:
+        return str(key)
+
+
+def extract_sensor_name(header):
+    if header is None:
+        return None
+    m = SENSOR_RE.search(str(header).replace("\ufeff", ""))
+    return m.group(1).strip("-") if m else None
+
+
+def classify_sensor(name):
+    """Категория по имени сенсора: -CS -> hoop, -S.. -> axial, -TP -> temp (как в 3D-модели)."""
+    if not name:
+        return None
+    segs = name.upper().split("-")[1:]
+    if any(s.startswith("CS") for s in segs):
+        return "hoop"
+    if any(s.startswith("S") for s in segs):
+        return "axial"
+    if any(s.startswith("TP") for s in segs):
+        return "temp"
+    return None
+
 
 def ensure_playwright_installed():
     try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     except Exception: pass
 
+
 # ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ТОЧНЫЙ ПАРСИНГ ПО ТВОЕМУ ШАБЛОНУ)
+# ОБЩИЕ ШАГИ PLAYWRIGHT
 # ---------------------------------------------------------
-@st.cache_data(ttl=300)
-def fetch_live_data_from_web():
-    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
+BROWSER_ARGS = [
+    "--no-sandbox", "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+]
+
+
+def _launch_browser(p):
+    try:
+        return p.chromium.launch(headless=True, args=BROWSER_ARGS)
+    except Exception:
+        ensure_playwright_installed()
+        return p.chromium.launch(headless=True, args=BROWSER_ARGS)
+
+
+def _new_page(browser):
+    context = browser.new_context(
+        accept_downloads=True, viewport={"width": 1920, "height": 1080},
+        timezone_id="Europe/Istanbul", locale="fr-FR",
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+    )
+    return context.new_page()
+
+
+def _open_loggis(page, mode_type, view_type=None):
+    """Порядок как в записи Playwright: период -> (вид таблицы) -> Types."""
+    page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+    page.wait_for_selector(f'select option[value="{mode_type}"]', state="attached", timeout=60000)
+    page.get_by_role("combobox").first.select_option(mode_type)
+    page.wait_for_timeout(2000)
+    if view_type:
+        page.wait_for_selector(f'select option[value="{view_type}"]', state="attached", timeout=30000)
+        page.get_by_role("combobox").nth(1).select_option(view_type)
+        page.wait_for_timeout(2000)
+    page.get_by_text("Types").click()
+    page.wait_for_timeout(1000)
+
+
+def _select_category(page, cat_cfg):
+    for c_name in cat_cfg["names"]:
+        try:
+            page.get_by_role("listbox").select_option(c_name, timeout=2000)
+            return True
+        except Exception: pass
+    for c_name in cat_cfg["names"]:
+        try:
+            page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
+            return True
+        except Exception: pass
+    for c_name in cat_cfg["names"]:
+        try:
+            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
+            return True
+        except Exception: pass
+    return False
+
+
+# ---------------------------------------------------------
+# CANLI VERİLER: ТАБЛИЦА LoggIS (MONTH_02, заголовки TA-/TB-, последняя строка)
+# ---------------------------------------------------------
+_TABLE_JS = r"""
+() => {
+  const txt = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+  const expand = cells => {
+    const out = [];
+    cells.forEach(c => {
+      const n = parseInt(c.getAttribute('colspan') || '1', 10) || 1;
+      const t = txt(c);
+      for (let i = 0; i < n; i++) out.push(t);
+    });
+    return out;
+  };
+  const result = [];
+  document.querySelectorAll('table').forEach(t => {
+    const headRows = [], bodyRows = [];
+    t.querySelectorAll('tr').forEach(tr => {
+      if (tr.closest('table') !== t) return;               // пропускаем вложенные таблицы
+      const cells = Array.from(tr.children).filter(c => c.tagName === 'TH' || c.tagName === 'TD');
+      if (!cells.length) return;
+      const inHead = !!tr.closest('thead') || cells.every(c => c.tagName === 'TH');
+      (inHead ? headRows : bodyRows).push(expand(cells));
+    });
+    result.push({ headRows, bodyRows });
+  });
+  document.querySelectorAll('[role="grid"],[role="table"],[role="treegrid"]').forEach(g => {
+    if (g.tagName === 'TABLE') return;
+    const headRows = [], bodyRows = [];
+    g.querySelectorAll('[role="row"]').forEach(r => {
+      const hc = Array.from(r.querySelectorAll('[role="columnheader"]'));
+      const bc = Array.from(r.querySelectorAll('[role="gridcell"],[role="cell"],[role="rowheader"]'));
+      if (hc.length && !bc.length) headRows.push(hc.map(txt));
+      else if (bc.length) bodyRows.push(bc.map(txt));
+    });
+    result.push({ headRows, bodyRows });
+  });
+  return result;
+}
+"""
+
+_SCROLL_JS = r"""
+() => {
+  document.querySelectorAll('*').forEach(el => {
+    if (el.scrollHeight > el.clientHeight + 20 && el.querySelector('table,[role="row"]')) {
+      el.scrollTop = el.scrollHeight;
+    }
+  });
+  window.scrollTo(0, document.body.scrollHeight);
+}
+"""
+
+
+def _pick_sensor_table(raw_tables):
+    """Выбирает таблицу/строку заголовков с максимальным числом колонок TA-/TB-."""
+    best = None
+    for tbl in raw_tables or []:
+        head_rows = list(tbl.get("headRows") or [])
+        body_rows = list(tbl.get("bodyRows") or [])
+        candidates = [(h, body_rows) for h in head_rows]
+        if not head_rows and body_rows:
+            candidates.append((body_rows[0], body_rows[1:]))
+        for header, rows in candidates:
+            cols = [(j, extract_sensor_name(h)) for j, h in enumerate(header)]
+            cols = [(j, n) for j, n in cols if n]
+            if cols and (best is None or len(cols) > len(best["cols"])):
+                best = {"header": header, "cols": cols, "rows": rows}
+    return best
+
+
+def _last_row_values(tbl):
+    """Самые последние данные таблицы TABLE_ROW_DATE (строка = дата).
+
+    Строки сортируются по дате от новой к старой (без даты — по положению, нижняя = новее).
+    Каждому сенсору берётся самое свежее непустое значение.
+    Возвращает (время самой свежей строки, {сенсор: значение}, {сенсор: время значения}).
+    """
+    header_len = len(tbl["header"])
+    rows = []
+    for idx, row in enumerate(tbl["rows"]):
+        offset = len(row) - header_len if len(row) > header_len else 0
+        vals = {}
+        for j, name in tbl["cols"]:
+            k = j + offset
+            if k < len(row):
+                v = clean_num(row[k])
+                if not np.isnan(v):
+                    vals[name] = v
+        if not vals:
+            continue
+        dt = None
+        for cell in row[:3]:
+            dt = parse_ts(cell)
+            if dt: break
+        rows.append((idx, dt, vals))
+    if not rows:
+        return None, {}, {}
+
+    dated = [r for r in rows if r[1]]
+    if dated:
+        ordered = sorted(dated, key=lambda r: (r[1], r[0]), reverse=True)
+    else:
+        ordered = sorted(rows, key=lambda r: r[0], reverse=True)
+
+    latest_dt = ordered[0][1]
+    vals, times = {}, {}
+    for _, dt, row_vals in ordered:
+        for name, v in row_vals.items():
+            if name not in vals:
+                vals[name] = v
+                times[name] = ts_key(dt) if dt else None
+    return latest_dt, vals, times
+
+
+def _wait_data_loaded(page, timeout=45000):
+    """Ждём, пока исчезнут «Chargement en cours» / «Récupération des données...»."""
+    try:
+        page.wait_for_function(
+            """() => !Array.from(document.querySelectorAll('body *')).some(e =>
+                   e.children.length === 0 && e.offsetParent !== null &&
+                   /Récupération des données|Chargement en cours/i.test(e.textContent || ''))""",
+            timeout=timeout)
+    except Exception:
+        pass
+    page.wait_for_timeout(1000)
+
+
+def _download_csv(page):
+    """Как в записи: expect_download( expect_popup( click '🠋CSV' ) ), попап закрывается ПОСЛЕ скачивания."""
+    csv_btn = page.get_by_text("🠋CSV").first
+    try:
+        csv_btn.wait_for(state="visible", timeout=20000)
+    except Exception:
+        csv_btn = page.locator("text=CSV").first
+    popup = None
+    try:
+        with page.expect_download(timeout=90000) as d_info:
+            try:
+                with page.expect_popup(timeout=15000) as p_info:
+                    csv_btn.click()
+                popup = p_info.value
+            except Exception:
+                pass
+        download = d_info.value
+        path = download.path()          # ждёт окончания скачивания
+    except Exception as e:
+        print(f"CSV İndirme Hatası: {e}")
+        path = None
+    finally:
+        if popup is not None:
+            try: popup.close()
+            except Exception: pass
+    return path if path and os.path.exists(path) else None
+
+
+def _latest_from_parsed(parsed):
+    """{ts: {sensor: v}} -> (самый свежий ts, {sensor: последнее значение})."""
+    if not parsed:
+        return None, {}
+    keys = sorted(parsed.keys(), reverse=True)
+    vals = {}
+    for k in keys:
+        for s_name, v in parsed[k].items():
+            vals.setdefault(s_name, v)
+    return keys[0], vals
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_live_cached(mode_type):
+    live_db = {k: {} for k in CATEGORIES}
+    latest_key = None
 
     with sync_playwright() as p:
-        browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-        ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
-
-        context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
-
+        browser = _launch_browser(p)
+        page = _new_page(browser)
         try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
-
-            # Точная последовательность из твоего первого кода
-            page.get_by_role("combobox").first.select_option("MONTH_02")
-            page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE")
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
+            _open_loggis(page, mode_type, view_type="TABLE_ROW_DATE")
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                            success = True; break
-                        except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                            success = True; break
-                        except: pass
-
-                page.wait_for_timeout(3500)
-
-                val_map = {}
-                latest_date_str = ""
-
-                for _ in range(15):
-                    try:
-                        extracted = page.evaluate("""() => {
-                            try {
-                                const table = document.querySelector('table');
-                                if (!table) return null;
-
-                                const trs = Array.from(table.querySelectorAll('tr'));
-                                let headerCells = [];
-                                for (const tr of trs) {
-                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
-                                        headerCells = cells;
-                                        break;
-                                    }
-                                }
-                                if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                }
-
-                                const tbody = table.querySelector('tbody') || table;
-                                const rows = Array.from(tbody.querySelectorAll('tr'));
-                                let dataCells = [];
-                                for (const r of rows) {
-                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
-                                        dataCells = cells;
-                                        break;
-                                    }
-                                }
-
-                                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                                return { headers: headerCells, values: dataCells };
-                            } catch(e) {
-                                return null;
-                            }
-                        }""")
-
-                        if extracted and extracted.get("values") and extracted.get("headers"):
-                            headers = extracted["headers"]
-                            values = extracted["values"]
-                            latest_date_str = values[0]
-
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                match_cond = False
-                                if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                if match_cond or target_tag in h:
-                                    if target_tag == "-S" and "-CS" in h: continue
-                                    if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
-                                    v = clean_num(v_str)
-                                    if not np.isnan(v):
-                                        val_map[s_name] = v
-
-                            if len(val_map) > 0:
-                                break
-                    except: pass
-                    page.wait_for_timeout(600)
-
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
-
-        except Exception as e:
-            st.warning(f"LoggIS canlı veri uyarısı: {e}")
-        finally:
-            browser.close()
-
-    return all_results
-
-# ---------------------------------------------------------
-# 2. АРХИВНЫЕ ДАННЫЕ (ПО ВАШЕМУ ВТОРОМУ КОДУ CSV)[cite: 8]
-# ---------------------------------------------------------
-@st.cache_data(ttl=900)
-def fetch_csv_archive_database(mode_type="ALL"):
-    historical_db = {k: {} for k in CATEGORIES}
-    dates_set = set()
-
-    with sync_playwright() as p:
-        browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-        ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
-
-        context = browser.new_context(
-            accept_downloads=True, viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-
-        try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
-
-            # Точная последовательность из твоего второго кода CSV
-            page.get_by_role("combobox").first.select_option(mode_type)
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
-
-            for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                            success = True; break
-                        except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                            success = True; break
-                        except: pass
-                
-                page.wait_for_timeout(3000)
-
-                csv_path = None
+                if live_db[cat_key]:
+                    continue
+                _select_category(page, cat_cfg)
+                page.wait_for_timeout(2000)
+                _wait_data_loaded(page)
                 try:
-                    with page.expect_download(timeout=30000) as download_info:
-                        with page.expect_popup(timeout=8000) as page1_info:
-                            page.get_by_text("🠋CSV").click(force=True)
-                        try:
-                            page1 = page1_info.value
-                            page1.close()
-                        except: pass
-                    csv_path = download_info.value.path()
+                    page.wait_for_function(
+                        """() => Array.from(document.querySelectorAll('th,[role="columnheader"],td'))
+                                 .some(e => /T[AB]-/i.test(e.innerText || ''))""",
+                        timeout=30000)
+                except Exception: pass
+                try:
+                    page.evaluate(_SCROLL_JS)
+                    page.wait_for_timeout(800)
+                except Exception: pass
+
+                # 1) таблица на странице
+                cat_key_ts, vals = None, {}
+                try:
+                    tbl = _pick_sensor_table(page.evaluate(_TABLE_JS))
+                    if tbl:
+                        dt, vals, _ = _last_row_values(tbl)
+                        cat_key_ts = ts_key(dt) if dt else None
                 except Exception as e:
-                    pass
+                    print(f"Tablo okuma hatası ({cat_key}): {e}")
 
-                if csv_path and os.path.exists(csv_path):
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                    
-                    if len(lines) > 2:
-                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                        for line in lines[2:]:
-                            parts = [p.strip() for p in line.strip().split(';')]
-                            if len(parts) == len(header):
-                                date_str = parts[0]
-                                if date_str: dates_set.add(date_str)
-                                        
-                                val_map = {}
-                                for h, v_str in zip(header[1:], parts[1:]):
-                                    match_cond = False
-                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+                # 2) если таблица не прочиталась — тот же период (MONTH_02) через CSV, последняя строка
+                if not vals:
+                    path = _download_csv(page)
+                    if path:
+                        parsed, _ = parse_loggis_csv(path)
+                        cat_key_ts, vals = _latest_from_parsed(parsed)
 
-                                    if match_cond or target_tag in h:
-                                        if target_tag == "-S" and "-CS" in h: continue
-                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                        s_name = m.group(1) if m else h.split()[0].strip()
-                                        v = clean_num(v_str)
-                                        if not np.isnan(v):
-                                            val_map[s_name] = v
-                                historical_db[cat_key][date_str] = val_map
-
-        except Exception as e:
-            pass
+                for s_name, v in vals.items():
+                    c = classify_sensor(s_name)
+                    if c:
+                        live_db[c][s_name] = v
+                if cat_key_ts and (latest_key is None or cat_key_ts > latest_key):
+                    latest_key = cat_key_ts
         finally:
             browser.close()
 
-    sorted_dates = sorted(list(dates_set), reverse=True)
-    return sorted_dates, historical_db
+    if not any(live_db.values()):
+        raise RuntimeError("LoggIS'ten canlı veri alınamadı.")   # пустой результат не кэшируется
+    return live_db, latest_key or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def fetch_live_table(mode_type="MONTH_02"):
+    try:
+        live_db, ts = _fetch_live_cached(mode_type)
+        return live_db, {"timestamp": ts, "error": None}
+    except Exception as e:
+        return {k: {} for k in CATEGORIES}, {"timestamp": None, "error": str(e)}
+
+
+# ---------------------------------------------------------
+# ARŞİV VERİLER: CSV (скачивание, разбор дат и значений)
+# ---------------------------------------------------------
+def _read_text_any(path):
+    with open(path, "rb") as f:
+        raw = f.read()
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        return raw.decode("utf-16", errors="ignore")
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return raw.decode("latin-1", errors="ignore")
+
+
+def parse_loggis_csv(path):
+    """CSV LoggIS -> {ts_key: {sensor: value}}. Строки без даты (единицы и т.п.) пропускаются."""
+    text = _read_text_any(path).replace("\ufeff", "")
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return {}, 0
+
+    sample = "\n".join(lines[:5])
+    delim = max([";", "\t"], key=sample.count)
+    if sample.count(delim) == 0:
+        delim = ","
+    rows = list(csv.reader(lines, delimiter=delim))
+
+    # строка заголовков = строка с максимумом имён TA-/TB- среди первых 15
+    header_idx, best_cols = None, []
+    for i, row in enumerate(rows[:15]):
+        cols = [(j, extract_sensor_name(h)) for j, h in enumerate(row)]
+        cols = [(j, n) for j, n in cols if n]
+        if len(cols) > len(best_cols):
+            header_idx, best_cols = i, cols
+    if header_idx is None:
+        return {}, 0
+
+    out = {}
+    for row in rows[header_idx + 1:]:
+        dt = None
+        for cell in row[:3]:
+            dt = parse_ts(cell)
+            if dt: break
+        if not dt:
+            continue
+        vals = {}
+        for j, name in best_cols:
+            if j < len(row):
+                v = clean_num(row[j])
+                if not np.isnan(v):
+                    vals[name] = v
+        if vals:
+            out.setdefault(ts_key(dt), {}).update(vals)
+    return out, len(best_cols)
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _fetch_csv_cached(mode_type):
+    historical_db = {k: {} for k in CATEGORIES}
+
+    with sync_playwright() as p:
+        browser = _launch_browser(p)
+        page = _new_page(browser)
+        try:
+            _open_loggis(page, mode_type)
+
+            for cat_key, cat_cfg in CATEGORIES.items():
+                _select_category(page, cat_cfg)
+                page.wait_for_timeout(2000)
+                _wait_data_loaded(page)
+
+                path = _download_csv(page)
+                if not path:
+                    continue
+                parsed, _ = parse_loggis_csv(path)
+                # раскладываем по категории по имени сенсора
+                for key, vals in parsed.items():
+                    for s_name, v in vals.items():
+                        c = classify_sensor(s_name)
+                        if c:
+                            historical_db[c].setdefault(key, {})[s_name] = v
+        finally:
+            browser.close()
+
+    all_keys = set()
+    for cat_rows in historical_db.values():
+        all_keys.update(k for k, v in cat_rows.items() if v)
+    if not all_keys:
+        raise RuntimeError("LoggIS'ten CSV arşiv verisi alınamadı.")   # пустой результат не кэшируется
+    return sorted(all_keys, reverse=True), historical_db
+
+
+def fetch_csv_database(mode_type="ALL"):
+    try:
+        dates, db = _fetch_csv_cached(mode_type)
+        return dates, db, {"error": None}
+    except Exception as e:
+        return [], {k: {} for k in CATEGORIES}, {"error": str(e)}
 
 @st.cache_data
 def get_model_b64(path):
@@ -544,59 +796,69 @@ with col_nav:
     cat_cfg = CATEGORIES[selected_comp]
     compare_mode = False
 
+    diag = None
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
+        st.subheader("Zaman Seçimi")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
-            all_dates, full_db = fetch_csv_archive_database(mode_type="ALL")
+            all_dates, full_db, diag = fetch_csv_database(mode_type="ALL")
+        if diag.get("error"):
+            st.warning(f"LoggIS bağlantı hatası: {diag['error']}")
+
+        cat_rows = full_db[selected_comp]
+        cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)
             
-        if not all_dates:
+        if not cat_dates:
             st.warning("Arşiv verisi bulunamadı.")
         else:
-            latest_timestamp = all_dates[0]  
+            latest_key = cat_dates[0]   # самая свежая дата с данными ЭТОЙ категории
+            latest_timestamp = fmt_ts(latest_key)
             
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
+            # ключи вида 'YYYY-MM-DD HH:MM:SS'
             date_hierarchy = {}
-            for d_str in all_dates:
-                clean_d = d_str.replace("-", "/")
-                if " " in clean_d:
-                    date_part, time_part = clean_d.split(" ", 1)
-                    parts = date_part.split("/")
-                    if len(parts) == 3:
-                        y, m, d = parts[0], parts[1], parts[2]
-                        date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
+            for k in cat_dates:
+                y, m, d, t = k[0:4], k[5:7], k[8:10], k[11:]
+                date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(t)
 
-            years = sorted(list(date_hierarchy.keys()), reverse=True)
+            years = sorted(date_hierarchy.keys(), reverse=True)
             sel_year = st.selectbox("Yıl Seçiniz", options=years)
 
             if sel_year:
-                months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
-                sel_month = st.selectbox("Ay Seçiniz:", options=months)
+                months = sorted(date_hierarchy[sel_year].keys(), reverse=True)
+                sel_month = st.selectbox("Ay Seçiniz:", options=months,
+                                         format_func=lambda mm: f"{mm} - {TR_MONTHS.get(mm, mm)}")
 
                 if sel_month:
-                    days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
+                    days = sorted(date_hierarchy[sel_year][sel_month].keys(), reverse=True)
                     sel_day = st.selectbox("Gün Seçiniz:", options=days)
 
                     if sel_day:
                         times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("Saat Seçiniz:", options=times)
+                        sel_time = st.selectbox("Saat Seçiniz:", options=times, format_func=lambda t: t[:5])
 
                         if sel_time:
-                            target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
-                            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-                            latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
+                            target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
+                            target_timestamp = fmt_ts(target_key)
+                            raw_v_map = cat_rows.get(target_key, {})
+                            latest_v_map = cat_rows.get(latest_key, {})
     else:
-        with st.spinner("En güncel canlı veriler alınıyor..."):
-            live_data = fetch_live_data_from_web()
-            cur_layer = live_data.get(selected_comp, {"values": {}, "date": ""})
-            target_timestamp = cur_layer["date"] if cur_layer["date"] else "Canlı"
-            raw_v_map = cur_layer["values"]
+        with st.spinner("En güncel veriler alınıyor..."):
+            live_db, diag = fetch_live_table(mode_type="MONTH_02")
+        if diag.get("error"):
+            st.warning(f"LoggIS bağlantı hatası: {diag['error']}")
+        raw_v_map = live_db.get(selected_comp, {})
+        if raw_v_map:
+            target_timestamp = fmt_ts(diag.get("timestamp"))
+        else:
+            st.warning("Canlı tabloda bu kategori için veri bulunamadı.")
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
+
 
 # ---------------------------------------------------------
 # ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
@@ -607,14 +869,7 @@ table_data = []
 if raw_v_map:
     for s_name, val in raw_v_map.items():
         if val is None or np.isnan(val): continue
-        u_name = s_name.upper()
-        
-        is_valid_sensor = False
-        if selected_comp == "hoop" and "-CS" in u_name: is_valid_sensor = True
-        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: is_valid_sensor = True
-        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: is_valid_sensor = True
-
-        if is_valid_sensor:
+        if classify_sensor(s_name) == selected_comp:
             if compare_mode:
                 latest_val = latest_v_map.get(s_name)
                 
@@ -661,7 +916,7 @@ else:
 
 with col_nav:
     st.markdown("---")
-    st.subheader("GÖRÜNÜМ AYARLARI")
+    st.subheader("GÖRÜNÜM AYARLARI")
 
     tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
     show_meters = st.checkbox("Metre Cetveli Göster", value=True)
@@ -791,14 +1046,14 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (АКТИВАЦИЯ ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ)
+        // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ
         // =========================================================================
-        let userInteracted = false;
+        let isModelLoaded = false;
         
         function saveCamState() {
-            if (!userInteracted) return;
+            if (!isModelLoaded) return; // Не сохраняем дефолтные нули во время загрузки!
             try {
-                window.sessionStorage.setItem('loggis_cam_v14', JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v7', JSON.stringify({
                     pos: camera.position.toArray(),
                     tgt: controls.target.toArray()
                 }));
@@ -887,8 +1142,8 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        controls.addEventListener('start', () => { userInteracted = true; });
-        controls.addEventListener('end', saveCamState);
+        // Сохранение вызывается при любом вращении пользователем
+        controls.addEventListener('change', saveCamState);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -1087,7 +1342,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; 
+                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -1124,6 +1379,7 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
+                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
                         const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
@@ -1164,14 +1420,16 @@ with col_3d:
             }
 
             // ====================================================================
-            // ЛОГИКА КАМЕРЫ (ВОССТАНОВЛЕНИЕ ПОЗИЦИИ ИЛИ ИСХОДНЫЙ ЦЕНТР)
+            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ ИЗ [SOURCE: 6])
             // ====================================================================
             const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
                 try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
-                userInteracted = true;
+                
+                // Перелет к датчику. isModelLoaded станет true внутри flyCameraTo
+                isModelLoaded = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
                 if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
@@ -1180,12 +1438,12 @@ with col_3d:
 
                 let cameraRestored = false;
                 try {
-                    const savedStr = window.sessionStorage.getItem('loggis_cam_v10');
+                    const savedStr = window.sessionStorage.getItem('loggis_cam_v7');
                     if (savedStr) {
                         const st = JSON.parse(savedStr);
-                        if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
-                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
-                            controls.target.set(st.target[0], st.target[1], st.target[2]);
+                        if (st && st.pos && st.tgt && !isNaN(st.pos[0]) && !isNaN(st.tgt[0])) {
+                            camera.position.fromArray(st.pos);
+                            controls.target.fromArray(st.tgt);
                             controls.update();
                             cameraRestored = true;
                         }
@@ -1193,6 +1451,7 @@ with col_3d:
                 } catch(e) {}
                 
                 if (!cameraRestored) {
+                    // ЭТО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ КОДА [SOURCE: 6]
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1217,6 +1476,10 @@ with col_3d:
                         controls.update();
                     }
                 }
+                
+                // РАЗРЕШАЕМ СОХРАНЯТЬ КАМЕРУ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ЗАГРУЗКИ МОДЕЛИ
+                isModelLoaded = true;
+                saveCamState();
             }
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
@@ -1234,16 +1497,12 @@ with col_3d:
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
             if (!animate) { 
                 camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
-                userInteracted = true;
                 saveCamState();
                 return; 
             }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
             new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-            .onComplete(() => {
-                userInteracted = true;
-                saveCamState();
-            }).start();
+            .onComplete(saveCamState).start();
         }
 
         function getIntersectedSensor(e) {
@@ -1300,9 +1559,13 @@ if compare_mode and table_data:
     st.markdown("---")
     st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
+    # Создаем DataFrame из собранных данных
     df = pd.DataFrame(table_data)
+    
+    # Сортируем по номеру сенсора для красоты
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
+    # Используем возможности Streamlit для стилизации DataFrame
     st.dataframe(
         df,
         use_container_width=True,
