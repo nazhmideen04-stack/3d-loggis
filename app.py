@@ -258,9 +258,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 CATEGORIES = {
-    "hoop": {"name": "Longitudinal Strains", "names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial", "Longitudinal Strains"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"name": "Longitudinal Strains", "names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"name": "Temperature", "names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
@@ -274,7 +274,7 @@ def ensure_playwright_installed():
     except Exception: pass
 
 # ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ПО ВАШЕМУ ПЕРВОМУ КОДУ PLAYWRIGHT)[cite: 8]
+# 1. ЖИВЫЕ ДАННЫЕ (ТОЧНЫЙ ПАРСИНГ ПО ТВОЕМУ ШАБЛОНУ)
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_data_from_web():
@@ -302,28 +302,39 @@ def fetch_live_data_from_web():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            # Точный шаблон из вашего первого скрипта
+            # Точная последовательность из твоего первого кода
             page.get_by_role("combobox").first.select_option("MONTH_02")
             page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE")
             page.get_by_text("Types").click()
             page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=5000)
-                except Exception:
-                    try:
-                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=3000)
-                    except:
-                        try: page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=3000)
+                target_tag = cat_cfg["tag"]
+                success = False
+                for c_name in cat_cfg["names"]:
+                    try: 
+                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
+                        success = True; break
+                    except: pass
+                if not success:
+                    for c_name in cat_cfg["names"]:
+                        try:
+                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
+                            success = True; break
+                        except: pass
+                if not success:
+                    for c_name in cat_cfg["names"]:
+                        try:
+                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
+                            success = True; break
                         except: pass
 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(3500)
 
                 val_map = {}
                 latest_date_str = ""
 
-                for _ in range(12):
+                for _ in range(15):
                     try:
                         extracted = page.evaluate("""() => {
                             try {
@@ -365,7 +376,6 @@ def fetch_live_data_from_web():
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
-                            target_tag = cat_cfg["tag"]
 
                             for h, v_str in zip(headers[1:], values[1:]):
                                 match_cond = False
@@ -385,7 +395,7 @@ def fetch_live_data_from_web():
                             if len(val_map) > 0:
                                 break
                     except: pass
-                    page.wait_for_timeout(500)
+                    page.wait_for_timeout(600)
 
                 all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
@@ -425,7 +435,7 @@ def fetch_csv_archive_database(mode_type="ALL"):
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            # Точный шаблон из вашего второго скрипта CSV
+            # Точная последовательность из твоего второго кода CSV
             page.get_by_role("combobox").first.select_option(mode_type)
             page.get_by_text("Types").click()
             page.wait_for_timeout(1000)
@@ -433,11 +443,24 @@ def fetch_csv_archive_database(mode_type="ALL"):
             for cat_key, cat_cfg in CATEGORIES.items():
                 target_tag = cat_cfg["tag"]
                 
-                try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=3000)
-                except:
-                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=2000)
+                success = False
+                for c_name in cat_cfg["names"]:
+                    try: 
+                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
+                        success = True; break
                     except: pass
+                if not success:
+                    for c_name in cat_cfg["names"]:
+                        try:
+                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
+                            success = True; break
+                        except: pass
+                if not success:
+                    for c_name in cat_cfg["names"]:
+                        try:
+                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
+                            success = True; break
+                        except: pass
                 
                 page.wait_for_timeout(3000)
 
@@ -775,7 +798,7 @@ with col_3d:
         function saveCamState() {
             if (!userInteracted) return;
             try {
-                window.sessionStorage.setItem('loggis_cam_v13', JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v14', JSON.stringify({
                     pos: camera.position.toArray(),
                     tgt: controls.target.toArray()
                 }));
