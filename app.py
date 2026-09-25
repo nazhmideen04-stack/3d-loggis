@@ -274,7 +274,7 @@ def ensure_playwright_installed():
     except Exception: pass
 
 # ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ИЗ САМОГО ПЕРВОГО ФАЙЛА GİTHUB_3DMAX.txt)
+# 1. ЖИВЫЕ ДАННЫЕ (ИЗ GİTHUB_3DMAX.txt - ПРЯМОЙ ПАРСИНГ ТАБЛИЦЫ)[cite: 7]
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_data_from_web():
@@ -784,7 +784,7 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (АКТИВАЦИЯ ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ)
         // =========================================================================
         let userInteracted = false;
         
@@ -1159,21 +1159,17 @@ with col_3d:
             // ====================================================================
             // ЛОГИКА КАМЕРЫ (ВОССТАНОВЛЕНИЕ ПОЗИЦИИ ИЛИ ИСХОДНЫЙ ЦЕНТР)
             // ====================================================================
-            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
+            const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
+                safeSetItem('threejs_last_selected', payload.selectedSensor);
                 userInteracted = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
-                if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
-                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
-                }
-
                 let cameraRestored = false;
                 try {
-                    const savedStr = window.sessionStorage.getItem('loggis_cam_v9');
+                    const savedStr = window.sessionStorage.getItem('loggis_cam_v10');
                     if (savedStr) {
                         const st = JSON.parse(savedStr);
                         if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
