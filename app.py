@@ -430,7 +430,7 @@ with col_nav:
         else:
             latest_timestamp = all_dates[0]  # Самая последняя дата для сравнения
             
-            compare_mode = st.checkbox("⚖️ En Güncel Veri ile Karşılaştır (Fark Raporu)")
+            compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
             date_hierarchy = {}
             for d_str in all_dates:
