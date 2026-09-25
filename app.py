@@ -358,16 +358,17 @@ def extract_sensor_name(header):
 
 
 def classify_sensor(name):
-    """Категория по имени сенсора: -CS -> hoop, -S.. -> axial, -TP -> temp (как в 3D-модели)."""
+    """Категория по имени сенсора: -TP -> temp, -CS -> hoop, -S.. -> axial."""
     if not name:
         return None
+    # Температурные сенсоры LoggIS: TA-CS1-L-TP, TA-S1-L1-TP -> суффикс -TP важнее всего
     segs = name.upper().split("-")[1:]
+    if any(s.startswith("TP") for s in segs):
+        return "temp"
     if any(s.startswith("CS") for s in segs):
         return "hoop"
     if any(s.startswith("S") for s in segs):
         return "axial"
-    if any(s.startswith("TP") for s in segs):
-        return "temp"
     return None
 
 
@@ -1399,9 +1400,11 @@ with col_3d:
                 child.visible = false;
                 const name = child.name; const uName = name.toUpperCase(); const sensorId = extractSensorId(name);
                 let isCategory = false;
-                if (payload.comp === "hoop" && uName.includes("-CS")) isCategory = true;
+                const isTP = uName.includes("-TP");
+                if (payload.comp === "temp") isCategory = isTP;
+                else if (isTP) isCategory = false;
+                else if (payload.comp === "hoop" && uName.includes("-CS")) isCategory = true;
                 else if (payload.comp === "axial") { if (uName.includes("-CS")) isCategory = false; else if (uName.includes("-S") || checkSensorData(sensorId, "axial").found) isCategory = true; }
-                else if (payload.comp === "temp" && uName.includes("-TP")) isCategory = true;
                 if (!isCategory) return;
                 const dataInfo = checkSensorData(sensorId, payload.comp);
                 const wPos = new THREE.Vector3(); child.getWorldPosition(wPos);
