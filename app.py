@@ -227,13 +227,12 @@ st.markdown(f"""
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
         <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
-    <div style="display: flex; align-items: center;">
+    <div style="display: align-items: center;">
         {LOGO_TAG}
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Спецификация категорий датчиков
 CATEGORIES_LIST = [
     {
         "key": "axial",
@@ -273,9 +272,7 @@ def ensure_playwright_installed():
         pass
 
 def normalize_date_key(raw_date_str):
-    """Приводит любую строку даты к единому стандарту YYYY/MM/DD HH:MM:SS"""
-    d = raw_date_str.strip().replace("-", "/")
-    return d
+    return raw_date_str.strip().replace("-", "/")
 
 @st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
@@ -288,6 +285,7 @@ def fetch_csv_database(mode_type="ALL"):
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
+            "--disable-blink-features=AutomationControlled",
             "--window-size=1920,1080"
         ]
         try:
@@ -300,67 +298,63 @@ def fetch_csv_database(mode_type="ALL"):
             accept_downloads=True,
             viewport={"width": 1920, "height": 1080},
             timezone_id="Europe/Istanbul",
-            locale="en-US"
+            locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         )
         page = context.new_page()
 
         try:
-            # 1. Открытие страницы с гарантированным ожиданием DOM
-            page.goto(URL, timeout=90000, wait_until="networkidle")
-            page.wait_for_timeout(2000)
+            page.goto(URL, timeout=45000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3000)
 
-            # 2. Выбор периода (ALL / MONTH_02 / etc.)
-            combos = page.get_by_role("combobox")
-            if combos.count() > 0:
-                combos.first.select_option(mode_type)
+            try:
+                page.get_by_role("combobox").first.select_option(mode_type)
                 page.wait_for_timeout(1500)
+            except Exception as e:
+                print(f"Combobox error: {e}")
 
-            # 3. Открытие Types
-            types_btn = page.get_by_text("Types", exact=False)
-            if types_btn.count() > 0:
-                types_btn.first.click()
+            try:
+                page.get_by_text("Types").first.click()
                 page.wait_for_timeout(1000)
+            except Exception as e:
+                print(f"Types click error: {e}")
 
-            # 4. Проход по каждому типу датчиков
             for item in CATEGORIES_LIST:
                 cat_key = item["key"]
                 opt_name = item["option_name"]
                 target_tag = item["tag"]
 
-                # Переключение типа в listbox
                 try:
-                    listbox = page.get_by_role("listbox")
-                    listbox.select_option(opt_name)
-                except Exception:
-                    # Резервный выбор, если роль listbox изменена
-                    page.locator(f"option:has-text('{opt_name}')").first.click(force=True)
+                    page.get_by_role("listbox").select_option(opt_name)
+                    page.wait_for_timeout(2000)
 
-                page.wait_for_timeout(2500)
+                    csv_path = None
+                    try:
+                        with page.expect_download(timeout=30000) as download_info:
+                            try:
+                                with page.expect_popup(timeout=7000) as page1_info:
+                                    btn = page.get_by_text("🠋CSV")
+                                    if not btn.is_visible():
+                                        btn = page.locator("text=CSV").first
+                                    btn.click()
+                                page1 = page1_info.value
+                                page1.close()
+                            except Exception:
+                                btn = page.get_by_text("🠋CSV")
+                                if not btn.is_visible():
+                                    btn = page.locator("text=CSV").first
+                                btn.click()
+                        
+                        download = download_info.value
+                        csv_path = download.path()
+                    except Exception as down_err:
+                        print(f"[{opt_name}] CSV indirme hatasi: {down_err}")
 
-                # Поиск кнопки CSV (по точному вхождению или тексту)
-                csv_locator = page.locator("a, button, span, div").filter(has_text=re.compile(r"CSV", re.I)).first
-                if not csv_locator.is_visible():
-                    csv_locator = page.get_by_text("🠋CSV").first
-
-                # Перехват загрузки без жесткой блокировки на popup
-                download_target = None
-                try:
-                    with page.expect_download(timeout=20000) as download_info:
-                        # Принудительный клик по CSV
-                        csv_locator.click(force=True)
-                    download_target = download_info.value
-                except Exception as down_err:
-                    print(f"[{opt_name}] Ошибка ожидания загрузки: {down_err}")
-
-                # Если файл успешно скачан — разбираем
-                if download_target:
-                    csv_path = download_target.path()
                     if csv_path and os.path.exists(csv_path):
                         with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                             lines = f.readlines()
 
                         if len(lines) > 2:
-                            # Очистка заголовка от BOM и лишних символов
                             header = [h.replace('\ufeff', '').strip() for h in lines[0].strip().split(';')]
                             
                             for line in lines[2:]:
@@ -371,7 +365,6 @@ def fetch_csv_database(mode_type="ALL"):
                                     
                                     val_map = {}
                                     for h, v_str in zip(header[1:], parts[1:]):
-                                        # Строгая фильтрация колонок под категорию
                                         match_cond = False
                                         if target_tag == '-CS' and '-CS' in h:
                                             match_cond = True
@@ -390,10 +383,13 @@ def fetch_csv_database(mode_type="ALL"):
                                     if val_map:
                                         historical_db[cat_key][date_key] = val_map
 
-                page.wait_for_timeout(1000)
+                    page.wait_for_timeout(1000)
+
+                except Exception as cat_err:
+                    print(f"Hata ({opt_name}): {cat_err}")
 
         except Exception as e:
-            st.error(f"LoggIS синхронизация завершилась с ошибкой: {e}")
+            st.error(f"LoggIS senkronizasyon hatası: {e}")
         finally:
             browser.close()
 
@@ -407,7 +403,7 @@ def get_model_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# UI и управление
+# UI и навигация
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
@@ -439,7 +435,7 @@ with col_nav:
             all_dates, full_db = fetch_csv_database(mode_type="ALL")
             
         if not all_dates:
-            st.warning("Arşiv verisi bulunamadı veya LoggIS yanıt vermedi.")
+            st.warning("Arşiv verisi bulunamadı.")
         else:
             latest_timestamp = all_dates[0]
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
@@ -484,9 +480,7 @@ with col_nav:
         st.cache_data.clear()
         st.rerun()
 
-# ---------------------------------------------------------
-# ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ
-# ---------------------------------------------------------
+# Фильтрация и расчет дельты
 active_category_values = {}
 table_data = [] 
 
@@ -526,7 +520,7 @@ if raw_v_map:
             else:
                 active_category_values[s_name] = float(val)
 
-# Расчет шкалы
+# Пределы шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -575,9 +569,7 @@ with col_nav:
         limit_str = "-"
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# THREE.JS 3D ОБЛАСТЬ
-# ---------------------------------------------------------
+# Three.js 3D Visualizer
 with col_3d:
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
     
@@ -959,7 +951,7 @@ with col_3d:
             if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 17.0, boxTB.min.z - 8.0); portalsGroup.add(sTB); }
             scene.add(portalsGroup);
 
-            // Линейки 2X
+            // Метровый масштаб 2X
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
                 tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
@@ -1169,9 +1161,7 @@ with col_3d:
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
         st.components.v1.html(final_html, height=600, scrolling=False)
 
-# ---------------------------------------------------------
-# АНАЛИТИЧЕСКАЯ ТАБЛИЦА (FARK RAPORU)
-# ---------------------------------------------------------
+# Фарк Рапор
 if compare_mode and table_data:
     st.markdown("---")
     st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
