@@ -4,6 +4,7 @@ import sys
 import json
 import base64
 import subprocess
+import uuid
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -25,6 +26,10 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
         f.write(target_config)
 
 st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
+
+# Генерация уникального ID сессии для сохранения положения камеры без сбросов
+if "app_session_id" not in st.session_state:
+    st.session_state["app_session_id"] = str(uuid.uuid4())
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -269,6 +274,12 @@ def clean_num(s):
     m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
     return float(m.group()) if m else np.nan
 
+def parse_safe_datetime(d_str):
+    try:
+        return pd.to_datetime(d_str, dayfirst=True)
+    except:
+        return pd.to_datetime('1900-01-01')
+
 def ensure_playwright_installed():
     try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     except Exception: pass
@@ -352,16 +363,35 @@ def fetch_csv_database(mode_type="ALL"):
                     with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
                         lines = f.readlines()
                     
-                    if len(lines) > 2:
-                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                        for line in lines[2:]:
-                            parts = [p.strip() for p in line.strip().split(';')]
-                            if len(parts) == len(header):
+                    if len(lines) > 0:
+                        # УМНЫЙ ПАРСИНГ: Ищем где начинается настоящий заголовок
+                        header = None
+                        for line in lines:
+                            line_clean = line.replace('\ufeff', '').strip()
+                            if not line_clean: continue
+                            
+                            delimiter = ';' if ';' in line_clean else ','
+                            parts = [p.strip() for p in line_clean.split(delimiter)]
+                            
+                            if len(parts) < 2: continue
+                            
+                            # Проверяем, это ли строка с сенсорами
+                            if not header and any("TA-" in p or "TB-" in p or "-CS" in p for p in parts):
+                                header = parts
+                                continue
+                                
+                            if header:
                                 date_str = parts[0]
-                                if date_str: dates_set.add(date_str)
-                                        
+                                # Проверка, что это строка с датой (а не служебный текст)
+                                if not date_str or ("/" not in date_str and "-" not in date_str): continue
+                                
+                                dates_set.add(date_str)
                                 val_map = {}
-                                for h, v_str in zip(header[1:], parts[1:]):
+                                
+                                for i in range(1, min(len(header), len(parts))):
+                                    h = header[i]
+                                    v_str = parts[i]
+                                    
                                     match_cond = False
                                     if target_tag == '-CS' and '-CS' in h: match_cond = True
                                     elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
@@ -370,19 +400,24 @@ def fetch_csv_database(mode_type="ALL"):
                                     if match_cond or target_tag in h:
                                         if target_tag == "-S" and "-CS" in h: continue
                                         if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
+                                        
                                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
                                         s_name = m.group(1) if m else h.split()[0].strip()
                                         v = clean_num(v_str)
                                         if not np.isnan(v):
                                             val_map[s_name] = v
-                                historical_db[cat_key][date_str] = val_map
+                                            
+                                if date_str not in historical_db[cat_key]:
+                                    historical_db[cat_key][date_str] = {}
+                                historical_db[cat_key][date_str].update(val_map)
 
         except Exception as e:
             st.warning(f"LoggIS bağlantı hatası: {e}")
         finally:
             browser.close()
 
-    sorted_dates = sorted(list(dates_set), reverse=True)
+    # Сортируем даты МАТЕМАТИЧЕСКИ ПРАВИЛЬНО через datetime, чтобы самая свежая всегда была [0]
+    sorted_dates = sorted(list(dates_set), key=parse_safe_datetime, reverse=True)
     return sorted_dates, historical_db
 
 @st.cache_data
@@ -430,14 +465,23 @@ with col_nav:
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
             date_hierarchy = {}
+            exact_date_map = {}
+            
             for d_str in all_dates:
-                clean_d = d_str.replace("-", "/")
-                if " " in clean_d:
-                    date_part, time_part = clean_d.split(" ", 1)
-                    parts = date_part.split("/")
-                    if len(parts) == 3:
-                        y, m, d = parts[0], parts[1], parts[2]
-                        date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
+                d_part = d_str.split(" ")[0]
+                t_part = d_str.split(" ")[1] if " " in d_str else "00:00"
+                clean_d = d_part.replace("-", "/")
+                parts = clean_d.split("/")
+                if len(parts) == 3:
+                    if len(parts[0]) == 4: y, m, d = parts[0], parts[1], parts[2]
+                    else: y, m, d = parts[2], parts[1], parts[0]
+                    
+                    if y not in date_hierarchy: date_hierarchy[y] = {}
+                    if m not in date_hierarchy[y]: date_hierarchy[y][m] = {}
+                    if d not in date_hierarchy[y][m]: date_hierarchy[y][m][d] = []
+                    if t_part not in date_hierarchy[y][m][d]: date_hierarchy[y][m][d].append(t_part)
+                    
+                    exact_date_map[f"{y}-{m}-{d} {t_part}"] = d_str
 
             years = sorted(list(date_hierarchy.keys()), reverse=True)
             sel_year = st.selectbox("Yıl Seçiniz", options=years)
@@ -455,7 +499,9 @@ with col_nav:
                         sel_time = st.selectbox("Saat Seçiniz:", options=times)
 
                         if sel_time:
-                            target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
+                            key_lookup = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
+                            # Получаем ТОЧНУЮ оригинальную строку из CSV
+                            target_timestamp = exact_date_map.get(key_lookup, d_str)
                             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
                             latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
     else:
@@ -592,7 +638,8 @@ with col_3d:
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
             "showNoDataRed": show_no_data_red,
-            "isCompareMode": compare_mode
+            "isCompareMode": compare_mode,
+            "sessionId": st.session_state["app_session_id"]
         }
         json_payload = json.dumps(payload_data)
 
@@ -662,16 +709,28 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ
+        // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ (С ПРЕДОХРАНИТЕЛЕМ)
         // =========================================================================
         let isModelLoaded = false;
         
+        function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
+        function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
+
+        const currentSessionId = payload.sessionId;
+        const savedSessionId = safeGetItem('threejs_session_id');
+
+        if (savedSessionId !== currentSessionId) {
+            safeSetItem('threejs_session_id', currentSessionId);
+            safeSetItem('threejs_camera_state', '');
+            safeSetItem('threejs_last_selected', '');
+        }
+
         function saveCamState() {
-            if (!isModelLoaded) return; // Не сохраняем дефолтные нули во время загрузки!
+            if (!isModelLoaded) return; 
             try {
-                window.sessionStorage.setItem('loggis_cam_v7', JSON.stringify({
+                window.localStorage.setItem('threejs_camera_state', JSON.stringify({
                     pos: camera.position.toArray(),
-                    tgt: controls.target.toArray()
+                    target: controls.target.toArray()
                 }));
             } catch(e) {}
         }
@@ -746,7 +805,7 @@ with col_3d:
 
         const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0A0E17);
         const sensorScene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 50000);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(container.clientWidth, container.clientHeight);
@@ -755,10 +814,9 @@ with col_3d:
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true; controls.dampingFactor = 0.05;
-        controls.minDistance = 0.5; controls.maxDistance = 2500;
+        controls.minDistance = 0.5; controls.maxDistance = 50000;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Сохранение вызывается при любом вращении пользователем
         controls.addEventListener('change', saveCamState);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
@@ -958,7 +1016,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
+                    const scale = 2.0; 
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -995,7 +1053,6 @@ with col_3d:
                     const tickSize = 0.8 * scale;
 
                     for (let i = 0; i <= stepsCount; i++) {
-                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
                         const currentPos3D = endCoord - (i * step3D); 
                         const distanceText = (i * stepReal).toFixed(0) + " m"; 
 
@@ -1036,38 +1093,38 @@ with col_3d:
             }
 
             // ====================================================================
-            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ ИЗ [SOURCE: 6])
+            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ (КАК В ИСХОДНИКЕ) С ФИКСАЦИЕЙ
             // ====================================================================
-            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
+            const lastSelected = safeGetItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
-                
-                // Перелет к датчику. isModelLoaded станет true внутри flyCameraTo
-                isModelLoaded = true;
+                safeSetItem('threejs_last_selected', payload.selectedSensor);
+                isModelLoaded = true; // Разрешаем сохранять позицию
                 flyCameraTo(selectedMeshRef, true);
             } else {
                 if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
-                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
+                    try{ window.localStorage.removeItem('threejs_last_selected'); }catch(e){}
                 }
 
                 let cameraRestored = false;
-                try {
-                    const savedStr = window.sessionStorage.getItem('loggis_cam_v7');
-                    if (savedStr) {
-                        const st = JSON.parse(savedStr);
-                        if (st && st.pos && st.tgt && !isNaN(st.pos[0]) && !isNaN(st.tgt[0])) {
-                            camera.position.fromArray(st.pos);
-                            controls.target.fromArray(st.tgt);
+                const savedStateStr = safeGetItem('threejs_camera_state');
+                
+                // Пробуем восстановить камеру, если она была сохранена
+                if (savedStateStr) {
+                    try {
+                        const st = JSON.parse(savedStateStr);
+                        if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
+                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
+                            controls.target.set(st.target[0], st.target[1], st.target[2]);
                             controls.update();
                             cameraRestored = true;
                         }
-                    }
-                } catch(e) {}
+                    } catch(e) {}
+                }
                 
+                // Если камеры в памяти нет (первый запуск) — выставляем по ТВОЕЙ СТАРОЙ МАТЕМАТИКЕ
                 if (!cameraRestored) {
-                    // ЭТО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ КОДА [SOURCE: 6]
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1093,8 +1150,7 @@ with col_3d:
                     }
                 }
                 
-                // РАЗРЕШАЕМ СОХРАНЯТЬ КАМЕРУ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ЗАГРУЗКИ МОДЕЛИ
-                isModelLoaded = true;
+                isModelLoaded = true; // Сцена готова, можно сохранять движения
                 saveCamState();
             }
 
