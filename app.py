@@ -214,7 +214,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİП SİSTEMİ & ANALİZ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -223,9 +223,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 CATEGORIES = {
-    "hoop": {"name": "Othoradial Strains", "names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"name": "Longitudinal Strains", "names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"name": "Temperature", "names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
@@ -239,140 +239,11 @@ def ensure_playwright_installed():
     except Exception: pass
 
 # ---------------------------------------------------------
-# ПОЛНЫЙ СБОР ЖИВЫХ ДАННЫХ (ЧЕРЕЗ MONTH_02 И TABLE_ROW_DATE)
+# РАДИКАЛЬНЫЙ СБОР ДАННЫХ ЧЕРЕЗ СКАЧИВАНИЕ CSV (БРОНЕБОЙНЫЙ МЕТОД)
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
-def fetch_live_data_from_web():
-    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
-
-    with sync_playwright() as p:
-        browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-        ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
-
-        context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
-
-        try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(4000)
-
-            # Строго по твоему первому шаблону
-            page.get_by_role("combobox").first.select_option("MONTH_02")
-            page.wait_for_timeout(1000)
-            page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE")
-            page.wait_for_timeout(1000)
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(2000)
-
-            for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=3000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    try:
-                        page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=3000)
-                    except:
-                        try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=3000)
-                        except: pass
-
-                page.wait_for_timeout(4000)  # Ожидание полной прорисовки таблицы сайтом
-
-                val_map = {}
-                latest_date_str = ""
-
-                for _ in range(20):
-                    try:
-                        extracted = page.evaluate("""() => {
-                            try {
-                                const table = document.querySelector('table');
-                                if (!table) return null;
-
-                                const trs = Array.from(table.querySelectorAll('tr'));
-                                let headerCells = [];
-                                for (const tr of trs) {
-                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
-                                        headerCells = cells;
-                                        break;
-                                    }
-                                }
-                                if (headerCells.length === 0 && trs.length > 0) {
-                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
-                                }
-
-                                const tbody = table.querySelector('tbody') || table;
-                                const rows = Array.from(tbody.querySelectorAll('tr'));
-                                let dataCells = [];
-                                for (const r of rows) {
-                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
-                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
-                                        dataCells = cells;
-                                        break;
-                                    }
-                                }
-
-                                if (headerCells.length === 0 || dataCells.length === 0) return null;
-                                return { headers: headerCells, values: dataCells };
-                            } catch(e) {
-                                return null;
-                            }
-                        }""")
-
-                        if extracted and extracted.get("values") and extracted.get("headers"):
-                            headers = extracted["headers"]
-                            values = extracted["values"]
-                            latest_date_str = values[0]
-
-                            for h, v_str in zip(headers[1:], values[1:]):
-                                match_cond = False
-                                if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                if match_cond or target_tag in h:
-                                    if target_tag == "-S" and "-CS" in h: continue
-                                    if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                    s_name = m.group(1) if m else h.split()[0].strip()
-                                    v = clean_num(v_str)
-                                    if not np.isnan(v):
-                                        val_map[s_name] = v
-
-                            if len(val_map) > 0:
-                                break
-                    except: pass
-                    page.wait_for_timeout(800)
-
-                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
-
-        except Exception as e:
-            st.warning(f"LoggIS canlı veri uyarısı: {e}")
-        finally:
-            browser.close()
-
-    return all_results
-
-# ---------------------------------------------------------
-# ПОЛНЫЙ СБОР АРХИВНЫХ ДАННЫХ (ЧЕРЕЗ CSV)
-# ---------------------------------------------------------
-@st.cache_data(ttl=900)
-def fetch_csv_archive_database(mode_type="ALL"):
-    historical_db = {k: {} for k in CATEGORIES}
+def fetch_master_database():
+    master_db = {k: {} for k in CATEGORIES}
     dates_set = set()
 
     with sync_playwright() as p:
@@ -394,23 +265,28 @@ def fetch_csv_archive_database(mode_type="ALL"):
 
         try:
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
+            page.wait_for_timeout(4000)
 
-            # Строго по твоему второму шаблону CSV
-            page.get_by_role("combobox").first.select_option(mode_type)
-            page.get_by_text("Types").click()
+            # Выставляем режим ALL для получения полной истории и свежих данных
+            try: page.get_by_role("combobox").first.select_option("ALL", timeout=5000)
+            except: pass
             page.wait_for_timeout(1500)
+
+            try: page.get_by_text("Types").click(timeout=5000)
+            except: pass
+            page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
                 target_tag = cat_cfg["tag"]
-                
+                cat_name = cat_cfg["name"]
+
                 try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=4000)
+                    page.get_by_role("listbox").select_option(cat_name, timeout=4000)
                 except:
-                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=3000)
+                    try: page.locator(f"option:has-text('{cat_name}')").first.click(force=True, timeout=3000)
                     except: pass
                 
-                page.wait_for_timeout(3500)
+                page.wait_for_timeout(4000)
 
                 csv_path = None
                 try:
@@ -448,19 +324,19 @@ def fetch_csv_archive_database(mode_type="ALL"):
                                         if target_tag == "-S" and "-CS" in h: continue
                                         if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
                                         m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                        s_name = m.group(1) if m else h.split()[0].strip()
+                                        s_name = m.group(1) if h else h.split()[0].strip()
                                         v = clean_num(v_str)
                                         if not np.isnan(v):
                                             val_map[s_name] = v
-                                historical_db[cat_key][date_str] = val_map
+                                master_db[cat_key][date_str] = val_map
 
         except Exception as e:
-            pass
+            st.warning(f"LoggIS veri hatası: {e}")
         finally:
             browser.close()
 
     sorted_dates = sorted(list(dates_set), reverse=True)
-    return sorted_dates, historical_db
+    return sorted_dates, master_db
 
 @st.cache_data
 def get_model_b64(path):
@@ -493,19 +369,18 @@ with col_nav:
     compare_mode = False
     table_data = []
 
-    # ПОЛНЫЙ ЭКРАН ЗАГРУЗКИ (ОЖИДАЕМ СКАЧИВАНИЯ ВСЕХ ДАННЫХ ПЕРЕД РЕНДЕРИНГОМ)
-    if data_mode == "Arşiv Veriler":
-        st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
-        
-        with st.spinner("⏳ Arşiv verileri LoggIS üzerinden indiriliyor, lütfen bekleyin..."):
-            all_dates, full_db = fetch_csv_archive_database(mode_type="ALL")
-            
-        if not all_dates:
-            st.warning("Arşiv verisi bulunamadı.")
-        else:
-            latest_timestamp = all_dates[0]  
-            
+    # ПОЛНЫЙ ЭКРАН ЗАГРУЗКИ СРЕДСТВАМИ CSV
+    with st.spinner("⏳ Все файлы данных и история скачиваются с LoggIS, подождите..."):
+        all_dates, full_db = fetch_master_database()
+
+    if not all_dates:
+        st.error("⚠️ Сайт не отдал данные. Проверьте интернет-соединение или параметры токена.")
+    else:
+        latest_timestamp = all_dates[0]
+
+        if data_mode == "Arşiv Veriler":
+            st.markdown("---")
+            st.subheader("Zaman SeçİMİ")
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
             date_hierarchy = {}
@@ -537,12 +412,10 @@ with col_nav:
                             target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
                             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
                             latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
-    else:
-        with st.spinner("⏳ Güncel canlı veriler LoggIS üzerinden yükleniyor, lütfen bekleyin..."):
-            live_data = fetch_live_data_from_web()
-            cur_layer = live_data.get(selected_comp, {"values": {}, "date": ""})
-            target_timestamp = cur_layer["date"] if cur_layer["date"] else "Canlı"
-            raw_v_map = cur_layer["values"]
+        else:
+            # Для живых данных берем самую последнюю дату из базы
+            target_timestamp = latest_timestamp
+            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
@@ -566,7 +439,6 @@ if raw_v_map:
         if is_valid_sensor:
             if compare_mode:
                 latest_val = latest_v_map.get(s_name)
-                
                 str_val = f"{float(val):.2f}"
                 str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
                 
@@ -586,15 +458,14 @@ if raw_v_map:
             else:
                 active_category_values[s_name] = float(val)
 
-# Расчет шкалы: Для Дельты шкала симметрична [-Max, +Max]
+# Расчет шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
 else:
     if compare_mode:
         max_abs = max(abs(min(vals)), abs(max(vals)))
-        if max_abs < 0.001:
-            clim = [-0.5, 0.5]
+        if max_abs < 0.001: clim = [-0.5, 0.5]
         else:
             buf = max_abs * 0.05
             clim = [-round(max_abs + buf, 2), round(max_abs + buf, 2)]
@@ -602,8 +473,7 @@ else:
         real_min = float(min(vals))
         real_max = float(max(vals))
         diff = abs(real_max - real_min)
-        if diff < 0.001:
-            clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
+        if diff < 0.001: clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
         else:
             buf = diff * 0.02
             clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
@@ -644,7 +514,7 @@ with col_3d:
         selected_sensor = st.selectbox(
             "Modelde Sensör Odakla:", 
             options=sensor_options,
-            help="Modelde vurgulanacak и kameranın odaklanacağı sensörü seçin"
+            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
         )
     with sel_col2:
         if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
@@ -739,24 +609,16 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (АКТИВАЦИЯ ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ)
-        // =========================================================================
         let userInteracted = false;
-        
         function saveCamState() {
             if (!userInteracted) return;
             try {
-                window.sessionStorage.setItem('loggis_cam_v17', JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v18', JSON.stringify({
                     pos: camera.position.toArray(),
                     tgt: controls.target.toArray()
                 }));
             } catch(e) {}
         }
-
-        // =========================================================================
-        // ЦВЕТОВЫЕ ШКАЛЫ
-        // =========================================================================
 
         const hoopStops = [
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
@@ -773,11 +635,8 @@ with col_3d:
         ];
 
         const compareStops = [
-            new THREE.Color("#0055FF"), 
-            new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), 
-            new THREE.Color("#FFDD00"), 
-            new THREE.Color("#FF0033")  
+            new THREE.Color("#0055FF"), new THREE.Color("#00E5FF"), new THREE.Color("#2E3A59"), 
+            new THREE.Color("#FFDD00"), new THREE.Color("#FF0033")  
         ];
 
         let currentStops = hoopStops;
@@ -1314,26 +1173,3 @@ with col_3d:
 
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
         st.components.v1.html(final_html, height=600, scrolling=False)
-
-# ---------------------------------------------------------
-# АНАЛИТИЧЕСКАЯ ТАБЛИЦА (FARK RAPORU)
-# ---------------------------------------------------------
-if compare_mode and table_data:
-    st.markdown("---")
-    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
-    
-    df = pd.DataFrame(table_data)
-    df = df.sort_values(by="Sensör No").reset_index(drop=True)
-    
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        height=400,
-        column_config={
-            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
-            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
-            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
-            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
-        }
-    )
