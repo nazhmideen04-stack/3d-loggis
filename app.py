@@ -177,7 +177,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & CSV VERİTABANI</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -332,7 +332,7 @@ with col_nav:
     
     data_mode = st.radio(
         "Veri Modu Seçimi:",
-        options=["🔴 Canlı (En Güncel) Veriler", "📂 Geçmiş (Arşiv) Verileri"]
+        options=["Canlı Veriler", "Arşiv Veriler"]
     )
 
     selected_comp = st.radio(
@@ -346,9 +346,9 @@ with col_nav:
     raw_v_map = {}
     cat_cfg = CATEGORIES[selected_comp]
 
-    if data_mode == "📂 Geçmiş (Arşiv) Verileri":
+    if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("⏱️ Zaman Seçimi")
+        st.subheader("Zaman Seçimi")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="ALL")
@@ -371,9 +371,9 @@ with col_nav:
             
             col_d, col_t = st.columns(2)
             with col_d:
-                sel_date = st.selectbox("📅 Tarih Seç:", options=unique_dates)
+                sel_date = st.selectbox("Tarih Seç:", options=unique_dates)
             with col_t:
-                sel_time = st.selectbox("⏱️ Saat Seç:", options=date_tree[sel_date])
+                sel_time = st.selectbox("Saat Seç:", options=date_tree[sel_date])
             
             if sel_date and sel_time:
                 target_timestamp = f"{sel_date.replace('-', '/')} {sel_time}"
@@ -386,7 +386,7 @@ with col_nav:
             target_timestamp = all_dates[0]
             raw_v_map = full_db[selected_comp].get(target_timestamp, {})
 
-    if st.button("🔄 Verileri Yenile"):
+    if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
