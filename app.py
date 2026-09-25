@@ -249,7 +249,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -662,21 +662,6 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (LocalStorage)
-        // =========================================================================
-        const STORAGE_KEY = 'loggis_cam_state_v4';
-        const SENSOR_KEY = 'loggis_sensor_state_v4';
-
-        function saveCam() {
-            try {
-                window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
-                    pos: camera.position.toArray(),
-                    tgt: controls.target.toArray()
-                }));
-            } catch(e) {}
-        }
-
-        // =========================================================================
         // ЦВЕТОВЫЕ ШКАЛЫ
         // =========================================================================
 
@@ -759,9 +744,6 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Сохраняем положение камеры при каждом движении пользователя
-        controls.addEventListener('change', saveCam);
-
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
         const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.0); dirLight2.position.set(-60, -40, -80); scene.add(dirLight2);
@@ -816,58 +798,6 @@ with col_3d:
         const binaryStr = atob(modelB64); const bytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
         let selectedMeshRef = null;
-
-        // ФУНКЦИЯ ДЛЯ УСТАНОВКИ/ВОССТАНОВЛЕНИЯ КАМЕРЫ (КАК В ИСХОДНИКЕ)
-        function restoreOrInitCamera(tunnelMeshes, model, forceInit) {
-            let cameraRestored = false;
-            
-            if (!forceInit) {
-                try {
-                    const saved = window.sessionStorage.getItem(STORAGE_KEY);
-                    if (saved) {
-                        const st = JSON.parse(saved);
-                        if (st && st.pos && st.tgt && !isNaN(st.pos[0])) {
-                            camera.position.fromArray(st.pos);
-                            controls.target.fromArray(st.tgt);
-                            controls.update();
-                            cameraRestored = true;
-                        }
-                    }
-                } catch(e) {}
-            }
-            
-            if (!cameraRestored) {
-                // ЭТО СТРОГО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ [SOURCE: 4]
-                const tunnelBox = new THREE.Box3(); 
-                if (tunnelMeshes.length > 0) {
-                    tunnelMeshes.forEach(tm => {
-                        if(tm.geometry) tm.geometry.computeBoundingBox();
-                        tunnelBox.expandByObject(tm);
-                    });
-                } else { 
-                    model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
-                    tunnelBox.setFromObject(model); 
-                }
-                
-                if (!tunnelBox.isEmpty()) {
-                    const center = tunnelBox.getCenter(new THREE.Vector3()); 
-                    const size = tunnelBox.getSize(new THREE.Vector3()); 
-                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                    controls.target.copy(center); 
-                    
-                    const fov = camera.fov * (Math.PI / 180);
-                    let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
-                    
-                    camera.position.set(
-                        center.x - maxDim * 0.1, 
-                        center.y + maxDim * 0.1, 
-                        center.z + cameraZ
-                    ); 
-                    controls.update();
-                    saveCam(); // Сохраняем это идеальное стартовое положение
-                }
-            }
-        }
 
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.parse(bytes.buffer, '', function(gltf) {
@@ -996,12 +926,12 @@ with col_3d:
             });
 
             const portalsGroup = new THREE.Group();
-            if (hasTA) { const cA = boxTA.getCenter(new THREE.Vector3()); const sTA = createPortalMarker("TA"); sTA.position.set(cA.x, boxTA.max.y + 17.0, boxTA.min.z - 8.0); portalsGroup.add(sTA); }
-            if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 17.0, boxTB.min.z - 8.0); portalsGroup.add(sTB); }
+            if (hasTA) { const cA = boxTA.getCenter(new THREE.Vector3()); const sTA = createPortalMarker("TA"); sTA.position.set(cA.x, boxTA.max.y + 8.5, boxTA.min.z - 4.0); portalsGroup.add(sTA); }
+            if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 8.5, boxTB.min.z - 4.0); portalsGroup.add(sTB); }
             scene.add(portalsGroup);
 
             // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
+            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 0.5
             // =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
@@ -1011,32 +941,44 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; 
-
                     const isZAxis = size.z >= size.x; 
-                    const length3D = isZAxis ? size.z : size.x; 
                     const startCoord = isZAxis ? overallBox.min.z : overallBox.min.x; 
                     const endCoord = isZAxis ? overallBox.max.z : overallBox.max.x;
                     
-                    const stepReal = 10.0; 
-                    const step3D = stepReal * scale; 
-                    const stepsCount = Math.floor(length3D / step3D); 
+                    // Длина рассчитывается с учетом того, что модель увеличена в 2 раза.
+                    // Значит, физическое расстояние в 3D надо умножить на 0.5
+                    const physicalLength = Math.abs(endCoord - startCoord);
+                    const realMeters = physicalLength * 2;
+
+                    // Шаг линейки - каждые 10 метров (в координатах модели это 20 единиц)
+                    const stepReal = 5.0; 
+                    const step3D = stepReal / 2; 
+                    const stepsCount = Math.floor(physicalLength / step3D); 
+                    const totalDistanceM = stepsCount * stepReal;
 
                     const yRuler = overallBox.min.y - 0.2; 
                     
-                    const lateralPos1 = isZAxis ? (overallBox.max.x + (3.5 * scale)) : (overallBox.max.z + (3.5 * scale));
-                    const lateralPos2 = isZAxis ? (overallBox.min.x - (3.5 * scale)) : (overallBox.min.z - (3.5 * scale));
+                    // Первая линейка (с одной стороны)
+                    const lateralPos1 = isZAxis ? (overallBox.max.x + 3.5) : (overallBox.max.z + 3.5);
+                    // Вторая линейка (с противоположной стороны, зеркально)
+                    const lateralPos2 = isZAxis ? (overallBox.min.x - 3.5) : (overallBox.min.z - 3.5);
 
+                    // Линия 1
                     const linePoints1 = [];
-                    const linePoints2 = [];
                     if (isZAxis) {
                         linePoints1.push(new THREE.Vector3(lateralPos1, yRuler, startCoord));
                         linePoints1.push(new THREE.Vector3(lateralPos1, yRuler, endCoord));
-                        linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, startCoord));
-                        linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, endCoord));
                     } else {
                         linePoints1.push(new THREE.Vector3(startCoord, yRuler, lateralPos1));
                         linePoints1.push(new THREE.Vector3(endCoord, yRuler, lateralPos1));
+                    }
+
+                    // Линия 2
+                    const linePoints2 = [];
+                    if (isZAxis) {
+                        linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, startCoord));
+                        linePoints2.push(new THREE.Vector3(lateralPos2, yRuler, endCoord));
+                    } else {
                         linePoints2.push(new THREE.Vector3(startCoord, yRuler, lateralPos2));
                         linePoints2.push(new THREE.Vector3(endCoord, yRuler, lateralPos2));
                     }
@@ -1045,70 +987,73 @@ with col_3d:
                     rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints1), axisMat));
                     rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints2), axisMat));
 
-                    const tickSize = 0.8 * scale;
-
                     for (let i = 0; i <= stepsCount; i++) {
-                        // ПЕРЕВОРОТ ЛИНЕЙКИ: 0 начинается строго с противоположного кончика (endCoord)
-                        const currentPos3D = endCoord - (i * step3D); 
-                        const distanceText = (i * stepReal).toFixed(0) + " m"; 
+                        const currentPos3D = startCoord + i * step3D; 
+                        const reversedDistance = (totalDistanceM - (i * stepReal)).toFixed(0); 
+                        const distanceText = reversedDistance + " m";
 
+                        // Метки и текст для Первой линейки
                         const tickPoints1 = [];
                         if (isZAxis) {
-                            tickPoints1.push(new THREE.Vector3(lateralPos1 - tickSize, yRuler, currentPos3D));
-                            tickPoints1.push(new THREE.Vector3(lateralPos1 + tickSize, yRuler, currentPos3D));
+                            tickPoints1.push(new THREE.Vector3(lateralPos1 - 0.8, yRuler, currentPos3D));
+                            tickPoints1.push(new THREE.Vector3(lateralPos1 + 0.8, yRuler, currentPos3D));
                         } else {
-                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 - tickSize));
-                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 + tickSize));
+                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 - 0.8));
+                            tickPoints1.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos1 + 0.8));
                         }
                         rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints1), axisMat));
                         
                         const label1 = createRulerLabel(distanceText);
-                        label1.scale.set(2.4 * scale, 1.2 * scale, 1);
-                        if (isZAxis) label1.position.set(lateralPos1 + (2.4 * scale), yRuler + 0.4, currentPos3D); 
-                        else label1.position.set(currentPos3D, yRuler + 0.4, lateralPos1 + (2.4 * scale));
+                        if (isZAxis) label1.position.set(lateralPos1 + 2.4, yRuler + 0.4, currentPos3D); 
+                        else label1.position.set(currentPos3D, yRuler + 0.4, lateralPos1 + 2.4);
                         rulerGroup.add(label1);
 
+                        // Метки и текст для Второй линейки (зеркально)
                         const tickPoints2 = [];
                         if (isZAxis) {
-                            tickPoints2.push(new THREE.Vector3(lateralPos2 - tickSize, yRuler, currentPos3D));
-                            tickPoints2.push(new THREE.Vector3(lateralPos2 + tickSize, yRuler, currentPos3D));
+                            tickPoints2.push(new THREE.Vector3(lateralPos2 - 0.8, yRuler, currentPos3D));
+                            tickPoints2.push(new THREE.Vector3(lateralPos2 + 0.8, yRuler, currentPos3D));
                         } else {
-                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 - tickSize));
-                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 + tickSize));
+                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 - 0.8));
+                            tickPoints2.push(new THREE.Vector3(currentPos3D, yRuler, lateralPos2 + 0.8));
                         }
                         rulerGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tickPoints2), axisMat));
                         
                         const label2 = createRulerLabel(distanceText);
-                        label2.scale.set(2.4 * scale, 1.2 * scale, 1);
-                        if (isZAxis) label2.position.set(lateralPos2 - (2.4 * scale), yRuler + 0.4, currentPos3D); 
-                        else label2.position.set(currentPos3D, yRuler + 0.4, lateralPos2 - (2.4 * scale));
+                        if (isZAxis) label2.position.set(lateralPos2 - 2.4, yRuler + 0.4, currentPos3D); 
+                        else label2.position.set(currentPos3D, yRuler + 0.4, lateralPos2 - 2.4);
                         rulerGroup.add(label2);
                     }
                     scene.add(rulerGroup);
                 }
             }
 
-            // ====================================================================
-            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ)
-            // ====================================================================
-            const currentSensor = payload.selectedSensor === "Seçiniz..." ? null : payload.selectedSensor;
-            
-            // Если выбран НОВЫЙ сенсор, летим к нему
-            let lastSensor = null;
-            try { lastSensor = window.sessionStorage.getItem(SENSOR_KEY); } catch(e) {}
-            
-            if (currentSensor && currentSensor !== lastSensor && selectedMeshRef) {
-                try { window.sessionStorage.setItem(SENSOR_KEY, currentSensor); } catch(e) {}
+            if (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && selectedMeshRef) {
                 flyCameraTo(selectedMeshRef, true);
-            } 
-            // Если мы СНЯЛИ выбор сенсора, возвращаем к общему виду
-            else if (!currentSensor && lastSensor) {
-                try { window.sessionStorage.removeItem(SENSOR_KEY); } catch(e) {}
-                restoreOrInitCamera(tunnelMeshes, model, true); // forceInit = true
-            } 
-            // Иначе (просто поменяли прозрачность/галочку) оставляем камеру на месте
-            else {
-                restoreOrInitCamera(tunnelMeshes, model, false);
+            } else {
+                const tunnelBox = new THREE.Box3(); 
+                if (tunnelMeshes.length > 0) {
+                    tunnelMeshes.forEach(tm => {
+                        if(tm.geometry) tm.geometry.computeBoundingBox();
+                        tunnelBox.expandByObject(tm);
+                    });
+                } else { 
+                    model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
+                    tunnelBox.setFromObject(model); 
+                }
+                
+                if (!tunnelBox.isEmpty()) {
+                    const center = tunnelBox.getCenter(new THREE.Vector3()); 
+                    const size = tunnelBox.getSize(new THREE.Vector3()); 
+                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+                    controls.target.copy(center); 
+                    
+                    const fov = camera.fov * (Math.PI / 180);
+                    let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
+                    
+                    camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
+                    controls.update();
+                }
             }
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
@@ -1124,14 +1069,9 @@ with col_3d:
             const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
             if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
-            if (!animate) { 
-                camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
-                saveCam();
-                return; 
-            }
+            if (!animate) { camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); return; }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
-            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-            .onComplete(saveCam).start();
+            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update()).start();
         }
 
         function getIntersectedSensor(e) {
