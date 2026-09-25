@@ -4,7 +4,6 @@ import sys
 import json
 import base64
 import subprocess
-import uuid
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -26,10 +25,6 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
         f.write(target_config)
 
 st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
-
-# Генерация уникального ID сессии для защиты положения камеры
-if "app_session_id" not in st.session_state:
-    st.session_state["app_session_id"] = str(uuid.uuid4())
 
 URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
 
@@ -263,9 +258,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 CATEGORIES = {
-    "hoop": {"name": "Othoradial Strains", "names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"name": "Longitudinal Strains", "names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"name": "Temperature", "names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
@@ -279,7 +274,7 @@ def ensure_playwright_installed():
     except Exception: pass
 
 # ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ТОЧНЫЙ ПАРСИНГ ТАБЛИЦЫ)
+# 1. ЖИВЫЕ ДАННЫЕ (ТОЧНО ПО ВАШЕМУ ПЕРВОМУ КОДУ)
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_live_data_from_web():
@@ -307,28 +302,25 @@ def fetch_live_data_from_web():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            # Точная последовательность из твоего живого кода
+            # Точная последовательность из вашего первого скрипта
             page.get_by_role("combobox").first.select_option("MONTH_02")
+            page.wait_for_timeout(800)
             page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE")
+            page.wait_for_timeout(800)
             page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(1500)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
+                try:
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                except Exception:
                     try:
-                        page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=2000)
+                        page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
                     except:
-                        try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=2000)
+                        try: page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
                         except: pass
 
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(3500)
 
                 val_map = {}
                 latest_date_str = ""
@@ -375,6 +367,7 @@ def fetch_live_data_from_web():
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
+                            target_tag = cat_cfg["tag"]
 
                             for h, v_str in zip(headers[1:], values[1:]):
                                 match_cond = False
@@ -406,7 +399,7 @@ def fetch_live_data_from_web():
     return all_results
 
 # ---------------------------------------------------------
-# 2. АРХИВНЫЕ ДАННЫЕ (ЧЕРЕЗ CSV)
+# 2. АРХИВНЫЕ ДАННЫЕ (ТОЧНО ПО ВАШЕМУ ВТОРОМУ КОДУ CSV)
 # ---------------------------------------------------------
 @st.cache_data(ttl=900)
 def fetch_csv_archive_database(mode_type="ALL"):
@@ -434,7 +427,7 @@ def fetch_csv_archive_database(mode_type="ALL"):
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            # Точный шаблон из твоего CSV кода
+            # Точный шаблон из вашего второго скрипта CSV
             page.get_by_role("combobox").first.select_option(mode_type)
             page.get_by_text("Types").click()
             page.wait_for_timeout(1000)
@@ -443,9 +436,9 @@ def fetch_csv_archive_database(mode_type="ALL"):
                 target_tag = cat_cfg["tag"]
                 
                 try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=3000)
+                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=4000)
                 except:
-                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=2000)
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=3000)
                     except: pass
                 
                 page.wait_for_timeout(3000)
@@ -523,7 +516,6 @@ with col_nav:
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    # Безопасная инициализация переменных во избежание NameError
     target_timestamp = "-"
     latest_timestamp = None
     raw_v_map = {}
@@ -682,7 +674,7 @@ with col_3d:
         selected_sensor = st.selectbox(
             "Modelde Sensör Odakla:", 
             options=sensor_options,
-            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
+            help="Modelde vurgulanacak и kameranın odaklanacağı sensörü seçin"
         )
     with sel_col2:
         if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
@@ -785,7 +777,7 @@ with col_3d:
         function saveCamState() {
             if (!userInteracted) return;
             try {
-                window.sessionStorage.setItem('loggis_cam_v15', JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v16', JSON.stringify({
                     pos: camera.position.toArray(),
                     tgt: controls.target.toArray()
                 }));
