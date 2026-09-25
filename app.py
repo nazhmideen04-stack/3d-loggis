@@ -258,9 +258,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 CATEGORIES = {
-    "hoop": {"name": "Othoradial Strains", "names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"name": "Longitudinal Strains", "names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"name": "Temperature", "names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"name": "Othoradial Strains", "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"name": "Longitudinal Strains", "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"name": "Temperature", "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
@@ -274,10 +274,10 @@ def ensure_playwright_installed():
     except Exception: pass
 
 # ---------------------------------------------------------
-# 1. ЖИВЫЕ ДАННЫЕ (ТОЧНО ПО ВАШЕМУ ПЕРВОМУ КОДУ)
+# ЕДИНЫЙ БРОНЕБОЙНЫЙ ПАРСЕР ИЗ GİTHUB_3DMAX.txt (СОБИРАЕТ ВСЁ СРАЗУ)
 # ---------------------------------------------------------
 @st.cache_data(ttl=300)
-def fetch_live_data_from_web():
+def fetch_all_categories_data():
     all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
 
     with sync_playwright() as p:
@@ -302,26 +302,24 @@ def fetch_live_data_from_web():
             page.goto(URL, timeout=60000, wait_until="domcontentloaded")
             page.wait_for_timeout(3500)
 
-            page.get_by_role("combobox").first.select_option("MONTH_02")
+            try: page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            except: pass
             page.wait_for_timeout(800)
-            page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE")
-            page.wait_for_timeout(800)
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1500)
+
+            try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+            except: pass
+            page.wait_for_timeout(1000)
+
+            try: page.get_by_text("Types").click(timeout=8000)
+            except: pass
+            page.wait_for_timeout(1000)
 
             for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    try:
-                        page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=2000)
+                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                except:
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
                     except:
-                        try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=2000)
+                        try: page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
                         except: pass
 
                 page.wait_for_timeout(3500)
@@ -371,6 +369,7 @@ def fetch_live_data_from_web():
                             headers = extracted["headers"]
                             values = extracted["values"]
                             latest_date_str = values[0]
+                            target_tag = cat_cfg["tag"]
 
                             for h, v_str in zip(headers[1:], values[1:]):
                                 match_cond = False
@@ -395,105 +394,11 @@ def fetch_live_data_from_web():
                 all_results[cat_key] = {"values": val_map, "date": latest_date_str}
 
         except Exception as e:
-            st.warning(f"LoggIS canlı veri uyarısı: {e}")
+            st.warning(f"LoggIS veri hatası: {e}")
         finally:
             browser.close()
 
     return all_results
-
-# ---------------------------------------------------------
-# 2. АРХИВНЫЕ ДАННЫЕ (ПО ВАШЕМУ ВТОРОМУ КОДУ CSV)
-# ---------------------------------------------------------
-@st.cache_data(ttl=900)
-def fetch_csv_archive_database(mode_type="ALL"):
-    historical_db = {k: {} for k in CATEGORIES}
-    dates_set = set()
-
-    with sync_playwright() as p:
-        browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-        ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
-
-        context = browser.new_context(
-            accept_downloads=True, viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-
-        try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
-
-            page.get_by_role("combobox").first.select_option(mode_type)
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
-
-            for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
-                
-                try:
-                    page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=3000)
-                except:
-                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=2000)
-                    except: pass
-                
-                page.wait_for_timeout(3000)
-
-                csv_path = None
-                try:
-                    with page.expect_download(timeout=30000) as download_info:
-                        with page.expect_popup(timeout=8000) as page1_info:
-                            page.get_by_text("🠋CSV").click(force=True)
-                        try:
-                            page1 = page1_info.value
-                            page1.close()
-                        except: pass
-                    csv_path = download_info.value.path()
-                except Exception as e:
-                    pass
-
-                if csv_path and os.path.exists(csv_path):
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
-                    
-                    if len(lines) > 2:
-                        header = [h.replace('﻿', '').strip() for h in lines[0].strip().split(';')]
-                        for line in lines[2:]:
-                            parts = [p.strip() for p in line.strip().split(';')]
-                            if len(parts) == len(header):
-                                date_str = parts[0]
-                                if date_str: dates_set.add(date_str)
-                                        
-                                val_map = {}
-                                for h, v_str in zip(header[1:], parts[1:]):
-                                    match_cond = False
-                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                    if match_cond or target_tag in h:
-                                        if target_tag == "-S" and "-CS" in h: continue
-                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
-                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                        s_name = m.group(1) if m else h.split()[0].strip()
-                                        v = clean_num(v_str)
-                                        if not np.isnan(v):
-                                            val_map[s_name] = v
-                                historical_db[cat_key][date_str] = val_map
-
-        except Exception as e:
-            pass
-        finally:
-            browser.close()
-
-    sorted_dates = sorted(list(dates_set), reverse=True)
-    return sorted_dates, historical_db
 
 @st.cache_data
 def get_model_b64(path):
@@ -504,141 +409,51 @@ def get_model_b64(path):
 
 col_nav, col_3d = st.columns([1, 4])
 
+with st.spinner("Tüm sensör verileri LoggIS üzerinden alınıyor..."):
+    all_data = fetch_all_categories_data()
+
 with col_nav:
     st.subheader("KONTROL PANELİ")
-    
-    data_mode = st.radio(
-        "Veri Modu Seçimi:",
-        options=["Canlı Veriler", "Arşiv Veriler"]
-    )
-
     selected_comp = st.radio(
         "Görüntülenecek Bileşen (Kategori):",
         options=["hoop", "axial", "temp"],
         format_func=lambda k: CATEGORIES[k]["title"]
     )
 
-    target_timestamp = "-"
-    latest_timestamp = None
-    raw_v_map = {}
-    latest_v_map = {}
-    cat_cfg = CATEGORIES[selected_comp]
-    compare_mode = False
-    table_data = []
-
-    if data_mode == "Arşiv Veriler":
-        st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
-        
-        with st.spinner("Arşiv tarihleri yükleniyor..."):
-            all_dates, full_db = fetch_csv_archive_database(mode_type="ALL")
-            
-        if not all_dates:
-            st.warning("Arşiv verisi bulunamadı.")
-        else:
-            latest_timestamp = all_dates[0]  
-            
-            compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
-
-            date_hierarchy = {}
-            for d_str in all_dates:
-                clean_d = d_str.replace("-", "/")
-                if " " in clean_d:
-                    date_part, time_part = clean_d.split(" ", 1)
-                    parts = date_part.split("/")
-                    if len(parts) == 3:
-                        y, m, d = parts[0], parts[1], parts[2]
-                        date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
-
-            years = sorted(list(date_hierarchy.keys()), reverse=True)
-            sel_year = st.selectbox("Yıl Seçiniz", options=years)
-
-            if sel_year:
-                months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
-                sel_month = st.selectbox("Ay Seçiniz:", options=months)
-
-                if sel_month:
-                    days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
-                    sel_day = st.selectbox("Gün Seçiniz:", options=days)
-
-                    if sel_day:
-                        times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("Saat Seçiniz:", options=times)
-
-                        if sel_time:
-                            target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
-                            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-                            latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
-    else:
-        with st.spinner("En güncel canlı veriler alınıyor..."):
-            live_data = fetch_live_data_from_web()
-            cur_layer = live_data.get(selected_comp, {"values": {}, "date": ""})
-            target_timestamp = cur_layer["date"] if cur_layer["date"] else "Canlı"
-            raw_v_map = cur_layer["values"]
-
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
         st.rerun()
 
-# ---------------------------------------------------------
-# ФИЛЬТРАЦИЯ И РАСЧЕТ ДЕЛЬТЫ (РАЗНИЦЫ)
-# ---------------------------------------------------------
+cat_cfg = CATEGORIES[selected_comp]
+cur_layer = all_data.get(selected_comp, {"values": {}, "date": ""})
+raw_v_map = cur_layer["values"]
+
 active_category_values = {}
+for s_name, val in raw_v_map.items():
+    if val is None or np.isnan(val): continue
+    u_name = s_name.upper()
+    
+    is_valid_sensor = False
+    if selected_comp == "hoop" and "-CS" in u_name: is_valid_sensor = True
+    elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: is_valid_sensor = True
+    elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: is_valid_sensor = True
 
-if raw_v_map:
-    for s_name, val in raw_v_map.items():
-        if val is None or np.isnan(val): continue
-        u_name = s_name.upper()
-        
-        is_valid_sensor = False
-        if selected_comp == "hoop" and "-CS" in u_name: is_valid_sensor = True
-        elif selected_comp == "axial" and "-S" in u_name and "-CS" not in u_name: is_valid_sensor = True
-        elif selected_comp == "temp" and "-TP" in u_name and "-CS" not in u_name and "-S" not in u_name: is_valid_sensor = True
+    if is_valid_sensor:
+        active_category_values[s_name] = float(val)
 
-        if is_valid_sensor:
-            if compare_mode:
-                latest_val = latest_v_map.get(s_name)
-                
-                str_val = f"{float(val):.2f}"
-                str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
-                
-                if latest_val is not None and not np.isnan(latest_val):
-                    delta = float(latest_val) - float(val)
-                    active_category_values[s_name] = delta
-                    str_delta = f"{delta:+.2f}"
-                else:
-                    str_delta = "-"
-                    
-                table_data.append({
-                    "Sensör No": s_name,
-                    "Arşiv Değeri": str_val,
-                    "Güncel Değer": str_latest,
-                    "Fark (Δ)": str_delta
-                })
-            else:
-                active_category_values[s_name] = float(val)
-
-# Расчет шкалы: Для Дельты шкала симметрична [-Max, +Max]
+# Расчет шкалы
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
 else:
-    if compare_mode:
-        max_abs = max(abs(min(vals)), abs(max(vals)))
-        if max_abs < 0.001:
-            clim = [-0.5, 0.5]
-        else:
-            buf = max_abs * 0.05
-            clim = [-round(max_abs + buf, 2), round(max_abs + buf, 2)]
+    real_min = float(min(vals))
+    real_max = float(max(vals))
+    diff = abs(real_max - real_min)
+    if diff < 0.001:
+        clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
     else:
-        real_min = float(min(vals))
-        real_max = float(max(vals))
-        diff = abs(real_max - real_min)
-        if diff < 0.001:
-            clim = [round(real_min - 0.5, 2), round(real_max + 0.5, 2)]
-        else:
-            buf = diff * 0.02
-            clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
+        buf = diff * 0.02
+        clim = [round(real_min - buf, 2), round(real_max + buf, 2)]
 
 with col_nav:
     st.markdown("---")
@@ -649,12 +464,8 @@ with col_nav:
     show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
 
     st.markdown("---")
-    if compare_mode:
-        st.write("**Karşılaştırma (Fark Analizi):**")
-        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  {latest_timestamp}</span>", unsafe_allow_html=True)
-    else:
-        st.write("**Aktif Periyot:**")
-        st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
+    st.write("**En Son Veri Zamanı:**")
+    st.markdown(f"<span class='neon-data' style='font-size: 15px;'>{cur_layer['date'] if cur_layer['date'] else 'Bilinmiyor'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
     sensor_count_str = str(len(active_category_values)) if active_category_values else "-"
@@ -676,17 +487,16 @@ with col_3d:
         selected_sensor = st.selectbox(
             "Modelde Sensör Odakla:", 
             options=sensor_options,
-            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
+            help="Modelde vurgulanacak и kameranın odaklanacağı sensörü seçin"
         )
     with sel_col2:
         if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
-            val_label = "Değişim (Δ)" if compare_mode else "Ölçüm"
             st.metric(
-                label=f"{val_label} ({selected_sensor})",
+                label=f"Seçilen Sensör Değeri",
                 value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
             )
         else:
-            st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
+            st.metric(label="Sensör Değeri", value="-")
 
     model_b64 = get_model_b64(MODEL_PATH)
     
@@ -701,8 +511,7 @@ with col_3d:
             "comp": selected_comp,
             "tunnelOpacity": float(tunnel_opacity),
             "showMeters": show_meters,
-            "showNoDataRed": show_no_data_red,
-            "isCompareMode": compare_mode
+            "showNoDataRed": show_no_data_red
         }
         json_payload = json.dumps(payload_data)
 
@@ -771,25 +580,7 @@ with col_3d:
         const hudName = document.getElementById('hud-sensor-name');
         const hudVal = document.getElementById('hud-sensor-val');
 
-        // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (АКТИВАЦИЯ ТОЛЬКО ПОСЛЕ ДВИЖЕНИЯ)
-        // =========================================================================
-        let userInteracted = false;
-        
-        function saveCamState() {
-            if (!userInteracted) return;
-            try {
-                window.sessionStorage.setItem('loggis_cam_v15', JSON.stringify({
-                    pos: camera.position.toArray(),
-                    tgt: controls.target.toArray()
-                }));
-            } catch(e) {}
-        }
-
-        // =========================================================================
-        // ЦВЕТОВЫЕ ШКАЛЫ
-        // =========================================================================
-
+        // СОХРАНЕНИЕ ПОЗИЦИИ КАМЕРЫ (ЧЕРЕЗ SESSIONSTORAGE)
         const hoopStops = [
             new THREE.Color("#050833"), new THREE.Color("#0044FF"), new THREE.Color("#00D5FF"),
             new THREE.Color("#00FF66"), new THREE.Color("#FFEE00"), new THREE.Color("#FF7700"), new THREE.Color("#FF0022")
@@ -804,25 +595,10 @@ with col_3d:
             new THREE.Color("#FF4400"), new THREE.Color("#D50000")
         ];
 
-        const compareStops = [
-            new THREE.Color("#0055FF"), 
-            new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), 
-            new THREE.Color("#FFDD00"), 
-            new THREE.Color("#FF0033")  
-        ];
-
         let currentStops = hoopStops;
-        if (payload.isCompareMode) {
-            currentStops = compareStops;
-            legendTitle.innerText = "Δ Fark [" + payload.unit + "]";
-        } else {
-            if (payload.comp === "axial") { currentStops = axialStops; legendTitle.innerText = "Boyuna [" + payload.unit + "]"; }
-            else if (payload.comp === "temp") { currentStops = temperatureStops; legendTitle.innerText = "Sıcaklık [" + payload.unit + "]"; }
-            else { currentStops = hoopStops; legendTitle.innerText = "Çevresel [" + payload.unit + "]"; }
-        }
-
-        const labelPrefix = payload.isCompareMode ? "Fark (Δ): " : "Ölçüm: ";
+        if (payload.comp === "axial") { currentStops = axialStops; legendTitle.innerText = "Boyuna [" + payload.unit + "]"; }
+        else if (payload.comp === "temp") { currentStops = temperatureStops; legendTitle.innerText = "Sıcaklık [" + payload.unit + "]"; }
+        else { currentStops = hoopStops; legendTitle.innerText = "Çevresel [" + payload.unit + "]"; }
 
         function buildExactLegendGradient(stops) {
             const n = stops.length; const items = [];
@@ -868,8 +644,13 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        controls.addEventListener('start', () => { userInteracted = true; });
-        controls.addEventListener('end', saveCamState);
+        controls.addEventListener('change', () => {
+            const camState = {
+                pos: [camera.position.x, camera.position.y, camera.position.z],
+                target: [controls.target.x, controls.target.y, controls.target.z]
+            };
+            try { sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState)); } catch(e) {}
+        });
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -1057,9 +838,9 @@ with col_3d:
             if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 17.0, boxTB.min.z - 8.0); portalsGroup.add(sTB); }
             scene.add(portalsGroup);
 
-            // =========================================================
-            // ЛИНЕЙКИ (ДВЕ ШТУКИ ПО БОКАМ) С УЧЕТОМ МАСШТАБА 2X И ПЕРЕВОРОТА
-            // =========================================================
+            # =========================================================
+            # ЗЕРКАЛЬНЫЕ ЛИНЕЙКИ (МАСШТАБ 2X, 0 С КОНЧИКА)
+            # =========================================================
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
                 tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
@@ -1144,120 +925,176 @@ with col_3d:
                 }
             }
 
-            // ====================================================================
-            // ЛОГИКА КАМЕРЫ (ВОССТАНОВЛЕНИЕ ПОЗИЦИИ ИЛИ ИСХОДНЫЙ ЦЕНТР)
-            // ====================================================================
-            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
+            # ====================================================================
+            # ЛОГИКА КАМЕРЫ
+            # ====================================================================
+            const lastSelected = sessionStorage.getItem('threejs_last_selected');
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
-                userInteracted = true;
+                sessionStorage.setItem('threejs_last_selected', payload.selectedSensor);
                 flyCameraTo(selectedMeshRef, true);
             } else {
-                if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
-                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
-                }
-
-                let cameraRestored = false;
-                try {
-                    const savedStr = window.sessionStorage.getItem('loggis_cam_v15');
-                    if (savedStr) {
-                        const st = JSON.parse(savedStr);
-                        if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
-                            camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
-                            controls.target.set(st.target[0], st.target[1], st.target[2]);
-                            controls.update();
-                            cameraRestored = true;
-                        }
-                    }
-                } catch(e) {}
-                
-                if (!cameraRestored) {
-                    const tunnelBox = new THREE.Box3(); 
-                    if (tunnelMeshes.length > 0) {
-                        tunnelMeshes.forEach(tm => {
-                            if(tm.geometry) tm.geometry.computeBoundingBox();
-                            tunnelBox.expandByObject(tm);
-                        });
-                    } else { 
-                        model.traverse(c => { if(c.isMesh && c.geometry) c.geometry.computeBoundingBox(); });
-                        tunnelBox.setFromObject(model); 
-                    }
-                    
-                    if (!tunnelBox.isEmpty()) {
-                        const center = tunnelBox.getCenter(new THREE.Vector3()); 
-                        const size = tunnelBox.getSize(new THREE.Vector3()); 
-                        const maxDim = Math.max(size.x, size.y, size.z, 20.0);
-                        controls.target.copy(center); 
-                        
-                        const fov = camera.fov * (Math.PI / 180);
-                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
-                        
-                        camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
+                const savedStateStr = sessionStorage.getItem('threejs_camera_state');
+                if (savedStateStr) {
+                    try {
+                        const st = JSON.parse(savedStateStr);
+                        camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
+                        controls.target.set(st.target[0], st.target[1], st.target[2]);
                         controls.update();
+                    } catch(e) {}
+                } else {
+                    const tunnelBox = new THREE.Box3();
+                    if (tunnelMeshes.length > 0) {
+                        tunnelMeshes.forEach(tm => tunnelBox.expandByObject(tm));
+                    } else {
+                        tunnelBox.setFromObject(model);
                     }
+
+                    const center = tunnelBox.getCenter(new THREE.Vector3());
+                    const size = tunnelBox.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z, 20.0);
+
+                    controls.target.copy(center);
+                    camera.position.set(
+                        center.x - maxDim * 0.40,
+                        center.y + maxDim * 0.45,
+                        center.z + maxDim * 0.55
+                    );
+                    controls.update();
                 }
             }
 
-        }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
+        }, undefined, function(err) {
+            loaderText.innerHTML = "Model yüklenirken hata oluştu!";
+            console.error(err);
+        });
 
         function updateHud(name, val, isUsable) {
-            selectedHud.style.display = 'block'; hudName.innerText = name;
-            if (isUsable && val !== undefined && !isNaN(val)) { const valTxt = (val > 0 ? "+" + val.toFixed(2) : val.toFixed(2)) + " " + payload.unit; hudVal.innerText = valTxt; hudVal.style.color = "#00E5FF"; }
-            else { hudVal.innerText = "-"; hudVal.style.color = "#FF0033"; }
+            selectedHud.style.display = 'block';
+            hudName.innerText = name;
+            if (isUsable && val !== undefined && !isNaN(val)) {
+                const valTxt = (val > 0 ? "+" + val.toFixed(2) : val.toFixed(2)) + " " + payload.unit;
+                hudVal.innerText = valTxt;
+                hudVal.style.color = "#00E5FF";
+            } else {
+                hudVal.innerText = "Veri Yok / Belirsiz";
+                hudVal.style.color = "#FF0033";
+            }
         }
 
         function flyCameraTo(targetMesh, animate = true) {
             const targetPos = targetMesh.position.clone();
+
             const offsetDir = new THREE.Vector3(targetPos.x, 0, targetPos.z).normalize();
             if (offsetDir.length() === 0) offsetDir.set(1, 0, 0);
+
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
-            if (!animate) { 
-                camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
-                userInteracted = true;
-                saveCamState();
-                return; 
+
+            if (!animate) {
+                camera.position.copy(endCamPos);
+                controls.target.copy(targetPos);
+                controls.update();
+                return;
             }
-            new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
-            new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-            .onComplete(() => {
-                userInteracted = true;
-                saveCamState();
-            }).start();
+
+            new TWEEN.Tween(controls.target)
+                .to(targetPos, 1400)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .start();
+
+            new TWEEN.Tween(camera.position)
+                .to(endCamPos, 1400)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .onUpdate(() => controls.update())
+                .onComplete(() => {
+                    const camState = {
+                        pos: [camera.position.x, camera.position.y, camera.position.z],
+                        target: [controls.target.x, controls.target.y, controls.target.z]
+                    };
+                    sessionStorage.setItem('threejs_camera_state', JSON.stringify(camState));
+                })
+                .start();
         }
 
         function getIntersectedSensor(e) {
             const rect = renderer.domElement.getBoundingClientRect();
             const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : (e.changedTouches ? e.changedTouches[0].clientX : 0));
             const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : (e.changedTouches ? e.changedTouches[0].clientY : 0));
-            mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1; mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera); const intersects = raycaster.intersectObjects(interactiveSensors, true);
-            if (intersects.length > 0) { let obj = intersects[0].object; while (obj && !obj.userData.sensorName && obj.parent) { obj = obj.parent; } return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null; }
+
+            mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(interactiveSensors, true);
+
+            if (intersects.length > 0) {
+                let obj = intersects[0].object;
+                while (obj && !obj.userData.sensorName && obj.parent) {
+                    obj = obj.parent;
+                }
+                return (obj && (obj.userData.isUsable || obj.userData.isNoData)) ? obj : null;
+            }
             return null;
         }
 
         function handleSensorSelection(sensorMesh) {
             if (!sensorMesh) return;
-            const sensorName = sensorMesh.userData.sensorName; const sensorVal = sensorMesh.userData.val; const isUsable = sensorMesh.userData.isUsable;
-            interactiveSensors.forEach(m => { if (m === sensorMesh) m.material.color.setHex(0xFFD700); else if (m.userData.isUsable) m.material.color.setHex(0xFFFFFF); else m.material.color.setHex(0xFF0033); });
-            flyCameraTo(sensorMesh, true); updateHud(sensorName, sensorVal, isUsable);
+            const sensorName = sensorMesh.userData.sensorName;
+            const sensorVal = sensorMesh.userData.val;
+            const isUsable = sensorMesh.userData.isUsable;
+            
+            interactiveSensors.forEach(m => {
+                if (m === sensorMesh) {
+                    m.material.color.setHex(0xFFD700);
+                } else if (m.userData.isUsable) {
+                    m.material.color.setHex(0xFFFFFF);
+                } else {
+                    m.material.color.setHex(0xFF0033);
+                }
+            });
+
+            flyCameraTo(sensorMesh, true);
+            updateHud(sensorName, sensorVal, isUsable);
         }
 
-        window.addEventListener('click', function(e) { const sensorMesh = getIntersectedSensor(e); if (sensorMesh) handleSensorSelection(sensorMesh); });
-        let touchStartTime = 0; window.addEventListener('touchstart', function() { touchStartTime = Date.now(); }, { passive: true });
-        window.addEventListener('touchend', function(e) { if (Date.now() - touchStartTime < 250) { const sensorMesh = getIntersectedSensor(e); if (sensorMesh) handleSensorSelection(sensorMesh); } });
+        window.addEventListener('click', function(e) {
+            const sensorMesh = getIntersectedSensor(e);
+            if (sensorMesh) handleSensorSelection(sensorMesh);
+        });
+
+        let touchStartTime = 0;
+        window.addEventListener('touchstart', function() {
+            touchStartTime = Date.now();
+        }, { passive: true });
+
+        window.addEventListener('touchend', function(e) {
+            if (Date.now() - touchStartTime < 250) {
+                const sensorMesh = getIntersectedSensor(e);
+                if (sensorMesh) {
+                    handleSensorSelection(sensorMesh);
+                }
+            }
+        });
+
         window.addEventListener('mousemove', function(e) {
             const sensorMesh = getIntersectedSensor(e);
             if (sensorMesh) {
-                const name = sensorMesh.userData.sensorName; const val = sensorMesh.userData.val; const isUsable = sensorMesh.userData.isUsable; const isNoData = sensorMesh.userData.isNoData;
-                tooltip.style.display = 'block'; tooltip.style.left = (e.clientX + 14) + 'px'; tooltip.style.top = (e.clientY + 14) + 'px';
+                const name = sensorMesh.userData.sensorName;
+                const val = sensorMesh.userData.val;
+                const isUsable = sensorMesh.userData.isUsable;
+                const isNoData = sensorMesh.userData.isNoData;
+
+                tooltip.style.display = 'block';
+                tooltip.style.left = (e.clientX + 14) + 'px';
+                tooltip.style.top = (e.clientY + 14) + 'px';
+                
                 if (isUsable) {
                     const valTxt = (val > 0 ? "+" + val : val) + " " + payload.unit;
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">' + labelPrefix + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#00E5FF;">Değer: ' + valTxt + '</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 } else if (isNoData) {
-                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: -</span><br><span style="color:#8397AD; font-size:11px;">(Odaklanmak için tıkla)</span>';
+                    tooltip.innerHTML = '<b>' + name + '</b><br><span style="color:#FF0033; font-weight:700;">Durum: Veri Yok / Belirsiz</span><br><span style="color:#8397AD; font-size:11px;">(Seçmek için tıkla)</span>';
                     renderer.domElement.style.cursor = 'pointer';
                 }
             } else {
@@ -1265,34 +1102,28 @@ with col_3d:
                 renderer.domElement.style.cursor = 'default';
             }
         });
-        window.addEventListener('resize', function() { camera.aspect = container.clientWidth / container.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(container.clientWidth, container.clientHeight); });
-        (function animate(time) { requestAnimationFrame(animate); TWEEN.update(time); controls.update(); renderer.clear(); renderer.render(scene, camera); renderer.clearDepth(); renderer.render(sensorScene, camera); })();
+
+        window.addEventListener('resize', function() {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+            controls.update();
+
+            renderer.clear();
+            renderer.render(scene, camera);
+
+            renderer.clearDepth();
+            renderer.render(sensorScene, camera);
+        }
+        requestAnimationFrame(animate);
     </script>
 </body>
 </html>"""
 
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
         st.components.v1.html(final_html, height=600, scrolling=False)
-
-# ---------------------------------------------------------
-# АНАЛИТИЧЕСКАЯ ТАБЛИЦА (FARK RAPORU)
-# ---------------------------------------------------------
-if compare_mode and table_data:
-    st.markdown("---")
-    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
-    
-    df = pd.DataFrame(table_data)
-    df = df.sort_values(by="Sensör No").reset_index(drop=True)
-    
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        height=400,
-        column_config={
-            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
-            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
-            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
-            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
-        }
-    )
