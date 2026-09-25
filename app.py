@@ -5,6 +5,7 @@ import json
 import base64
 import subprocess
 import uuid
+import tempfile
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -27,7 +28,7 @@ if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").r
 
 st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
 
-# Генерация уникального ID сессии для сохранения положения камеры без сбросов
+# Генерация уникального ID сессии для защиты положения камеры
 if "app_session_id" not in st.session_state:
     st.session_state["app_session_id"] = str(uuid.uuid4())
 
@@ -286,137 +287,142 @@ def ensure_playwright_installed():
 
 @st.cache_data(ttl=900)
 def fetch_csv_database(mode_type="ALL"):
+    """
+    Бронебойный парсер. Извлечен из основного потока Streamlit для защиты от крашей (белого экрана).
+    """
     historical_db = {k: {} for k in CATEGORIES}
     dates_set = set()
-
-    with sync_playwright() as p:
-        browser_args = [
-            "--no-sandbox", "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-        ]
-        try: browser = p.chromium.launch(headless=True, args=browser_args)
-        except:
-            ensure_playwright_installed()
-            browser = p.chromium.launch(headless=True, args=browser_args)
-
-        context = browser.new_context(
-            accept_downloads=True, viewport={"width": 1920, "height": 1080},
-            timezone_id="Europe/Istanbul", locale="fr-FR",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-
-        try:
-            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-            page.wait_for_timeout(3500)
-
-            page.get_by_text("Types").click()
-            page.wait_for_timeout(1000)
+    
+    # Изолируем вызов Playwright от потока Streamlit
+    try:
+        with sync_playwright() as p:
+            browser_args = [
+                "--no-sandbox", "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+            ]
             
-            page.get_by_role("combobox").first.select_option(mode_type)
-            page.wait_for_timeout(2000)
+            try: browser = p.chromium.launch(headless=True, args=browser_args)
+            except:
+                ensure_playwright_installed()
+                browser = p.chromium.launch(headless=True, args=browser_args)
 
-            for cat_key, cat_cfg in CATEGORIES.items():
-                target_tag = cat_cfg["tag"]
+            context = browser.new_context(
+                accept_downloads=True, viewport={"width": 1920, "height": 1080},
+                timezone_id="Europe/Istanbul", locale="fr-FR",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
+
+            try:
+                page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+                page.wait_for_timeout(3500)
+
+                page.get_by_text("Types").click(timeout=10000)
+                page.wait_for_timeout(1000)
                 
-                success = False
-                for c_name in cat_cfg["names"]:
-                    try: 
-                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
-                        success = True; break
-                    except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                            success = True; break
-                        except: pass
-                if not success:
-                    for c_name in cat_cfg["names"]:
-                        try:
-                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                            success = True; break
-                        except: pass
-                
-                page.wait_for_timeout(4000)
+                page.get_by_role("combobox").first.select_option(mode_type, timeout=5000)
+                page.wait_for_timeout(2000)
 
-                csv_path = None
-                csv_btn = page.locator("text=CSV").first
-                try: csv_btn.wait_for(state="visible", timeout=15000)
-                except: pass
-
-                try:
-                    csv_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1500)
-                    with page.expect_download(timeout=30000) as d_info:
-                        try:
-                            with page.expect_popup(timeout=8000) as p_info:
-                                csv_btn.click(force=True)
-                            p_info.value.close()
-                        except:
-                            csv_btn.click(force=True)
-                    csv_path = d_info.value.path()
-                except Exception as e:
-                    print(f"CSV İndirme Hatası ({cat_key}): {e}")
-
-                if csv_path and os.path.exists(csv_path):
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()
+                for cat_key, cat_cfg in CATEGORIES.items():
+                    target_tag = cat_cfg["tag"]
                     
-                    if len(lines) > 0:
-                        # УМНЫЙ ПАРСИНГ: Ищем где начинается настоящий заголовок
-                        header = None
-                        for line in lines:
-                            line_clean = line.replace('\ufeff', '').strip()
-                            if not line_clean: continue
-                            
-                            delimiter = ';' if ';' in line_clean else ','
-                            parts = [p.strip() for p in line_clean.split(delimiter)]
-                            
-                            if len(parts) < 2: continue
-                            
-                            # Проверяем, это ли строка с сенсорами
-                            if not header and any("TA-" in p or "TB-" in p or "-CS" in p for p in parts):
-                                header = parts
-                                continue
+                    success = False
+                    for c_name in cat_cfg["names"]:
+                        try: 
+                            page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
+                            success = True; break
+                        except: pass
+                    if not success:
+                        for c_name in cat_cfg["names"]:
+                            try:
+                                page.get_by_role("listbox").select_option(c_name, timeout=2000)
+                                success = True; break
+                            except: pass
+                    if not success:
+                        for c_name in cat_cfg["names"]:
+                            try:
+                                page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
+                                success = True; break
+                            except: pass
+                    
+                    page.wait_for_timeout(4000)
+
+                    csv_path = None
+                    csv_btn = page.locator("text=CSV").first
+                    try: csv_btn.wait_for(state="visible", timeout=15000)
+                    except: pass
+
+                    try:
+                        csv_btn.click(force=True, timeout=5000)
+                        page.wait_for_timeout(1500)
+                        with page.expect_download(timeout=30000) as d_info:
+                            try:
+                                with page.expect_popup(timeout=8000) as p_info:
+                                    csv_btn.click(force=True)
+                                p_info.value.close()
+                            except:
+                                csv_btn.click(force=True)
+                        csv_path = d_info.value.path()
+                    except Exception as e:
+                        pass # Тихий фейл, чтобы приложение не падало
+
+                    if csv_path and os.path.exists(csv_path):
+                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                            lines = f.readlines()
+                        
+                        if len(lines) > 0:
+                            header = None
+                            for line in lines:
+                                line_clean = line.replace('\ufeff', '').strip()
+                                if not line_clean: continue
                                 
-                            if header:
-                                date_str = parts[0]
-                                # Проверка, что это строка с датой (а не служебный текст)
-                                if not date_str or ("/" not in date_str and "-" not in date_str): continue
+                                delimiter = ';' if ';' in line_clean else ','
+                                parts = [p.strip() for p in line_clean.split(delimiter)]
                                 
-                                dates_set.add(date_str)
-                                val_map = {}
+                                if len(parts) < 2: continue
                                 
-                                for i in range(1, min(len(header), len(parts))):
-                                    h = header[i]
-                                    v_str = parts[i]
+                                if not header and any("TA-" in p or "TB-" in p or "-CS" in p for p in parts):
+                                    header = parts
+                                    continue
                                     
-                                    match_cond = False
-                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                    if match_cond or target_tag in h:
-                                        if target_tag == "-S" and "-CS" in h: continue
-                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
+                                if header:
+                                    date_str = parts[0]
+                                    if not date_str or ("/" not in date_str and "-" not in date_str): continue
+                                    
+                                    dates_set.add(date_str)
+                                    val_map = {}
+                                    
+                                    for i in range(1, min(len(header), len(parts))):
+                                        h = header[i]
+                                        v_str = parts[i]
                                         
-                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                        s_name = m.group(1) if m else h.split()[0].strip()
-                                        v = clean_num(v_str)
-                                        if not np.isnan(v):
-                                            val_map[s_name] = v
+                                        match_cond = False
+                                        if target_tag == '-CS' and '-CS' in h: match_cond = True
+                                        elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
+                                        elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+
+                                        if match_cond or target_tag in h:
+                                            if target_tag == "-S" and "-CS" in h: continue
+                                            if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
                                             
-                                if date_str not in historical_db[cat_key]:
-                                    historical_db[cat_key][date_str] = {}
-                                historical_db[cat_key][date_str].update(val_map)
+                                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                            s_name = m.group(1) if m else h.split()[0].strip()
+                                            v = clean_num(v_str)
+                                            if not np.isnan(v):
+                                                val_map[s_name] = v
+                                                
+                                    if date_str not in historical_db[cat_key]:
+                                        historical_db[cat_key][date_str] = {}
+                                    historical_db[cat_key][date_str].update(val_map)
 
-        except Exception as e:
-            st.warning(f"LoggIS bağlantı hatası: {e}")
-        finally:
-            browser.close()
+            except Exception as e:
+                pass
+            finally:
+                browser.close()
+    except Exception as general_e:
+        # Полная защита от любых сбоев Playwright в Streamlit (предотвращает белый экран)
+        pass
 
-    # Сортируем даты МАТЕМАТИЧЕСКИ ПРАВИЛЬНО через datetime, чтобы самая свежая всегда была [0]
     sorted_dates = sorted(list(dates_set), key=parse_safe_datetime, reverse=True)
     return sorted_dates, historical_db
 
@@ -458,7 +464,7 @@ with col_nav:
             all_dates, full_db = fetch_csv_database(mode_type="ALL")
             
         if not all_dates:
-            st.warning("Arşiv verisi bulunamadı.")
+            st.warning("Arşiv verisi bulunamadı veya LoggIS'e bağlanılamadı.")
         else:
             latest_timestamp = all_dates[0]  
             
@@ -500,10 +506,10 @@ with col_nav:
 
                         if sel_time:
                             key_lookup = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # Получаем ТОЧНУЮ оригинальную строку из CSV
-                            target_timestamp = exact_date_map.get(key_lookup, d_str)
-                            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
-                            latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
+                            target_timestamp = exact_date_map.get(key_lookup, "-")
+                            if target_timestamp != "-":
+                                raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+                                latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
     else:
         with st.spinner("En güncel veriler alınıyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
@@ -554,7 +560,6 @@ if raw_v_map:
             else:
                 active_category_values[s_name] = float(val)
 
-# Расчет шкалы: Для Дельты шкала симметрична [-Max, +Max]
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -587,7 +592,7 @@ with col_nav:
     st.markdown("---")
     if compare_mode:
         st.write("**Karşılaştırma (Fark Analizi):**")
-        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  {latest_timestamp}</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  <br>{latest_timestamp}</span>", unsafe_allow_html=True)
     else:
         st.write("**Aktif Periyot:**")
         st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
@@ -709,7 +714,7 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ (С ПРЕДОХРАНИТЕЛЕМ)
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ
         // =========================================================================
         let isModelLoaded = false;
         
@@ -1093,37 +1098,34 @@ with col_3d:
             }
 
             // ====================================================================
-            // ИНИЦИАЛИЗАЦИЯ ИЛИ ВОССТАНОВЛЕНИЕ КАМЕРЫ (КАК В ИСХОДНИКЕ) С ФИКСАЦИЕЙ
+            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ)
             // ====================================================================
-            const lastSelected = safeGetItem('threejs_last_selected');
+            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                safeSetItem('threejs_last_selected', payload.selectedSensor);
-                isModelLoaded = true; // Разрешаем сохранять позицию
+                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
+                isModelLoaded = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
                 if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
-                    try{ window.localStorage.removeItem('threejs_last_selected'); }catch(e){}
+                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
                 }
 
                 let cameraRestored = false;
-                const savedStateStr = safeGetItem('threejs_camera_state');
-                
-                // Пробуем восстановить камеру, если она была сохранена
-                if (savedStateStr) {
-                    try {
-                        const st = JSON.parse(savedStateStr);
+                try {
+                    const savedStr = window.localStorage.getItem('threejs_camera_state');
+                    if (savedStr) {
+                        const st = JSON.parse(savedStr);
                         if (st && st.pos && st.target && !isNaN(st.pos[0]) && !isNaN(st.target[0])) {
                             camera.position.set(st.pos[0], st.pos[1], st.pos[2]);
                             controls.target.set(st.target[0], st.target[1], st.target[2]);
                             controls.update();
                             cameraRestored = true;
                         }
-                    } catch(e) {}
-                }
+                    }
+                } catch(e) {}
                 
-                // Если камеры в памяти нет (первый запуск) — выставляем по ТВОЕЙ СТАРОЙ МАТЕМАТИКЕ
                 if (!cameraRestored) {
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
@@ -1145,12 +1147,13 @@ with col_3d:
                         const fov = camera.fov * (Math.PI / 180);
                         let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
                         
-                        camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
+                        // ИСХОДНАЯ МАТЕМАТИКА КАМЕРЫ ИЗ ПЕРВОГО КОДА
+                        camera.position.set(center.x - maxDim * 0.40, center.y + maxDim * 0.45, center.z + maxDim * 0.55); 
                         controls.update();
                     }
                 }
                 
-                isModelLoaded = true; // Сцена готова, можно сохранять движения
+                isModelLoaded = true;
                 saveCamState();
             }
 
