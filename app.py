@@ -664,23 +664,16 @@ with col_3d:
         // =========================================================================
         // СИСТЕМА СОХРАНЕНИЯ ПОЗИЦИИ КАМЕРЫ
         // =========================================================================
-        const CAM_KEY = 'loggis_cam_v6';
-        const SENSOR_KEY = 'loggis_sensor_v6';
-
-        function saveCam() {
+        let isModelLoaded = false;
+        
+        function saveCamState() {
+            if (!isModelLoaded) return; // Не сохраняем дефолтные нули во время загрузки!
             try {
-                window.localStorage.setItem(CAM_KEY, JSON.stringify({
+                window.sessionStorage.setItem('loggis_cam_v7', JSON.stringify({
                     pos: camera.position.toArray(),
                     tgt: controls.target.toArray()
                 }));
             } catch(e) {}
-        }
-
-        function loadCam() {
-            try {
-                const s = window.localStorage.getItem(CAM_KEY);
-                return s ? JSON.parse(s) : null;
-            } catch(e) { return null; }
         }
 
         // =========================================================================
@@ -701,13 +694,12 @@ with col_3d:
             new THREE.Color("#FF4400"), new THREE.Color("#D50000")
         ];
 
-        // Шкала для Дельты (Разницы): СИНИЙ (-) -> СЕРЫЙ (0) -> КРАСНЫЙ (+)
         const compareStops = [
-            new THREE.Color("#0055FF"), // Уменьшение
+            new THREE.Color("#0055FF"), 
             new THREE.Color("#00E5FF"), 
-            new THREE.Color("#2E3A59"), // Нейтрально (Без изменений) - идеально посередине
+            new THREE.Color("#2E3A59"), 
             new THREE.Color("#FFDD00"), 
-            new THREE.Color("#FF0033")  // Увеличение
+            new THREE.Color("#FF0033")  
         ];
 
         let currentStops = hoopStops;
@@ -766,8 +758,8 @@ with col_3d:
         controls.minDistance = 0.5; controls.maxDistance = 2500;
         controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-        // Сохраняем позицию камеры ПРИ ЛЮБОМ ДВИЖЕНИИ пользователем
-        controls.addEventListener('change', saveCam);
+        // Сохранение вызывается при любом вращении пользователем
+        controls.addEventListener('change', saveCamState);
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4); scene.add(ambientLight);
         const dirLight1 = new THREE.DirectionalLight(0x00E5FF, 1.6); dirLight1.position.set(60, 100, 80); scene.add(dirLight1);
@@ -966,7 +958,7 @@ with col_3d:
                     const size = overallBox.getSize(new THREE.Vector3()); 
                     const rulerGroup = new THREE.Group();
 
-                    const scale = 2.0; 
+                    const scale = 2.0; // КОЭФФИЦИЕНТ УВЕЛИЧЕНИЯ 2X
 
                     const isZAxis = size.z >= size.x; 
                     const length3D = isZAxis ? size.z : size.x; 
@@ -1044,27 +1036,38 @@ with col_3d:
             }
 
             // ====================================================================
-            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ИСХОДНОЙ МАТЕМАТИКОЙ ИЗ [SOURCE: 6])
+            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ ИЗ [SOURCE: 6])
             // ====================================================================
-            const lastSelected = (function(){ try{ return window.localStorage.getItem('loggis_sensor_v6'); }catch(e){return null;} })();
+            const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
             if (selectedMeshRef && isNewSensorSelected) {
-                try{ window.localStorage.setItem('loggis_sensor_v6', payload.selectedSensor); }catch(e){}
+                try{ window.sessionStorage.setItem('loggis_sensor_v7', payload.selectedSensor); }catch(e){}
+                
+                // Перелет к датчику. isModelLoaded станет true внутри flyCameraTo
+                isModelLoaded = true;
                 flyCameraTo(selectedMeshRef, true);
             } else {
-                let cameraRestored = false;
-                const st = loadCam();
-                
-                if (st && st.pos && st.tgt && st.pos.length === 3 && st.tgt.length === 3) {
-                    camera.position.fromArray(st.pos);
-                    controls.target.fromArray(st.tgt);
-                    controls.update();
-                    cameraRestored = true;
+                if (!isNewSensorSelected && payload.selectedSensor === "Seçiniz...") {
+                    try{ window.sessionStorage.removeItem('loggis_sensor_v7'); }catch(e){}
                 }
+
+                let cameraRestored = false;
+                try {
+                    const savedStr = window.sessionStorage.getItem('loggis_cam_v7');
+                    if (savedStr) {
+                        const st = JSON.parse(savedStr);
+                        if (st && st.pos && st.tgt && !isNaN(st.pos[0]) && !isNaN(st.tgt[0])) {
+                            camera.position.fromArray(st.pos);
+                            controls.target.fromArray(st.tgt);
+                            controls.update();
+                            cameraRestored = true;
+                        }
+                    }
+                } catch(e) {}
                 
                 if (!cameraRestored) {
-                    // ЭТО ТОЧНО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ КОДА [SOURCE: 6]
+                    // ЭТО ТВОЯ ИСХОДНАЯ МАТЕМАТИКА ИЗ КОДА [SOURCE: 6]
                     const tunnelBox = new THREE.Box3(); 
                     if (tunnelMeshes.length > 0) {
                         tunnelMeshes.forEach(tm => {
@@ -1087,10 +1090,12 @@ with col_3d:
                         
                         camera.position.set(center.x - maxDim * 0.1, center.y + maxDim * 0.1, center.z + cameraZ); 
                         controls.update();
-                        
-                        saveCam(); // Сохраняем это идеальное стартовое положение
                     }
                 }
+                
+                // РАЗРЕШАЕМ СОХРАНЯТЬ КАМЕРУ ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ЗАГРУЗКИ МОДЕЛИ
+                isModelLoaded = true;
+                saveCamState();
             }
 
         }, undefined, function(err) { loaderText.innerHTML = "Model yüklenirken hata oluştu!"; console.error(err); });
@@ -1108,12 +1113,12 @@ with col_3d:
             const endCamPos = targetPos.clone().add(offsetDir.multiplyScalar(4.0)).add(new THREE.Vector3(0, 1.8, 0));
             if (!animate) { 
                 camera.position.copy(endCamPos); controls.target.copy(targetPos); controls.update(); 
-                saveCam();
+                saveCamState();
                 return; 
             }
             new TWEEN.Tween(controls.target).to(targetPos, 1400).easing(TWEEN.Easing.Cubic.InOut).start();
             new TWEEN.Tween(camera.position).to(endCamPos, 1400).easing(TWEEN.Easing.Cubic.InOut).onUpdate(() => controls.update())
-            .onComplete(saveCam).start();
+            .onComplete(saveCamState).start();
         }
 
         function getIntersectedSensor(e) {
