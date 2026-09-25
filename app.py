@@ -5,7 +5,6 @@ import json
 import base64
 import subprocess
 import uuid
-import tempfile
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -264,9 +263,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 CATEGORIES = {
-    "hoop": {"names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
-    "axial": {"names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
-    "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
+    "hoop": {"name": "Othoradial Strains", "names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
+    "axial": {"name": "Longitudinal Strains", "names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
+    "temp": {"name": "Temperature", "names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
 }
 
 def clean_num(s):
@@ -285,143 +284,256 @@ def ensure_playwright_installed():
     try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     except Exception: pass
 
+# ---------------------------------------------------------
+# МЕТОД ДЛЯ КРАЙНИХ ДАННЫХ (ИЗ ПЕРВОГО ФАЙЛА - ПРЯМОЙ ПАРСИНГ ТАБЛИЦЫ САЙТА)
+# ---------------------------------------------------------
+@st.cache_data(ttl=300)
+def fetch_live_data_from_web():
+    all_results = {k: {"values": {}, "date": ""} for k in CATEGORIES}
+
+    with sync_playwright() as p:
+        browser_args = [
+            "--no-sandbox", "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+        ]
+        try: browser = p.chromium.launch(headless=True, args=browser_args)
+        except:
+            ensure_playwright_installed()
+            browser = p.chromium.launch(headless=True, args=browser_args)
+
+        context = browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            timezone_id="Europe/Istanbul", locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+        page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media"] else route.continue_())
+
+        try:
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
+
+            try: page.get_by_text("Types").click(timeout=8000)
+            except: pass
+            page.wait_for_timeout(1000)
+
+            try: page.get_by_role("combobox").first.select_option("MONTH_02", timeout=5000)
+            except: pass
+            page.wait_for_timeout(800)
+
+            try: page.get_by_role("combobox").nth(1).select_option("TABLE_ROW_DATE", timeout=5000)
+            except: pass
+            page.wait_for_timeout(1000)
+
+            for cat_key, cat_cfg in CATEGORIES.items():
+                try: page.get_by_role("listbox").select_option(cat_cfg["name"], timeout=6000)
+                except:
+                    try: page.locator(f"option:has-text('{cat_cfg['name']}')").first.click(force=True, timeout=4000)
+                    except:
+                        try: page.get_by_text(cat_cfg["name"]).first.click(force=True, timeout=4000)
+                        except: pass
+
+                page.wait_for_timeout(3000)
+
+                val_map = {}
+                latest_date_str = ""
+
+                for _ in range(15):
+                    try:
+                        extracted = page.evaluate("""() => {
+                            try {
+                                const table = document.querySelector('table');
+                                if (!table) return null;
+
+                                const trs = Array.from(table.querySelectorAll('tr'));
+                                let headerCells = [];
+                                for (const tr of trs) {
+                                    const cells = Array.from(tr.querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                    if (cells.some(c => c.includes('TA-') || c.includes('TB-'))) {
+                                        headerCells = cells;
+                                        break;
+                                    }
+                                }
+                                if (headerCells.length === 0 && trs.length > 0) {
+                                    headerCells = Array.from(trs[0].querySelectorAll('th, td')).map(c => (c.innerText || '').trim());
+                                }
+
+                                const tbody = table.querySelector('tbody') || table;
+                                const rows = Array.from(tbody.querySelectorAll('tr'));
+                                let dataCells = [];
+                                for (const r of rows) {
+                                    const cells = Array.from(r.querySelectorAll('td')).map(c => (c.innerText || '').trim());
+                                    if (cells.length > 1 && (cells[0].includes('/') || cells[0].includes(':') || cells[0].includes('-'))) {
+                                        dataCells = cells;
+                                        break;
+                                    }
+                                }
+
+                                if (headerCells.length === 0 || dataCells.length === 0) return null;
+                                return { headers: headerCells, values: dataCells };
+                            } catch(e) {
+                                return null;
+                            }
+                        }""")
+
+                        if extracted and extracted.get("values") and extracted.get("headers"):
+                            headers = extracted["headers"]
+                            values = extracted["values"]
+                            latest_date_str = values[0]
+
+                            for h, v_str in zip(headers[1:], values[1:]):
+                                if "TA-" in h or "TB-" in h or cat_cfg["tag"] in h:
+                                    m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                    s_name = m.group(1) if m else h.split()[0].strip()
+                                    v = clean_num(v_str)
+                                    if not np.isnan(v):
+                                        val_map[s_name] = v
+
+                            if len(val_map) > 0:
+                                break
+                    except: pass
+                    page.wait_for_timeout(600)
+
+                all_results[cat_key] = {"values": val_map, "date": latest_date_str}
+
+        except Exception as e:
+            st.warning(f"LoggIS canlı veri uyarısı: {e}")
+        finally:
+            browser.close()
+
+    return all_results
+
+# ---------------------------------------------------------
+# МЕТОД ДЛЯ АРХИВНЫХ ДАННЫХ (ЧЕРЕЗ CSV ВЫГРУЗКУ)
+# ---------------------------------------------------------
 @st.cache_data(ttl=900)
-def fetch_csv_database(mode_type="ALL"):
-    """
-    Бронебойный парсер. Извлечен из основного потока Streamlit для защиты от крашей (белого экрана).
-    """
+def fetch_csv_archive_database(mode_type="ALL"):
     historical_db = {k: {} for k in CATEGORIES}
     dates_set = set()
-    
-    # Изолируем вызов Playwright от потока Streamlit
-    try:
-        with sync_playwright() as p:
-            browser_args = [
-                "--no-sandbox", "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
-            ]
+
+    with sync_playwright() as p:
+        browser_args = [
+            "--no-sandbox", "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage", "--disable-gpu", "--window-size=1920,1080"
+        ]
+        try: browser = p.chromium.launch(headless=True, args=browser_args)
+        except:
+            ensure_playwright_installed()
+            browser = p.chromium.launch(headless=True, args=browser_args)
+
+        context = browser.new_context(
+            accept_downloads=True, viewport={"width": 1920, "height": 1080},
+            timezone_id="Europe/Istanbul", locale="fr-FR",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+
+        try:
+            page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3500)
+
+            page.get_by_text("Types").click()
+            page.wait_for_timeout(1000)
             
-            try: browser = p.chromium.launch(headless=True, args=browser_args)
-            except:
-                ensure_playwright_installed()
-                browser = p.chromium.launch(headless=True, args=browser_args)
+            page.get_by_role("combobox").first.select_option(mode_type)
+            page.wait_for_timeout(2000)
 
-            context = browser.new_context(
-                accept_downloads=True, viewport={"width": 1920, "height": 1080},
-                timezone_id="Europe/Istanbul", locale="fr-FR",
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
-            )
-            page = context.new_page()
-
-            try:
-                page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-                page.wait_for_timeout(3500)
-
-                page.get_by_text("Types").click(timeout=10000)
-                page.wait_for_timeout(1000)
+            for cat_key, cat_cfg in CATEGORIES.items():
+                target_tag = cat_cfg["tag"]
                 
-                page.get_by_role("combobox").first.select_option(mode_type, timeout=5000)
-                page.wait_for_timeout(2000)
-
-                for cat_key, cat_cfg in CATEGORIES.items():
-                    target_tag = cat_cfg["tag"]
-                    
-                    success = False
+                success = False
+                for c_name in cat_cfg["names"]:
+                    try: 
+                        page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
+                        success = True; break
+                    except: pass
+                if not success:
                     for c_name in cat_cfg["names"]:
-                        try: 
-                            page.get_by_role("listbox").select_option(label=c_name, timeout=2000)
+                        try:
+                            page.get_by_role("listbox").select_option(c_name, timeout=2000)
                             success = True; break
                         except: pass
-                    if not success:
-                        for c_name in cat_cfg["names"]:
-                            try:
-                                page.get_by_role("listbox").select_option(c_name, timeout=2000)
-                                success = True; break
-                            except: pass
-                    if not success:
-                        for c_name in cat_cfg["names"]:
-                            try:
-                                page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
-                                success = True; break
-                            except: pass
-                    
-                    page.wait_for_timeout(4000)
+                if not success:
+                    for c_name in cat_cfg["names"]:
+                        try:
+                            page.locator(f"option:has-text('{c_name}')").first.click(force=True, timeout=2000)
+                            success = True; break
+                        except: pass
+                
+                page.wait_for_timeout(4000)
 
-                    csv_path = None
-                    csv_btn = page.locator("text=CSV").first
-                    try: csv_btn.wait_for(state="visible", timeout=15000)
-                    except: pass
+                csv_path = None
+                csv_btn = page.locator("text=CSV").first
+                try: csv_btn.wait_for(state="visible", timeout=15000)
+                except: pass
 
-                    try:
-                        csv_btn.click(force=True, timeout=5000)
-                        page.wait_for_timeout(1500)
-                        with page.expect_download(timeout=30000) as d_info:
-                            try:
-                                with page.expect_popup(timeout=8000) as p_info:
-                                    csv_btn.click(force=True)
-                                p_info.value.close()
-                            except:
+                try:
+                    csv_btn.click(force=True, timeout=5000)
+                    page.wait_for_timeout(1500)
+                    with page.expect_download(timeout=30000) as d_info:
+                        try:
+                            with page.expect_popup(timeout=8000) as p_info:
                                 csv_btn.click(force=True)
-                        csv_path = d_info.value.path()
-                    except Exception as e:
-                        pass # Тихий фейл, чтобы приложение не падало
+                            p_info.value.close()
+                        except:
+                            csv_btn.click(force=True)
+                    csv_path = d_info.value.path()
+                except Exception as e:
+                    pass
 
-                    if csv_path and os.path.exists(csv_path):
-                        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
-                            lines = f.readlines()
-                        
-                        if len(lines) > 0:
-                            header = None
-                            for line in lines:
-                                line_clean = line.replace('\ufeff', '').strip()
-                                if not line_clean: continue
+                if csv_path and os.path.exists(csv_path):
+                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                        lines = f.readlines()
+                    
+                    if len(lines) > 0:
+                        header = None
+                        for line in lines:
+                            line_clean = line.replace('\ufeff', '').strip()
+                            if not line_clean: continue
+                            
+                            delimiter = ';' if ';' in line_clean else ','
+                            parts = [p.strip() for p in line_clean.split(delimiter)]
+                            
+                            if len(parts) < 2: continue
+                            
+                            if not header and any("TA-" in p or "TB-" in p or "-CS" in p for p in parts):
+                                header = parts
+                                continue
                                 
-                                delimiter = ';' if ';' in line_clean else ','
-                                parts = [p.strip() for p in line_clean.split(delimiter)]
+                            if header:
+                                date_str = parts[0]
+                                if not date_str or ("/" not in date_str and "-" not in date_str): continue
                                 
-                                if len(parts) < 2: continue
+                                dates_set.add(date_str)
+                                val_map = {}
                                 
-                                if not header and any("TA-" in p or "TB-" in p or "-CS" in p for p in parts):
-                                    header = parts
-                                    continue
+                                for i in range(1, min(len(header), len(parts))):
+                                    h = header[i]
+                                    v_str = parts[i]
                                     
-                                if header:
-                                    date_str = parts[0]
-                                    if not date_str or ("/" not in date_str and "-" not in date_str): continue
-                                    
-                                    dates_set.add(date_str)
-                                    val_map = {}
-                                    
-                                    for i in range(1, min(len(header), len(parts))):
-                                        h = header[i]
-                                        v_str = parts[i]
+                                    match_cond = False
+                                    if target_tag == '-CS' and '-CS' in h: match_cond = True
+                                    elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
+                                    elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
+
+                                    if match_cond or target_tag in h:
+                                        if target_tag == "-S" and "-CS" in h: continue
+                                        if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
                                         
-                                        match_cond = False
-                                        if target_tag == '-CS' and '-CS' in h: match_cond = True
-                                        elif target_tag == '-S' and '-S' in h and '-CS' not in h: match_cond = True
-                                        elif target_tag == '-TP' and '-TP' in h and '-CS' not in h and '-S' not in h: match_cond = True
-
-                                        if match_cond or target_tag in h:
-                                            if target_tag == "-S" and "-CS" in h: continue
-                                            if target_tag == "-TP" and ('-CS' in h or '-S' in h): continue
+                                        m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
+                                        s_name = m.group(1) if m else h.split()[0].strip()
+                                        v = clean_num(v_str)
+                                        if not np.isnan(v):
+                                            val_map[s_name] = v
                                             
-                                            m = re.search(r"(T[AB]-[A-Za-z0-9\-]+)", h)
-                                            s_name = m.group(1) if m else h.split()[0].strip()
-                                            v = clean_num(v_str)
-                                            if not np.isnan(v):
-                                                val_map[s_name] = v
-                                                
-                                    if date_str not in historical_db[cat_key]:
-                                        historical_db[cat_key][date_str] = {}
-                                    historical_db[cat_key][date_str].update(val_map)
+                                if date_str not in historical_db[cat_key]:
+                                    historical_db[cat_key][date_str] = {}
+                                historical_db[cat_key][date_str].update(val_map)
 
-            except Exception as e:
-                pass
-            finally:
-                browser.close()
-    except Exception as general_e:
-        # Полная защита от любых сбоев Playwright в Streamlit (предотвращает белый экран)
-        pass
+        except Exception as e:
+            pass
+        finally:
+            browser.close()
 
     sorted_dates = sorted(list(dates_set), key=parse_safe_datetime, reverse=True)
     return sorted_dates, historical_db
@@ -461,10 +573,10 @@ with col_nav:
         st.subheader("Zaman SeçİMİ")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
-            all_dates, full_db = fetch_csv_database(mode_type="ALL")
+            all_dates, full_db = fetch_csv_archive_database(mode_type="ALL")
             
         if not all_dates:
-            st.warning("Arşiv verisi bulunamadı veya LoggIS'e bağlanılamadı.")
+            st.warning("Arşiv verisi bulunamadı.")
         else:
             latest_timestamp = all_dates[0]  
             
@@ -511,11 +623,11 @@ with col_nav:
                                 raw_v_map = full_db[selected_comp].get(target_timestamp, {})
                                 latest_v_map = full_db[selected_comp].get(latest_timestamp, {})
     else:
-        with st.spinner("En güncel veriler alınıyor..."):
-            all_dates, full_db = fetch_csv_database(mode_type="MONTH_02")
-        if all_dates:
-            target_timestamp = all_dates[0]
-            raw_v_map = full_db[selected_comp].get(target_timestamp, {})
+        with st.spinner("En güncel canlı veriler alınıyor..."):
+            live_data = fetch_live_data_from_web()
+            cur_layer = live_data.get(selected_comp, {"values": {}, "date": ""})
+            target_timestamp = cur_layer["date"] if cur_layer["date"] else "Canlı"
+            raw_v_map = cur_layer["values"]
 
     if st.button("Verileri Yenile"):
         st.cache_data.clear()
@@ -560,6 +672,7 @@ if raw_v_map:
             else:
                 active_category_values[s_name] = float(val)
 
+# Расчет шкалы: Для Дельты шкала симметрична [-Max, +Max]
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [-1.0, 1.0]
@@ -592,7 +705,7 @@ with col_nav:
     st.markdown("---")
     if compare_mode:
         st.write("**Karşılaştırma (Fark Analizi):**")
-        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  <br>{latest_timestamp}</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  {latest_timestamp}</span>", unsafe_allow_html=True)
     else:
         st.write("**Aktif Periyot:**")
         st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
@@ -714,22 +827,10 @@ with col_3d:
         const hudVal = document.getElementById('hud-sensor-val');
 
         // =========================================================================
-        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ
+        // СИСТЕМА СОХРАНЕНИЯ ПОЛОЖЕНИЯ КАМЕРЫ (С ФИКСАЦИЕЙ ПОСЛЕ ЗАГРУЗКИ)
         // =========================================================================
         let isModelLoaded = false;
         
-        function safeSetItem(key, val) { try { window.localStorage.setItem(key, val); } catch (e) {} }
-        function safeGetItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
-
-        const currentSessionId = payload.sessionId;
-        const savedSessionId = safeGetItem('threejs_session_id');
-
-        if (savedSessionId !== currentSessionId) {
-            safeSetItem('threejs_session_id', currentSessionId);
-            safeSetItem('threejs_camera_state', '');
-            safeSetItem('threejs_last_selected', '');
-        }
-
         function saveCamState() {
             if (!isModelLoaded) return; 
             try {
@@ -738,6 +839,15 @@ with col_3d:
                     target: controls.target.toArray()
                 }));
             } catch(e) {}
+        }
+
+        const currentSessionId = payload.sessionId;
+        const savedSessionId = window.localStorage.getItem('threejs_session_id');
+
+        if (savedSessionId !== currentSessionId) {
+            window.localStorage.setItem('threejs_session_id', currentSessionId);
+            window.localStorage.setItem('threejs_camera_state', '');
+            window.localStorage.setItem('threejs_last_selected', '');
         }
 
         // =========================================================================
@@ -1098,7 +1208,7 @@ with col_3d:
             }
 
             // ====================================================================
-            // ЛОГИКА КАМЕРЫ (С СОХРАНЕНИЕМ ПОЗИЦИИ И ВЕРНОЙ ИСХОДНОЙ МАТЕМАТИКОЙ)
+            // ЛОГИКА КАМЕРЫ (СОХРАНЕНИЕ ПОЗИЦИИ И ИСХОДНЫЙ ЦЕНТР)
             // ====================================================================
             const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
@@ -1144,10 +1254,7 @@ with col_3d:
                         const maxDim = Math.max(size.x, size.y, size.z, 20.0);
                         controls.target.copy(center); 
                         
-                        const fov = camera.fov * (Math.PI / 180);
-                        let cameraZ = Math.abs(maxDim / Math.sin(fov / 2)) * 0.25;
-                        
-                        // ИСХОДНАЯ МАТЕМАТИКА КАМЕРЫ ИЗ ПЕРВОГО КОДА
+                        // ИСХОДНАЯ ЦЕНТРОВКА КАМЕРЫ ИЗ ТВОЕГО РАБОЧЕГО КОДА
                         camera.position.set(center.x - maxDim * 0.40, center.y + maxDim * 0.45, center.z + maxDim * 0.55); 
                         controls.update();
                     }
@@ -1234,13 +1341,9 @@ if compare_mode and table_data:
     st.markdown("---")
     st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
-    # Создаем DataFrame из собранных данных
     df = pd.DataFrame(table_data)
-    
-    # Сортируем по номеру сенсора для красоты
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
-    # Используем возможности Streamlit для стилизации DataFrame
     st.dataframe(
         df,
         use_container_width=True,
