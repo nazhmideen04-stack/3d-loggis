@@ -78,6 +78,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
+    /* Радиокнопки */
     div[data-testid="stRadio"] > label {
         font-family: 'Chakra Petch', sans-serif !important;
         font-size: 14px !important;
@@ -113,6 +114,7 @@ st.markdown("""
         border-radius: 6px !important;
     }
 
+    /* Слайдер и чекбоксы */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00C8E6 !important;
         border-color: #00C8E6 !important;
@@ -162,6 +164,62 @@ st.markdown("""
         background-color: #132E4C !important;
         border-color: #00C8E6 !important;
         color: #FFFFFF !important;
+    }
+
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ - УЛУЧШЕННАЯ */
+    @media (max-width: 820px) {
+        /* Пространство по краям для удобного скролла (чтобы пальцем не задевать 3D) */
+        .main .block-container {
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+            padding-top: 1.5rem !important;
+            padding-bottom: 2.5rem !important;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: column-reverse !important;
+            gap: 1.5rem !important;
+        }
+
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+
+        /* Уменьшаем шрифты заголовков */
+        h1, h2, h3 {
+            letter-spacing: 1px !important;
+        }
+        h2 { font-size: 1.15rem !important; }
+        h3 { font-size: 1.05rem !important; }
+
+        .header-box h1 {
+            font-size: 19px !important;
+            margin-bottom: 2px !important;
+        }
+
+        .header-box div {
+            font-size: 11px !important;
+            letter-spacing: 1px !important;
+        }
+
+        .header-box img {
+            width: 110px !important;
+        }
+        
+        div[data-testid="stRadio"] div[role="radiogroup"] label p {
+            font-size: 15px !important;
+        }
+        
+        /* Уменьшаем текст метрик */
+        [data-testid="stMetricValue"] {
+            font-size: 24px !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 11px !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -345,7 +403,7 @@ with col_nav:
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
+        st.subheader("Zaman Seçimi")
         
         with st.spinner("Arşiv tarihleri yükleniyor..."):
             all_dates, full_db = fetch_csv_database(mode_type="ALL")
@@ -353,10 +411,9 @@ with col_nav:
         if not all_dates:
             st.warning("Arşiv verisi bulunamadı.")
         else:
-            latest_timestamp = all_dates[0]  # Самая последняя дата для сравнения
+            latest_timestamp = all_dates[0]
             
-            # Чекбокс для режима сравнения (Дельты)
-            compare_mode = st.checkbox("Karşılaştır")
+            compare_mode = st.checkbox("⚖️ En Güncel Veri ile Karşılaştır (Fark Analizi)")
 
             date_hierarchy = {}
             for d_str in all_dates:
@@ -369,19 +426,19 @@ with col_nav:
                         date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(time_part)
 
             years = sorted(list(date_hierarchy.keys()), reverse=True)
-            sel_year = st.selectbox("Yıl Seçiniz:", options=years)
+            sel_year = st.selectbox("📅 Yıl Seç:", options=years)
 
             if sel_year:
                 months = sorted(list(date_hierarchy[sel_year].keys()), reverse=True)
-                sel_month = st.selectbox("Ay Seçiniz:", options=months)
+                sel_month = st.selectbox("📅 Ay Seç:", options=months)
 
                 if sel_month:
                     days = sorted(list(date_hierarchy[sel_year][sel_month].keys()), reverse=True)
-                    sel_day = st.selectbox("Gün Seçiniz:", options=days)
+                    sel_day = st.selectbox("📅 Gün Seç:", options=days)
 
                     if sel_day:
                         times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("Saat Seçiniz:", options=times)
+                        sel_time = st.selectbox("⏱️ Saat Seç:", options=times)
 
                         if sel_time:
                             target_timestamp = f"{sel_year}/{sel_month}/{sel_day} {sel_time}"
@@ -414,7 +471,6 @@ if raw_v_map:
 
         if is_valid_sensor:
             if compare_mode:
-                # Режим сравнения: Дельта = Текущее (Последнее) - Прошлое (Архивное)
                 latest_val = latest_v_map.get(s_name)
                 if latest_val is not None and not np.isnan(latest_val):
                     delta = float(latest_val) - float(val)
@@ -517,8 +573,8 @@ with col_3d:
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #0A0E17; font-family: 'Chakra Petch', sans-serif; touch-action: none; }
-        #canvas-container { width: 100vw; height: 100vh; position: relative; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #0A0E17; font-family: 'Chakra Petch', sans-serif; touch-action: none; border-radius: 8px; }
+        #canvas-container { width: 100%; height: 100vh; position: relative; }
         #sensor-tooltip { position: absolute; display: none; background: rgba(14, 24, 42, 0.95); border: 1px solid #00C8E6; color: #FFFFFF; padding: 6px 12px; border-radius: 6px; font-size: 13px; pointer-events: none; z-index: 100; box-shadow: 0 4px 16px rgba(0, 200, 230, 0.35); }
         #selected-hud { position: absolute; top: 14px; left: 14px; display: none; background: rgba(10, 14, 23, 0.92); border: 1px solid #00C8E6; padding: 8px 14px; border-radius: 8px; z-index: 95; box-shadow: 0 4px 16px rgba(0, 200, 230, 0.3); max-width: 220px; }
         #selected-hud .hud-title { font-size: 11px; color: #8397AD; text-transform: uppercase; letter-spacing: 0.8px; }
