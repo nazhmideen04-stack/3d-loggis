@@ -380,74 +380,15 @@ def _new_page(browser):
 def _norm(t):
     return unicodedata.normalize("NFKD", str(t)).encode("ascii", "ignore").decode().lower().strip()
 
-def _setup_page_view(page, mode_type, log):
-    """
-    Настраивает страницу LoggIS:
-    1) Выбирает Duration (Tout для архива, 2 mois для live)
-    2) Переключает Display mode на Graphiques (чтобы кнопка 🠋CSV была активна)
-    """
-    try:
-        combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="attached", timeout=15000)
-        
-        # 1. Выбор периода (Duration)
-        dur_combo = combos.nth(0)
-        dur_opts = dur_combo.locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
-        )
-        
-        target_dur = None
-        if mode_type == "ALL":
-            for o in dur_opts:
-                if any(w in o["t"] or w in o["v"].lower() for w in ["tout", "all", "historique", "complet"]):
-                    target_dur = o["v"]
-                    break
-            if not target_dur and dur_opts:
-                target_dur = dur_opts[-1]["v"]
-        else:
-            for o in dur_opts:
-                if "2 mois" in o["t"] or "month_02" in o["v"].lower():
-                    target_dur = o["v"]
-                    break
-
-        if target_dur:
-            dur_combo.select_option(target_dur, timeout=8000)
-        else:
-            dur_combo.select_option(mode_type, timeout=8000)
-            
-        page.wait_for_timeout(1000)
-
-        # 2. Выбор Display mode = Graphiques
-        disp_combo = combos.nth(1)
-        disp_opts = disp_combo.locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
-        )
-        target_disp = None
-        for o in disp_opts:
-            if "graph" in o["t"] or "chart" in o["v"].lower():
-                target_disp = o["v"]
-                break
-        if target_disp:
-            disp_combo.select_option(target_disp, timeout=8000)
-            page.wait_for_timeout(1000)
-
-        return True
-    except Exception as e:
-        log.append(f"View setup hatası: {e}")
-        return False
-
-def _click_types(page, log):
+def _click_types(page):
     for loc in (page.get_by_text("Types", exact=True).first, page.get_by_text("Types").first):
         try:
             loc.click(timeout=8000, force=True)
             break
         except Exception: pass
-    try:
-        page.get_by_role("listbox").first.wait_for(state="attached", timeout=12000)
-    except Exception:
-        log.append("Kategori listbox bulunamadı")
+    page.get_by_role("listbox").first.wait_for(state="attached", timeout=12000)
 
-def _select_category(page, cat_cfg, log=None):
+def _select_category(page, cat_cfg):
     lb = page.get_by_role("listbox").first
     for c_name in cat_cfg["names"]:
         try:
@@ -475,172 +416,275 @@ def _wait_data_loaded(page, timeout=35000):
     except Exception: pass
     page.wait_for_timeout(2000)
 
-def _download_csv(page, log=None, tag=""):
+# -------------------------------------------------------------------------
+# ПУТЬ 1: CANLI VERILER (ЧТЕНИЕ АКТУАЛЬНОЙ ТАБЛИЦЫ MONTH_02)
+# -------------------------------------------------------------------------
+_SCRAPE_TABLE_JS = r"""
+() => {
+    const table = document.querySelector('table');
+    if (!table) return null;
+    const headers = [];
+    table.querySelectorAll('tr').forEach(tr => {
+        const ths = tr.querySelectorAll('th');
+        if (ths.length > 0 && headers.length === 0) {
+            ths.forEach(th => headers.push((th.innerText || th.textContent || '').trim()));
+        }
+    });
+    const rows = [];
+    table.querySelectorAll('tbody tr').forEach(tr => {
+        const cells = [];
+        tr.querySelectorAll('td').forEach(td => {
+            cells.push((td.innerText || td.textContent || '').trim());
+        });
+        if (cells.length > 0) rows.push(cells);
+    });
+    return { headers, rows };
+}
+"""
+
+def _scrape_live_table(browser, cat_key, cat_cfg):
+    page = _new_page(browser)
+    try:
+        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+        page.wait_for_timeout(2500)
+
+        # Выбираем 2 mois и Display mode = Tableau
+        combos = page.get_by_role("combobox")
+        combos.first.wait_for(state="attached", timeout=20000)
+
+        dur_combo = combos.nth(0)
+        dur_opts = dur_combo.locator("option").evaluate_all(
+            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
+        )
+        for o in dur_opts:
+            if "2 mois" in o["t"] or "month_02" in o["v"].lower():
+                dur_combo.select_option(o["v"], timeout=8000)
+                break
+        page.wait_for_timeout(1000)
+
+        disp_combo = combos.nth(1)
+        disp_opts = disp_combo.locator("option").evaluate_all(
+            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
+        )
+        for o in disp_opts:
+            if "tableau" in o["t"] or "table" in o["v"].lower():
+                disp_combo.select_option(o["v"], timeout=8000)
+                break
+        page.wait_for_timeout(1000)
+
+        _click_types(page)
+        if not _select_category(page, cat_cfg):
+            return {}, None
+        page.wait_for_timeout(2000)
+        _wait_data_loaded(page)
+
+        table_data = page.evaluate(_SCRAPE_TABLE_JS)
+        if not table_data or not table_data.get("headers") or not table_data.get("rows"):
+            return {}, None
+
+        headers = table_data["headers"]
+        rows = table_data["rows"]
+
+        sensor_cols = {}
+        for col_idx, h in enumerate(headers):
+            s_id = extract_sensor_name(h)
+            if s_id:
+                u_col = (s_id + " " + h).upper()
+                is_valid = False
+                if cat_key == "temp":
+                    if "-TP" in u_col or "TEMP" in u_col: is_valid = True
+                elif cat_key == "hoop":
+                    if "-CS" in u_col and "-TP" not in u_col and "TEMP" not in u_col: is_valid = True
+                elif cat_key == "axial":
+                    if "-S" in u_col and "-CS" not in u_col and "-TP" not in u_col and "TEMP" not in u_col: is_valid = True
+                if is_valid:
+                    sensor_cols[col_idx] = s_id
+
+        if not sensor_cols or not rows:
+            return {}, None
+
+        # В LoggIS первая строка - самая новая (крайняя)
+        newest_row = rows[0]
+        dt = None
+        for cell in newest_row[:3]:
+            dt = parse_ts(cell)
+            if dt: break
+
+        row_vals = {}
+        for col_idx, s_id in sensor_cols.items():
+            if col_idx < len(newest_row):
+                val = clean_num(newest_row[col_idx])
+                if not np.isnan(val):
+                    row_vals[s_id] = val
+
+        return row_vals, (ts_key(dt) if dt else None)
+    except Exception as e:
+        print(f"Canlı veri hatası {cat_key}: {e}")
+        return {}, None
+    finally:
+        try: page.context.close()
+        except Exception: pass
+
+@st.cache_data(ttl=180, show_spinner=False)
+def fetch_live_data():
+    live_db = {k: {} for k in CATEGORIES}
+    cat_timestamps = {}
+    with sync_playwright() as p:
+        browser = _launch_browser(p)
+        try:
+            for cat_key, cat_cfg in CATEGORIES.items():
+                vals, dt_key = _scrape_live_table(browser, cat_key, cat_cfg)
+                live_db[cat_key] = vals
+                cat_timestamps[cat_key] = dt_key
+        finally:
+            browser.close()
+    return live_db, cat_timestamps
+
+# -------------------------------------------------------------------------
+# ПУТЬ 2: ARŞİV VERİLER (ВЫБОР TOUT -> GRAPHIQUES -> TYPES -> КЛИК 🠋CSV)
+# -------------------------------------------------------------------------
+def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
+    page = _new_page(browser)
     downloads = []
     page.on("download", lambda d: downloads.append(d))
     ctx = page.context
     ctx.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))
-    
-    # Клик по кнопке CSV графика
-    btn = page.locator("a, button, span, div").filter(has_text=re.compile(r"CSV", re.I)).first
-    if not btn.is_visible():
-        btn = page.get_by_text("🠋CSV").first
-    
-    if btn.count() == 0:
-        if log is not None: log.append(f"CSV düğmesi yok {tag}")
-        return None
 
-    path = None
     try:
+        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+        page.wait_for_timeout(2500)
+
+        combos = page.get_by_role("combobox")
+        combos.first.wait_for(state="attached", timeout=20000)
+
+        # 1. В выпадающем списке Duration выбирается Tout
+        dur_combo = combos.nth(0)
+        dur_opts = dur_combo.locator("option").evaluate_all(
+            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
+        )
+        target_dur = None
+        for o in dur_opts:
+            if any(w in o["t"] or w in o["v"].lower() for w in ["tout", "all", "historique", "complet"]):
+                target_dur = o["v"]
+                break
+        if not target_dur and dur_opts:
+            target_dur = dur_opts[-1]["v"]
+        dur_combo.select_option(target_dur, timeout=8000)
+        page.wait_for_timeout(1000)
+
+        # 2. В Display mode выбирается Graphiques (появляется черная кнопка 🠋CSV)
+        disp_combo = combos.nth(1)
+        disp_opts = disp_combo.locator("option").evaluate_all(
+            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
+        )
+        target_disp = None
+        for o in disp_opts:
+            if "graph" in o["t"] or "chart" in o["v"].lower():
+                target_disp = o["v"]
+                break
+        if target_disp:
+            disp_combo.select_option(target_disp, timeout=8000)
+            page.wait_for_timeout(1000)
+
+        # 3. Должно быть выбрано TYPES
+        _click_types(page)
+        if not _select_category(page, cat_cfg):
+            return {}
+        page.wait_for_timeout(2500)
+        _wait_data_loaded(page)
+
+        # 4. Клик по кнопке 🠋CSV перехватывает и сохраняет полный файл архива
+        btn = page.locator("a, button, span, div").filter(has_text=re.compile(r"CSV", re.I)).first
+        if not btn.is_visible():
+            btn = page.get_by_text("🠋CSV").first
+
+        if btn.count() == 0:
+            return {}
+
+        path = None
         btn.click(force=True, timeout=15000)
-        # Ожидание выгрузки большого архива до 45 сек
         for _ in range(90):
             if downloads: break
             page.wait_for_timeout(500)
         if downloads:
             path = downloads[-1].path()
+
+        if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
+            return {}
+
+        # 5. Разбор CSV
+        with open(path, "rb") as f:
+            raw = f.read()
+        text = raw.decode("utf-8-sig", errors="ignore")
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        if len(lines) < 2:
+            return {}
+
+        delim = ";" if lines[0].count(";") >= lines[0].count(",") else ","
+        rows = list(csv.reader(lines, delimiter=delim))
+
+        header_idx = None
+        for i, r in enumerate(rows[:10]):
+            if any(extract_sensor_name(c) for c in r):
+                header_idx = i
+                break
+        if header_idx is None:
+            return {}
+
+        header = rows[header_idx]
+        sensor_cols = {}
+        for col_idx, h in enumerate(header):
+            s_id = extract_sensor_name(h)
+            if s_id:
+                u_col = (s_id + " " + h).upper()
+                is_valid = False
+                if cat_key == "temp":
+                    if "-TP" in u_col or "TEMP" in u_col: is_valid = True
+                elif cat_key == "hoop":
+                    if "-CS" in u_col and "-TP" not in u_col and "TEMP" not in u_col: is_valid = True
+                elif cat_key == "axial":
+                    if "-S" in u_col and "-CS" not in u_col and "-TP" not in u_col and "TEMP" not in u_col: is_valid = True
+                if is_valid:
+                    sensor_cols[col_idx] = s_id
+
+        if not sensor_cols:
+            return {}
+
+        out = {}
+        for r in rows[header_idx + 1:]:
+            if not r: continue
+            row_vals = {}
+            for col_idx, s_id in sensor_cols.items():
+                if col_idx < len(r):
+                    val = clean_num(r[col_idx])
+                    if not np.isnan(val):
+                        row_vals[s_id] = val
+            dt = None
+            for cell in r[:3]:
+                dt = parse_ts(cell)
+                if dt: break
+            if dt and row_vals:
+                out.setdefault(ts_key(dt), {}).update(row_vals)
+
+        return out
+
     except Exception as e:
-        if log is not None: log.append(f"İndirme hatası {tag}: {e}")
-    return path if path and os.path.exists(path) else None
-
-def parse_loggis_csv(path, cat_key):
-    if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
-        return {}, {}, None
-    
-    with open(path, "rb") as f:
-        raw = f.read()
-    text = raw.decode("utf-8-sig", errors="ignore")
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    if len(lines) < 2:
-        return {}, {}, None
-
-    delim = ";" if lines[0].count(";") >= lines[0].count(",") else ","
-    rows = list(csv.reader(lines, delimiter=delim))
-
-    header_idx = None
-    for i, r in enumerate(rows[:10]):
-        if any(extract_sensor_name(c) for c in r):
-            header_idx = i
-            break
-            
-    if header_idx is None:
-        return {}, {}, None
-
-    header = rows[header_idx]
-
-    sensor_cols = {}
-    for col_idx, h in enumerate(header):
-        s_id = extract_sensor_name(h)
-        if s_id:
-            u_col = (s_id + " " + h).upper()
-            is_valid = False
-            if cat_key == "temp":
-                if "-TP" in u_col or "TEMP" in u_col:
-                    is_valid = True
-            elif cat_key == "hoop":
-                if "-CS" in u_col and "-TP" not in u_col and "TEMP" not in u_col:
-                    is_valid = True
-            elif cat_key == "axial":
-                if "-S" in u_col and "-CS" not in u_col and "-TP" not in u_col and "TEMP" not in u_col:
-                    is_valid = True
-
-            if is_valid:
-                sensor_cols[col_idx] = s_id
-
-    if not sensor_cols:
-        return {}, {}, None
-
-    out = {}
-    time_indexed_rows = []
-
-    for r in rows[header_idx + 1:]:
-        if not r: continue
-        row_vals = {}
-        for col_idx, s_id in sensor_cols.items():
-            if col_idx < len(r):
-                val = clean_num(r[col_idx])
-                if not np.isnan(val):
-                    row_vals[s_id] = val
-                    
-        dt = None
-        for cell in r[:3]:
-            dt = parse_ts(cell)
-            if dt: break
-            
-        if dt:
-            k = ts_key(dt)
-            time_indexed_rows.append((dt, row_vals))
-            if row_vals:
-                out.setdefault(k, {}).update(row_vals)
-
-    latest_snapshot = {}
-    max_date_key = None
-
-    if time_indexed_rows:
-        time_indexed_rows.sort(key=lambda x: x[0], reverse=True)
-        max_dt, max_row_vals = time_indexed_rows[0]
-        max_date_key = ts_key(max_dt)
-        latest_snapshot = {s_id: v for s_id, v in max_row_vals.items()}
-
-    return out, latest_snapshot, max_date_key
-
-def _csv_once(browser, cat_key, cat_cfg, mode_type, log):
-    page = _new_page(browser)
-    try:
-        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2500)
-        _setup_page_view(page, mode_type, log)
-        _click_types(page, log)
-        if not _select_category(page, cat_cfg, log):
-            return {}, {}, None
-        page.wait_for_timeout(2500)
-        _wait_data_loaded(page)
-        path = _download_csv(page, log, f"({cat_key})")
-        if not path:
-            return {}, {}, None
-        return parse_loggis_csv(path, cat_key)
-    except Exception as e:
-        log.append(f"{cat_key} CSV hatası: {e}")
-        return {}, {}, None
+        print(f"Arşiv indirme hatası {cat_key}: {e}")
+        return {}
     finally:
         try: page.context.close()
         except Exception: pass
 
-# Режим Canlı Veriler: строго MONTH_02 (2 mois), берет самую свежую строку таблицы
-@st.cache_data(ttl=180, show_spinner=False)
-def fetch_live_table(mode_type="MONTH_02"):
-    live_db = {k: {} for k in CATEGORIES}
-    cat_timestamps = {}
-    log = []
-
-    with sync_playwright() as p:
-        browser = _launch_browser(p)
-        try:
-            for cat_key, cat_cfg in CATEGORIES.items():
-                _, latest_snapshot, max_dt_key = _csv_once(browser, cat_key, cat_cfg, mode_type, log)
-                if latest_snapshot and max_dt_key:
-                    live_db[cat_key] = latest_snapshot
-                    cat_timestamps[cat_key] = max_dt_key
-                else:
-                    live_db[cat_key] = {}
-                    cat_timestamps[cat_key] = None
-        finally:
-            browser.close()
-
-    return live_db, cat_timestamps, log
-
-# Режим Arşiv Veriler: скачивает полный CSV через режим Graphiques (Tout)
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_csv_database(mode_type="ALL"):
+def fetch_archive_csv_database():
     historical_db = {k: {} for k in CATEGORIES}
     dates_set = set()
-    log = []
 
     with sync_playwright() as p:
         browser = _launch_browser(p)
         try:
             for cat_key, cat_cfg in CATEGORIES.items():
-                parsed, _, _ = _csv_once(browser, cat_key, cat_cfg, mode_type, log)
+                parsed = _download_archive_csv_for_category(browser, cat_key, cat_cfg)
                 if parsed:
                     for k, v in parsed.items():
                         dates_set.add(k)
@@ -650,7 +694,7 @@ def fetch_csv_database(mode_type="ALL"):
         finally:
             browser.close()
 
-    return sorted(list(dates_set), reverse=True), historical_db, log
+    return sorted(list(dates_set), reverse=True), historical_db
 
 @st.cache_data
 def get_model_b64(path):
@@ -659,7 +703,9 @@ def get_model_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
+# ---------------------------------------------------------
 # НАВИГАЦИЯ И УПРАВЛЕНИЕ
+# ---------------------------------------------------------
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
@@ -687,8 +733,8 @@ with col_nav:
         st.markdown("---")
         st.subheader("Zaman Seçimi")
         
-        with st.spinner("Arşiv verileri LoggIS üzerinden CSV olarak yükleniyor..."):
-            all_dates, full_db, logs = fetch_csv_database(mode_type="ALL")
+        with st.spinner("Arşiv CSV dosyası LoggIS üzerinden indiriliyor (Tout -> Graphiques -> CSV)..."):
+            all_dates, full_db = fetch_archive_csv_database()
 
         cat_rows = full_db.get(selected_comp, {})
         cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)
@@ -723,13 +769,13 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # СИНХРОНИЗАЦИЯ: Aktif Periyot строго равен открытой архивной дате
+                            # СИНХРОНИЗАЦИЯ: Aktif Periyot показывает именно выбранную архивную дату
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
     else:
-        with st.spinner("En güncel veriler alınıyor (2 mois)..."):
-            live_db, cat_timestamps, logs = fetch_live_table(mode_type="MONTH_02")
+        with st.spinner("En güncel veriler alınıyor (Canlı)..."):
+            live_db, cat_timestamps = fetch_live_data()
         
         raw_v_map = live_db.get(selected_comp, {})
         cur_ts = cat_timestamps.get(selected_comp)
@@ -738,7 +784,7 @@ with col_nav:
             st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
             target_timestamp = "-"
         else:
-            # СИНХРОНИЗАЦИЯ: Aktif Periyot строго равен дате актуального замера
+            # СИНХРОНИЗАЦИЯ: Aktif Periyot показывает дату крайней живой строки
             target_timestamp = fmt_ts(cur_ts)
 
     if st.button("Verileri Yenile"):
@@ -777,9 +823,7 @@ if raw_v_map:
         else:
             active_category_values[s_name] = float(val)
 
-# ---------------------------------------------------------
 # РАСЧЕТ ШКАЛЫ СТРОГО ОТ ИМЕЮЩИХСЯ ДАННЫХ
-# ---------------------------------------------------------
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 0.0]
@@ -1464,7 +1508,9 @@ with col_3d:
         final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
         st.components.v1.html(final_html, height=600, scrolling=False)
 
-# ТАБЛИЦА СРАВНЕНИЯ
+# ---------------------------------------------------------
+# ТАБЛИЦА СРАВНЕНИЯ (FARK RAPORU)
+# ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
     st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
