@@ -6,7 +6,7 @@ import unicodedata
 import json
 import base64
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
@@ -192,7 +192,7 @@ st.markdown("""
             padding-bottom: 2.5rem !important;
         }
 
-        /* Размещение 3D сцены наверху на смартфонах */
+        /* 3D-сцена на смартфонах располагается первой (вверху) */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
@@ -253,7 +253,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
     <div style="display: flex; align-items: center;">
         {LOGO_TAG}
@@ -461,6 +461,11 @@ def _download_csv(page, log=None, tag=""):
     return path if path and os.path.exists(path) else None
 
 def parse_loggis_csv(path, cat_key):
+    """
+    Разбор CSV:
+    Находит все строки с датами.
+    Строго отбирает самую верхнюю / крайнюю строку и берет значения только этой даты.
+    """
     if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
         return {}, {}, None
     
@@ -485,6 +490,7 @@ def parse_loggis_csv(path, cat_key):
 
     header = rows[header_idx]
 
+    # Привязка колонок строго по категориям
     sensor_cols = {}
     for col_idx, h in enumerate(header):
         s_id = extract_sensor_name(h)
@@ -534,11 +540,11 @@ def parse_loggis_csv(path, cat_key):
     max_date_key = None
 
     if time_indexed_rows:
+        # Хронологическая сортировка: самая свежая дата — строго первая
         time_indexed_rows.sort(key=lambda x: x[0], reverse=True)
         max_dt, max_row_vals = time_indexed_rows[0]
-        if max_row_vals:
-            max_date_key = ts_key(max_dt)
-            latest_snapshot = {s_id: v for s_id, v in max_row_vals.items()}
+        max_date_key = ts_key(max_dt)
+        latest_snapshot = {s_id: v for s_id, v in max_row_vals.items()}
 
     return out, latest_snapshot, max_date_key
 
@@ -565,30 +571,22 @@ def _csv_once(browser, cat_key, cat_cfg, mode_type, log):
         try: page.context.close()
         except Exception: pass
 
-@st.cache_data(ttl=120, show_spinner=False)
-def fetch_live_table():
+# В режиме Canlı Veriler запрашивается MONTH_02 (2 mois, как на экране)
+@st.cache_data(ttl=180, show_spinner=False)
+def fetch_live_table(mode_type="MONTH_02"):
     live_db = {k: {} for k in CATEGORIES}
     cat_timestamps = {}
     log = []
-
-    modes_to_try = ["DAY_01", "WEEK_01", "MONTH_01"]
 
     with sync_playwright() as p:
         browser = _launch_browser(p)
         try:
             for cat_key, cat_cfg in CATEGORIES.items():
-                found_live = False
-                for m_mode in modes_to_try:
-                    _, latest_snapshot, max_dt_key = _csv_once(browser, cat_key, cat_cfg, m_mode, log)
-                    if latest_snapshot and max_dt_key:
-                        dt_obj = parse_ts(max_dt_key)
-                        now_tr = datetime.now(ZoneInfo("Europe/Istanbul")).replace(tzinfo=None)
-                        if dt_obj and (now_tr - dt_obj) <= timedelta(days=2):
-                            live_db[cat_key] = latest_snapshot
-                            cat_timestamps[cat_key] = max_dt_key
-                            found_live = True
-                            break
-                if not found_live:
+                _, latest_snapshot, max_dt_key = _csv_once(browser, cat_key, cat_cfg, mode_type, log)
+                if latest_snapshot and max_dt_key:
+                    live_db[cat_key] = latest_snapshot
+                    cat_timestamps[cat_key] = max_dt_key
+                else:
                     live_db[cat_key] = {}
                     cat_timestamps[cat_key] = None
         finally:
@@ -626,8 +624,8 @@ def get_model_b64(path):
         return base64.b64encode(f.read()).decode()
 
 # НАВИГАЦИЯ И УПРАВЛЕНИЕ
-# В мобильной версии благодаря CSS [data-testid="stHorizontalBlock"] { flex-direction: column !important; }
-# блок col_3d перемещается на первое место экрана
+# Благодаря мобильным стилям [data-testid="stHorizontalBlock"] { flex-direction: column !important; }
+# колонка col_3d автоматически оказывается первой (вверху страницы)
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
@@ -695,14 +693,14 @@ with col_nav:
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
     else:
-        with st.spinner("Güncel veriler kontrol ediliyor..."):
-            live_db, cat_timestamps, logs = fetch_live_table()
+        with st.spinner("En güncel veriler alınıyor (2 mois)..."):
+            live_db, cat_timestamps, logs = fetch_live_table(mode_type="MONTH_02")
         
         raw_v_map = live_db.get(selected_comp, {})
         cur_ts = cat_timestamps.get(selected_comp)
         
         if not raw_v_map or not cur_ts:
-            st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' sensörleri veri iletmiyor.")
+            st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
             target_timestamp = "-"
         else:
             target_timestamp = fmt_ts(cur_ts)
@@ -793,7 +791,7 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# THREE.JS 3D ОБЛАСТЬ (НА МОБИЛЬНЫХ ВЕРСИЯХ ОТОБРАЖАЕТСЯ ПЕРВОЙ)
+# THREE.JS 3D ОБЛАСТЬ (ВВЕРХУ НА СМАРТФОНАХ)
 # ---------------------------------------------------------
 with col_3d:
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
@@ -833,8 +831,8 @@ with col_3d:
         }
         json_payload = json.dumps(payload_data)
 
-        # Добавлены отступы по бокам (#canvas-container width: calc(100% - 40px); margin: 0 auto;)
-        # для возможности комфортной вертикальной прокрутки страницы пальцем на смартфоне
+        # Контейнеру задан отступ по бокам: width: calc(100% - 44px); margin: 0 auto;
+        # Благодаря этому по краям остаются полосы для прокрутки страницы пальцем
         raw_template = """<!DOCTYPE html>
 <html>
 <head>
@@ -856,7 +854,7 @@ with col_3d:
         #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
         @media (max-width: 600px) { 
-            #canvas-container { width: calc(100% - 40px) !important; margin: 0 auto !important; }
+            #canvas-container { width: calc(100% - 44px) !important; margin: 0 auto !important; }
             #color-legend { padding: 6px 8px; top: 10px; right: 10px; } 
             .legend-bar-container { height: 130px; } 
             #legend-bar { width: 12px; } 
