@@ -34,7 +34,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# DESTECH Stili ve Mobil Uyumluluk
+# DESTECH Stili ve Gelişmiş Mobil Uyumluluk
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -181,21 +181,23 @@ st.markdown("""
         font-weight: 700 !important;
         letter-spacing: 1px !important;
         background-color: #0A0E17 !important;
+        cursor: pointer !important;
     }
 
-    /* Mobil Duzen */
+    /* GELİŞMİŞ MOBİL UYUMLULUK VE KULLANILABİLİRLİK */
     @media (max-width: 820px) {
         .main .block-container {
-            padding-left: 1.2rem !important;
-            padding-right: 1.2rem !important;
-            padding-top: 1rem !important;
-            padding-bottom: 2.5rem !important;
+            padding-left: 0.6rem !important;
+            padding-right: 0.6rem !important;
+            padding-top: 0.5rem !important;
+            padding-bottom: 2rem !important;
         }
 
+        /* 3B Model mobilde en üstte yer alır */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
-            gap: 1.5rem !important;
+            gap: 1rem !important;
         }
 
         [data-testid="column"] {
@@ -205,25 +207,31 @@ st.markdown("""
         }
 
         h1, h2, h3 {
-            letter-spacing: 0.8px !important;
+            letter-spacing: 0.6px !important;
         }
-        h2 { font-size: 1.1rem !important; }
-        h3 { font-size: 1.0rem !important; }
+        h2 { font-size: 1.0rem !important; }
+        h3 { font-size: 0.9rem !important; }
+
+        .header-box {
+            margin-top: -10px !important;
+            margin-bottom: 10px !important;
+            padding-bottom: 6px !important;
+        }
 
         .header-box h1 {
-            font-size: 17px !important;
-            line-height: 1.15 !important;
+            font-size: 15px !important;
+            line-height: 1.1 !important;
             margin-bottom: 2px !important;
             word-break: break-word !important;
         }
 
         .header-box div {
-            font-size: 10px !important;
-            letter-spacing: 1px !important;
+            font-size: 9px !important;
+            letter-spacing: 0.8px !important;
         }
 
         .header-box img {
-            width: 95px !important;
+            width: 80px !important;
         }
         
         div[data-testid="stRadio"] div[role="radiogroup"] label p {
@@ -231,10 +239,14 @@ st.markdown("""
         }
         
         [data-testid="stMetricValue"] {
-            font-size: 22px !important;
+            font-size: 18px !important;
         }
         [data-testid="stMetricLabel"] {
-            font-size: 11px !important;
+            font-size: 10px !important;
+        }
+
+        iframe {
+            height: 420px !important;
         }
     }
 </style>
@@ -250,8 +262,8 @@ LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 250px; h
 st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERING - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
     <div style="display: align-items: center;">
         {LOGO_TAG}
@@ -809,21 +821,20 @@ if raw_v_map:
         
         if compare_mode:
             latest_val = latest_v_map.get(s_name)
-            str_val = f"{float(val):.2f}"
-            str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
+            val_float = float(val)
+            latest_float = float(latest_val) if latest_val is not None and not np.isnan(latest_val) else np.nan
             
-            if latest_val is not None and not np.isnan(latest_val):
-                delta = float(latest_val) - float(val)
+            if not np.isnan(latest_float):
+                delta = latest_float - val_float
                 active_category_values[s_name] = delta
-                str_delta = f"{delta:+.2f}"
             else:
-                str_delta = "-"
+                delta = np.nan
                 
             table_data.append({
                 "Sensör No": s_name,
-                "Arşiv Değeri": str_val,
-                "Güncel Değer": str_latest,
-                "Fark (Δ)": str_delta
+                "Arşiv Değeri": val_float,
+                "Güncel Değer": latest_float,
+                "Fark (Δ)": delta
             })
         else:
             active_category_values[s_name] = float(val)
@@ -944,10 +955,10 @@ with col_3d:
         .legend-bar-container { display: flex; align-items: stretch; height: 180px; }
         #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
-        @media (max-width: 600px) { 
-            #canvas-container { width: calc(100% - 44px) !important; margin: 0 auto !important; }
+        @media (max-width: 820px) { 
+            #canvas-container { width: calc(100% - 48px) !important; margin: 0 auto !important; height: 480px !important; }
             #color-legend { padding: 6px 8px; top: 10px; right: 10px; } 
-            .legend-bar-container { height: 130px; } 
+            .legend-bar-container { height: 120px; } 
             #legend-bar { width: 12px; } 
             #legend-title { font-size: 10px; } 
             .legend-labels { font-size: 9px; } 
@@ -1513,7 +1524,7 @@ with col_3d:
         st.components.v1.html(final_html, height=600, scrolling=False)
 
 # ---------------------------------------------------------
-# TABLO (FARK RAPORU)
+# FARK RAPORU TABLOSU (SAYISAL SIRALAMA DESTEKLİ)
 # ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
@@ -1528,9 +1539,24 @@ if compare_mode and table_data:
         hide_index=True,
         height=400,
         column_config={
-            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
-            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
-            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
-            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
+            "Sensör No": st.column_config.TextColumn(
+                "Sensör No", 
+                width="medium"
+            ),
+            "Arşiv Değeri": st.column_config.NumberColumn(
+                f"Geçmiş ({target_timestamp})", 
+                format="%.2f",
+                width="small"
+            ),
+            "Güncel Değer": st.column_config.NumberColumn(
+                f"Şimdi ({latest_timestamp})", 
+                format="%.2f",
+                width="small"
+            ),
+            "Fark (Δ)": st.column_config.NumberColumn(
+                "Fark (Δ)", 
+                format="%+.2f",
+                width="small"
+            ),
         }
     )
