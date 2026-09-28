@@ -914,7 +914,7 @@ with col_3d:
     # ДИНАМИЧЕСКИЙ ГРАФИК (МЕСЯЦЫ НА ТУРЕЦКОМ ВВИДУ + КНОПКА СКАЧИВАНИЯ ИСТОРИИ СЕНСОРА)
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
-        st.markdown(f"### Sensörün Zaman İçindeki Değişimi: {selected_sensor}")
+        st.markdown(f"### Sensörün Zaman İçİndekİ Değİşİmİ: {selected_sensor}")
         
         sensor_history_data = []
         
