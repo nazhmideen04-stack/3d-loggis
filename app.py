@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
+from io import BytesIO
 
 # 1. STREAMLIT TEMASI VE AYARLARI
 os.makedirs(".streamlit", exist_ok=True)
@@ -550,7 +551,7 @@ def fetch_live_data():
     return live_db, cat_timestamps
 
 # -------------------------------------------------------------------------
-# 2. ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME (ИСПРАВЛЕННЫЙ ПАРСЕР КОЛОНОК)
+# 2. ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME
 # -------------------------------------------------------------------------
 def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
     page = _new_page(browser)
@@ -638,7 +639,6 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         if len(lines) < 2:
             return {}
 
-        # Автоматическое определение разделителя (запятая или точка с запятой), предотвращающее попадание всех данных в одну колонку
         sample = text[:2048]
         delimiter = ";"
         try:
@@ -750,6 +750,7 @@ with col_nav:
     latest_v_map = {}
     cat_cfg = CATEGORIES[selected_comp]
     compare_mode = False
+    full_db = {}
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
@@ -789,11 +790,9 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # Aktif Periyot: Seçilen geçmiş arşiv tarihini gösterir
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
 
-                            # Karşılaştırma modunda canlı verilerle kıyaslama
                             if compare_mode:
                                 with st.spinner("Kıyaslama için canlı veriler alınıyor..."):
                                     live_db_cmp, live_ts_cmp = fetch_live_data()
@@ -811,7 +810,6 @@ with col_nav:
             st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
             target_timestamp = "-"
         else:
-            # Aktif Periyot: Canlı tablodaki son satırın tarihini gösterir
             target_timestamp = fmt_ts(cur_ts)
 
     if st.button("Verileri Yenile"):
@@ -900,6 +898,28 @@ with col_nav:
     else:
         limit_str = "-"
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
+
+    # ---------------------------------------------------------
+    # НОВОЕ: ИДЕЯ 1 - ЭКСПОРТ ОТЧЕТА В EXCEL (DESTECH БРЕНДИНГ)
+    # ---------------------------------------------------------
+    st.markdown("---")
+    st.subheader("RAPOR DIŞA AKTAR")
+    if active_category_values:
+        export_df = pd.DataFrame([
+            {"Sensör No": k, f"Ölçüm ({cat_cfg['unit']})": v} for k, v in active_category_values.items()
+        ]).sort_values(by="Sensör No").reset_index(drop=True)
+        
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            export_df.to_excel(writer, index=False, sheet_name='DESTECH_Rapor')
+        processed_data = output.getvalue()
+        
+        st.download_button(
+            label="📥 Excel Raporunu İndir",
+            data=processed_data,
+            file_name=f"DESTECH_Rapor_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # ---------------------------------------------------------
 # THREE.JS 3D PENCERESİ
