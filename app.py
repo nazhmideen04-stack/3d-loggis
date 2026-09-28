@@ -34,7 +34,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH
+# Фирменный стиль DESTECH с мобильной адаптацией
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -181,6 +181,63 @@ st.markdown("""
         font-weight: 700 !important;
         letter-spacing: 1px !important;
         background-color: #0A0E17 !important;
+    }
+
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
+    @media (max-width: 820px) {
+        .main .block-container {
+            padding-left: 1.2rem !important;
+            padding-right: 1.2rem !important;
+            padding-top: 1rem !important;
+            padding-bottom: 2.5rem !important;
+        }
+
+        /* Размещение 3D сцены наверху на смартфонах */
+        [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 1.5rem !important;
+        }
+
+        [data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+
+        h1, h2, h3 {
+            letter-spacing: 0.8px !important;
+        }
+        h2 { font-size: 1.1rem !important; }
+        h3 { font-size: 1.0rem !important; }
+
+        /* Шрифт заголовка CATERİNG - THY сделан мельче */
+        .header-box h1 {
+            font-size: 17px !important;
+            line-height: 1.15 !important;
+            margin-bottom: 2px !important;
+            word-break: break-word !important;
+        }
+
+        .header-box div {
+            font-size: 10px !important;
+            letter-spacing: 1px !important;
+        }
+
+        .header-box img {
+            width: 95px !important;
+        }
+        
+        div[data-testid="stRadio"] div[role="radiogroup"] label p {
+            font-size: 14px !important;
+        }
+        
+        [data-testid="stMetricValue"] {
+            font-size: 22px !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 11px !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -404,11 +461,6 @@ def _download_csv(page, log=None, tag=""):
     return path if path and os.path.exists(path) else None
 
 def parse_loggis_csv(path, cat_key):
-    """
-    Честный разбор CSV без додумывания данных:
-    Находит все строки с датами. Если дат или данных нет — возвращает пустые словари.
-    На крайнюю дату возвращает только существующие замеры.
-    """
     if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
         return {}, {}, None
     
@@ -433,7 +485,6 @@ def parse_loggis_csv(path, cat_key):
 
     header = rows[header_idx]
 
-    # Строгая фильтрация колонок
     sensor_cols = {}
     for col_idx, h in enumerate(header):
         s_id = extract_sensor_name(h)
@@ -485,7 +536,6 @@ def parse_loggis_csv(path, cat_key):
     if time_indexed_rows:
         time_indexed_rows.sort(key=lambda x: x[0], reverse=True)
         max_dt, max_row_vals = time_indexed_rows[0]
-        # Если в строке с крайней датой есть хотя бы одно валидное значение
         if max_row_vals:
             max_date_key = ts_key(max_dt)
             latest_snapshot = {s_id: v for s_id, v in max_row_vals.items()}
@@ -515,14 +565,12 @@ def _csv_once(browser, cat_key, cat_cfg, mode_type, log):
         try: page.context.close()
         except Exception: pass
 
-# В режиме Live запрашиваем реальный актуальный период (DAY_01 или WEEK_01)
 @st.cache_data(ttl=120, show_spinner=False)
 def fetch_live_table():
     live_db = {k: {} for k in CATEGORIES}
     cat_timestamps = {}
     log = []
 
-    # Пробуем запросить сегодняшний срез DAY_01, если пусто — WEEK_01
     modes_to_try = ["DAY_01", "WEEK_01", "MONTH_01"]
 
     with sync_playwright() as p:
@@ -535,7 +583,6 @@ def fetch_live_table():
                     if latest_snapshot and max_dt_key:
                         dt_obj = parse_ts(max_dt_key)
                         now_tr = datetime.now(ZoneInfo("Europe/Istanbul")).replace(tzinfo=None)
-                        # Честная проверка: данные считаются "живыми", только если получены в пределах последних 48 часов
                         if dt_obj and (now_tr - dt_obj) <= timedelta(days=2):
                             live_db[cat_key] = latest_snapshot
                             cat_timestamps[cat_key] = max_dt_key
@@ -579,6 +626,8 @@ def get_model_b64(path):
         return base64.b64encode(f.read()).decode()
 
 # НАВИГАЦИЯ И УПРАВЛЕНИЕ
+# В мобильной версии благодаря CSS [data-testid="stHorizontalBlock"] { flex-direction: column !important; }
+# блок col_3d перемещается на первое место экрана
 col_nav, col_3d = st.columns([1, 4])
 
 with col_nav:
@@ -652,9 +701,8 @@ with col_nav:
         raw_v_map = live_db.get(selected_comp, {})
         cur_ts = cat_timestamps.get(selected_comp)
         
-        # Честное информирование: если данных нет на сайте, не придумываем их
         if not raw_v_map or not cur_ts:
-            st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için güncel aktif ölçüm bulunmuyor. Sensörler veri iletmiyor.")
+            st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' sensörleri veri iletmiyor.")
             target_timestamp = "-"
         else:
             target_timestamp = fmt_ts(cur_ts)
@@ -745,7 +793,7 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# THREE.JS 3D
+# THREE.JS 3D ОБЛАСТЬ (НА МОБИЛЬНЫХ ВЕРСИЯХ ОТОБРАЖАЕТСЯ ПЕРВОЙ)
 # ---------------------------------------------------------
 with col_3d:
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
@@ -785,6 +833,8 @@ with col_3d:
         }
         json_payload = json.dumps(payload_data)
 
+        # Добавлены отступы по бокам (#canvas-container width: calc(100% - 40px); margin: 0 auto;)
+        # для возможности комфортной вертикальной прокрутки страницы пальцем на смартфоне
         raw_template = """<!DOCTYPE html>
 <html>
 <head>
@@ -805,7 +855,17 @@ with col_3d:
         .legend-bar-container { display: flex; align-items: stretch; height: 180px; }
         #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
-        @media (max-width: 600px) { #color-legend { padding: 6px 8px; top: 10px; right: 10px; } .legend-bar-container { height: 130px; } #legend-bar { width: 12px; } #legend-title { font-size: 10px; } .legend-labels { font-size: 9px; } #selected-hud { top: 10px; left: 10px; padding: 6px 10px; } #selected-hud .hud-name { font-size: 13px; } #selected-hud .hud-val { font-size: 15px; } }
+        @media (max-width: 600px) { 
+            #canvas-container { width: calc(100% - 40px) !important; margin: 0 auto !important; }
+            #color-legend { padding: 6px 8px; top: 10px; right: 10px; } 
+            .legend-bar-container { height: 130px; } 
+            #legend-bar { width: 12px; } 
+            #legend-title { font-size: 10px; } 
+            .legend-labels { font-size: 9px; } 
+            #selected-hud { top: 10px; left: 10px; padding: 6px 10px; } 
+            #selected-hud .hud-name { font-size: 13px; } 
+            #selected-hud .hud-val { font-size: 15px; } 
+        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
