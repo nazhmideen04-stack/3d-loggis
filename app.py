@@ -34,7 +34,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# DESTECH Stili ve Gelişmiş Mobil Uyumluluk
+# DESTECH Stili ve Mobil Uyumluluk
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -181,22 +181,21 @@ st.markdown("""
         font-weight: 700 !important;
         letter-spacing: 1px !important;
         background-color: #0A0E17 !important;
-        cursor: pointer !important;
     }
 
-    /* GELİŞMİŞ MOBİL UYUMLULUK */
+    /* Mobil Duzen */
     @media (max-width: 820px) {
         .main .block-container {
-            padding-left: 0.6rem !important;
-            padding-right: 0.6rem !important;
-            padding-top: 0.5rem !important;
-            padding-bottom: 2rem !important;
+            padding-left: 1.2rem !important;
+            padding-right: 1.2rem !important;
+            padding-top: 1rem !important;
+            padding-bottom: 2.5rem !important;
         }
 
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
-            gap: 1rem !important;
+            gap: 1.5rem !important;
         }
 
         [data-testid="column"] {
@@ -206,31 +205,25 @@ st.markdown("""
         }
 
         h1, h2, h3 {
-            letter-spacing: 0.6px !important;
+            letter-spacing: 0.8px !important;
         }
-        h2 { font-size: 1.0rem !important; }
-        h3 { font-size: 0.9rem !important; }
-
-        .header-box {
-            margin-top: -10px !important;
-            margin-bottom: 10px !important;
-            padding-bottom: 6px !important;
-        }
+        h2 { font-size: 1.1rem !important; }
+        h3 { font-size: 1.0rem !important; }
 
         .header-box h1 {
-            font-size: 15px !important;
-            line-height: 1.1 !important;
+            font-size: 17px !important;
+            line-height: 1.15 !important;
             margin-bottom: 2px !important;
             word-break: break-word !important;
         }
 
         .header-box div {
-            font-size: 9px !important;
-            letter-spacing: 0.8px !important;
+            font-size: 10px !important;
+            letter-spacing: 1px !important;
         }
 
         .header-box img {
-            width: 80px !important;
+            width: 95px !important;
         }
         
         div[data-testid="stRadio"] div[role="radiogroup"] label p {
@@ -238,14 +231,10 @@ st.markdown("""
         }
         
         [data-testid="stMetricValue"] {
-            font-size: 18px !important;
+            font-size: 22px !important;
         }
         [data-testid="stMetricLabel"] {
-            font-size: 10px !important;
-        }
-
-        iframe {
-            height: 420px !important;
+            font-size: 11px !important;
         }
     }
 </style>
@@ -261,8 +250,8 @@ LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 250px; h
 st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERING - THY</h1>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: align-items: center;">
         {LOGO_TAG}
@@ -638,19 +627,8 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         if len(lines) < 2:
             return {}
 
-        sample = text[:4096]
-        delimiter = ";"
-        if sample.count(",") > sample.count(";"):
-            delimiter = ","
-        elif sample.count("\t") > sample.count(";") and sample.count("\t") > sample.count(","):
-            delimiter = "\t"
-
-        rows = []
-        for line in lines:
-            reader = csv.reader([line], delimiter=delimiter)
-            for row in reader:
-                if row:
-                    rows.append(row)
+        delim = ";" if lines[0].count(";") >= lines[0].count(",") else ","
+        rows = list(csv.reader(lines, delimiter=delim))
 
         header_idx = None
         for i, r in enumerate(rows[:25]):
@@ -750,7 +728,6 @@ with col_nav:
     latest_v_map = {}
     cat_cfg = CATEGORIES[selected_comp]
     compare_mode = False
-    full_db = {}
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
@@ -790,9 +767,11 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
+                            # Aktif Periyot: Seçilen geçmiş arşiv tarihini gösterir
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
 
+                            # Karşılaştırma modunda canlı verilerle kıyaslama
                             if compare_mode:
                                 with st.spinner("Kıyaslama için canlı veriler alınıyor..."):
                                     live_db_cmp, live_ts_cmp = fetch_live_data()
@@ -810,6 +789,7 @@ with col_nav:
             st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
             target_timestamp = "-"
         else:
+            # Aktif Periyot: Canlı tablodaki son satırın tarihini gösterir
             target_timestamp = fmt_ts(cur_ts)
 
     if st.button("Verileri Yenile"):
@@ -829,20 +809,21 @@ if raw_v_map:
         
         if compare_mode:
             latest_val = latest_v_map.get(s_name)
-            val_float = float(val)
-            latest_float = float(latest_val) if latest_val is not None and not np.isnan(latest_val) else np.nan
+            str_val = f"{float(val):.2f}"
+            str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
             
-            if not np.isnan(latest_float):
-                delta = latest_float - val_float
+            if latest_val is not None and not np.isnan(latest_val):
+                delta = float(latest_val) - float(val)
                 active_category_values[s_name] = delta
+                str_delta = f"{delta:+.2f}"
             else:
-                delta = np.nan
+                str_delta = "-"
                 
             table_data.append({
                 "Sensör No": s_name,
-                f"Arşiv ({target_timestamp})": val_float,
-                f"Şimdi ({latest_timestamp})": latest_float,
-                "Fark (Δ)": delta
+                "Arşiv Değeri": str_val,
+                "Güncel Değer": str_latest,
+                "Fark (Δ)": str_delta
             })
         else:
             active_category_values[s_name] = float(val)
@@ -922,7 +903,7 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # DİNAMİK GRAFİK (ТУРЕЦКИЕ ПОДПИСИ)
+    # ДИНАМИЧЕСКИЙ ГРАФИК (ТУРЕЦКИЕ МЕТКИ ВРЕМЕНИ)
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
         st.markdown(f"### 📈 Sensör Zaman İçindeki Değişimi: {selected_sensor}")
@@ -1566,7 +1547,7 @@ with col_3d:
         st.components.v1.html(final_html, height=600, scrolling=False)
 
 # ---------------------------------------------------------
-# TABLO (FARK RAPORU VE CSV İNDİRME)
+# TABLO (FARK RAPORU)
 # ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
@@ -1575,11 +1556,11 @@ if compare_mode and table_data:
     df = pd.DataFrame(table_data)
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
-    # Прямая выгрузка в виде аккуратного CSV с точкой с запятой (гарантированно разделяет по колонкам в Excel)
+    # ПРИНУДИТЕЛЬНЫЙ РАЗДЕЛИТЕЛЬ ДЛЯ EXCEL (sep=;)
     csv_string = "sep=;\n" + df.to_csv(index=False, sep=';', encoding='utf-8-sig')
     
     st.download_button(
-        label="📥 Fark Raporunu İndir (Sütunlu CSV)",
+        label="📥 Fark Raporunu İndir",
         data=csv_string,
         file_name=f"Fark_Raporu_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv"
@@ -1592,20 +1573,8 @@ if compare_mode and table_data:
         height=400,
         column_config={
             "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
-            f"Arşiv ({target_timestamp})": st.column_config.NumberColumn(
-                f"Arşiv ({target_timestamp})", 
-                format="%.2f",
-                width="small"
-            ),
-            f"Şimdi ({latest_timestamp})": st.column_config.NumberColumn(
-                f"Şimdi ({latest_timestamp})", 
-                format="%.2f",
-                width="small"
-            ),
-            "Fark (Δ)": st.column_config.NumberColumn(
-                "Fark (Δ)", 
-                format="%+.2f",
-                width="small"
-            ),
+            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
+            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
+            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
         }
     )
