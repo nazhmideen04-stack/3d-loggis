@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ТЕМА STREAMLIT
+# 1. STREAMLIT TEMASI VE AYARLARI
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -34,7 +34,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH с мобильной адаптацией
+# DESTECH Stili ve Mobil Uyumluluk
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -183,7 +183,7 @@ st.markdown("""
         background-color: #0A0E17 !important;
     }
 
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
+    /* Mobil Düzen */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1.2rem !important;
@@ -192,7 +192,7 @@ st.markdown("""
             padding-bottom: 2.5rem !important;
         }
 
-        /* 3D-сцена на смартфонах располагается первой (вверху) */
+        /* 3B Model üstte konumlanır */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
@@ -351,8 +351,10 @@ def extract_sensor_name(header):
     return m_alt.group(1).replace("_", "-").strip("-") if m_alt else None
 
 def ensure_playwright_installed():
-    try: subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-    except Exception: pass
+    try:
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+    except Exception:
+        pass
 
 BROWSER_ARGS = [
     "--no-sandbox", "--disable-setuid-sandbox",
@@ -375,53 +377,54 @@ def _new_page(browser):
         timezone_id="Europe/Istanbul", locale="fr-FR",
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
-    return context.new_page()
+    page = context.new_page()
+    page.set_default_timeout(0)
+    return page
 
 def _norm(t):
     return unicodedata.normalize("NFKD", str(t)).encode("ascii", "ignore").decode().lower().strip()
 
 def _click_types_menu(page):
-    """Кликает по вкладке Types в верхней панели меню"""
     for loc in (page.get_by_text("Types", exact=True), page.locator("text=Types")):
         try:
             if loc.count() > 0:
-                loc.first.click(timeout=8000, force=True)
+                loc.first.click(timeout=0, force=True)
                 break
-        except Exception: pass
+        except Exception:
+            pass
     page.wait_for_timeout(1000)
 
 def _select_type_category(page, cat_cfg):
-    """
-    Кликает непосредственно по строке категории в списке под фильтром:
-    Longitudinal Strains / Othoradial Strains / Temperature
-    """
     for name in cat_cfg["names"]:
         try:
             loc = page.locator("div, span, li, p, td, a").filter(has_text=re.compile(f"^{re.escape(name)}$", re.I))
-            if loc.count() > 0 and loc.first.is_visible():
-                loc.first.click(timeout=5000, force=True)
+            if loc.count() > 0:
+                loc.first.click(timeout=0, force=True)
                 return True
-        except Exception: pass
+        except Exception:
+            pass
         try:
             loc_fuzzy = page.get_by_text(name, exact=False)
             if loc_fuzzy.count() > 0:
-                loc_fuzzy.first.click(timeout=5000, force=True)
+                loc_fuzzy.first.click(timeout=0, force=True)
                 return True
-        except Exception: pass
+        except Exception:
+            pass
     return False
 
-def _wait_data_loaded(page, timeout=45000):
+def _wait_data_loaded(page):
     try:
         page.wait_for_function(
             """() => !Array.from(document.querySelectorAll('body *')).some(e =>
                    e.children.length === 0 && e.offsetParent !== null &&
                    /Récupération des données/i.test(e.textContent || ''))""",
-            timeout=timeout)
-    except Exception: pass
+            timeout=0)
+    except Exception:
+        pass
     page.wait_for_timeout(3000)
 
 # -------------------------------------------------------------------------
-# ПУТЬ 1: CANLI VERILER (ЧТЕНИЕ САМОЙ СВЕЖЕЙ СТРОКИ 2 MOIS ИЗ ТАБЛИЦЫ)
+# 1. CANLI VERİLER: 2 MOIS TABLOSUNDAN EN SON SATIRI OKUMA
 # -------------------------------------------------------------------------
 _SCRAPE_TABLE_JS = r"""
 () => {
@@ -449,31 +452,31 @@ _SCRAPE_TABLE_JS = r"""
 def _scrape_live_table(browser, cat_key, cat_cfg):
     page = _new_page(browser)
     try:
-        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
+        page.goto(URL, timeout=0, wait_until="domcontentloaded")
         page.wait_for_timeout(3000)
 
         combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="attached", timeout=25000)
+        combos.first.wait_for(state="attached", timeout=0)
 
-        # Выбор 2 mois
+        # 2 mois seçimi
         dur_combo = combos.nth(0)
         dur_opts = dur_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
         )
         for o in dur_opts:
             if "2 mois" in o["t"] or "month_02" in o["v"].lower():
-                dur_combo.select_option(o["v"], timeout=8000)
+                dur_combo.select_option(o["v"], timeout=0)
                 break
         page.wait_for_timeout(1500)
 
-        # Выбор Tableau
+        # Tableau modu
         disp_combo = combos.nth(1)
         disp_opts = disp_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
         )
         for o in disp_opts:
             if "tableau" in o["t"] or "table" in o["v"].lower():
-                disp_combo.select_option(o["v"], timeout=8000)
+                disp_combo.select_option(o["v"], timeout=0)
                 break
         page.wait_for_timeout(1500)
 
@@ -498,7 +501,6 @@ def _scrape_live_table(browser, cat_key, cat_cfg):
         if not sensor_cols or not rows:
             return {}, None
 
-        # Верхняя строка таблицы - крайняя дата
         newest_row = rows[0]
         dt = None
         for cell in newest_row[:3]:
@@ -517,8 +519,10 @@ def _scrape_live_table(browser, cat_key, cat_cfg):
         print(f"Canlı veri hatası {cat_key}: {e}")
         return {}, None
     finally:
-        try: page.context.close()
-        except Exception: pass
+        try:
+            page.context.close()
+        except Exception:
+            pass
 
 @st.cache_data(ttl=180, show_spinner=False)
 def fetch_live_data():
@@ -536,23 +540,22 @@ def fetch_live_data():
     return live_db, cat_timestamps
 
 # -------------------------------------------------------------------------
-# ПУТЬ 2: ARŞİV VERİLER (TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV)
+# 2. ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME
 # -------------------------------------------------------------------------
 def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
     page = _new_page(browser)
     downloads = []
     page.on("download", lambda d: downloads.append(d))
-    ctx = page.context
-    ctx.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))
+    page.context.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))
 
     try:
-        page.goto(URL, timeout=90000, wait_until="domcontentloaded")
+        page.goto(URL, timeout=0, wait_until="domcontentloaded")
         page.wait_for_timeout(3000)
 
         combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="attached", timeout=30000)
+        combos.first.wait_for(state="attached", timeout=0)
 
-        # 1. В Duration выбираем Tout
+        # Duration -> Tout
         dur_combo = combos.nth(0)
         dur_opts = dur_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
@@ -564,10 +567,10 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
                 break
         if not target_dur and dur_opts:
             target_dur = dur_opts[-1]["v"]
-        dur_combo.select_option(target_dur, timeout=12000)
+        dur_combo.select_option(target_dur, timeout=0)
         page.wait_for_timeout(2000)
 
-        # 2. В Display mode выбираем Graphiques
+        # Display mode -> Graphiques
         disp_combo = combos.nth(1)
         disp_opts = disp_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
@@ -578,27 +581,25 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
                 target_disp = o["v"]
                 break
         if target_disp:
-            disp_combo.select_option(target_disp, timeout=12000)
+            disp_combo.select_option(target_disp, timeout=0)
             page.wait_for_timeout(2000)
 
-        # 3. Кликаем по вкладке Types и выбираем категорию прямым кликом
+        # Types sekmesi ve kategori seçimi
         _click_types_menu(page)
         _select_type_category(page, cat_cfg)
         
-        # Даем время серверу отрендерить график и обновить CSV файл
-        page.wait_for_timeout(5000)
+        # Grafiğin yüklenmesi için bekleme
+        page.wait_for_timeout(6000)
         _wait_data_loaded(page)
         page.wait_for_timeout(2000)
 
-        # 4. Поиск кнопки 🠋CSV
+        # 🠋CSV Butonunu bulma
         btn = None
         for selector in [
             "text=🠋CSV",
-            "text=CSV",
             "button:has-text('CSV')",
             "a:has-text('CSV')",
-            "div:has-text('CSV')",
-            "[title*='CSV']"
+            "text=CSV"
         ]:
             loc = page.locator(selector)
             if loc.count() > 0 and loc.first.is_visible():
@@ -610,20 +611,16 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
 
         download_path = None
         try:
-            # Клик по кнопке CSV с перехватом файла
-            btn.click(force=True, timeout=15000)
-            for _ in range(120):
-                if downloads: break
+            btn.click(force=True, timeout=0)
+            while not downloads:
                 page.wait_for_timeout(500)
-            if downloads:
-                download_path = downloads[-1].path()
+            download_path = downloads[-1].path()
         except Exception as down_err:
             print(f"CSV tetikleme hatasi {cat_key}: {down_err}")
 
         if not download_path or not os.path.exists(download_path) or os.path.getsize(download_path) == 0:
             return {}
 
-        # 5. Разбор скачанного файла CSV
         with open(download_path, "rb") as f:
             raw = f.read()
         text = raw.decode("utf-8-sig", errors="ignore")
@@ -635,7 +632,7 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         rows = list(csv.reader(lines, delimiter=delim))
 
         header_idx = None
-        for i, r in enumerate(rows[:20]):
+        for i, r in enumerate(rows[:25]):
             if any(extract_sensor_name(c) for c in r):
                 header_idx = i
                 break
@@ -674,8 +671,10 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         print(f"Arşiv çekme hatası {cat_key}: {e}")
         return {}
     finally:
-        try: page.context.close()
-        except Exception: pass
+        try:
+            page.context.close()
+        except Exception:
+            pass
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_archive_csv_database():
@@ -706,7 +705,7 @@ def get_model_b64(path):
         return base64.b64encode(f.read()).decode()
 
 # ---------------------------------------------------------
-# АРАЙЮЗ И ПАНЕЛЬ УПРАВЛЕНИЯ
+# KONTROL PANELİ VE GÖRÜNÜM
 # ---------------------------------------------------------
 col_nav, col_3d = st.columns([1, 4])
 
@@ -735,7 +734,7 @@ with col_nav:
         st.markdown("---")
         st.subheader("Zaman Seçimi")
         
-        with st.spinner("Arşiv CSV dosyası LoggIS üzerinden indiriliyor (Tout -> Graphiques -> Types -> CSV)..."):
+        with st.spinner("Arşiv verileri LoggIS üzerinden CSV olarak indiriliyor (Tout -> Graphiques -> Types -> CSV)..."):
             all_dates, full_db = fetch_archive_csv_database()
 
         cat_rows = full_db.get(selected_comp, {})
@@ -771,7 +770,7 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # АКТИВНЫЙ ПЕРИОД: СТРОГО СИНХРОНИЗИРОВАН С ВЫБРАННОЙ ДАТОЙ В АРХИВЕ
+                            # Aktif Periyot geçmiş tarihle tam senkronizedir
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
@@ -786,7 +785,7 @@ with col_nav:
             st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
             target_timestamp = "-"
         else:
-            # АКТИВНЫЙ ПЕРИОД: СТРОГО СИНХРОНИЗИРОВАН С ПОСЛЕДНЕЙ ЖИВОЙ СТРОКОЙ
+            # Aktif Periyot son canlı ölçümle senkronizedir
             target_timestamp = fmt_ts(cur_ts)
 
     if st.button("Verileri Yenile"):
@@ -794,7 +793,7 @@ with col_nav:
         st.rerun()
 
 # ---------------------------------------------------------
-# ОБРАБОТКА ДАННЫХ И ДЕЛЬТЫ
+# VERİ HESAPLAMALARI
 # ---------------------------------------------------------
 active_category_values = {}
 table_data = []
@@ -825,9 +824,6 @@ if raw_v_map:
         else:
             active_category_values[s_name] = float(val)
 
-# ---------------------------------------------------------
-# РАСЧЕТ ШКАЛЫ СТРОГО ОТ ИМЕЮЩИХСЯ ДАННЫХ
-# ---------------------------------------------------------
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 0.0]
@@ -881,7 +877,7 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# THREE.JS 3D ОБЛАСТЬ (ВВЕРХУ НА СМАРТФОНАХ)
+# THREE.JS 3D PENCERESİ
 # ---------------------------------------------------------
 with col_3d:
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
@@ -1302,7 +1298,7 @@ with col_3d:
             if (hasTB) { const cB = boxTB.getCenter(new THREE.Vector3()); const sTB = createPortalMarker("TB"); sTB.position.set(cB.x, boxTB.max.y + 17.0, boxTB.min.z - 8.0); portalsGroup.add(sTB); }
             scene.add(portalsGroup);
 
-            // Линейки 2X
+            // Metre Cetveli
             if (payload.showMeters) {
                 const overallBox = new THREE.Box3(); 
                 tunnelMeshes.forEach(tm => overallBox.expandByObject(tm));
@@ -1385,7 +1381,7 @@ with col_3d:
                 }
             }
 
-            // Камера
+            // Kamera Ayarı
             const lastSelected = (function(){ try{ return window.sessionStorage.getItem('loggis_sensor_v7'); }catch(e){return null;} })();
             const isNewSensorSelected = (payload.selectedSensor && payload.selectedSensor !== "Seçiniz..." && payload.selectedSensor !== lastSelected);
 
@@ -1513,7 +1509,7 @@ with col_3d:
         st.components.v1.html(final_html, height=600, scrolling=False)
 
 # ---------------------------------------------------------
-# ТАБЛИЦА СРАВНЕНИЯ (FARK RAPORU)
+# FARK RAPORU TABLOSU
 # ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
