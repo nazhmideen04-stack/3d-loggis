@@ -1,5 +1,6 @@
 streamlit
-pandas
+plotly
+scipy
 numpy
+pandas
 playwright
-openpyxl
