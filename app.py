@@ -639,7 +639,6 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         if len(lines) < 2:
             return {}
 
-        # Универсальный разбор CSV без слияния в одну колонку
         sample = text[:4096]
         delimiter = ";"
         if sample.count(",") > sample.count(";"):
@@ -901,13 +900,16 @@ with col_nav:
         limit_str = "-"
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
-    # ИДЕЯ 1: ЭКСПОРТ В EXCEL
+    # İDEYA 1: ЭКСПОРТ В EXCEL (МНОГОКОЛОНОЧНЫЙ)
     st.markdown("---")
     st.subheader("RAPOR DIŞA AKTAR")
     if active_category_values:
-        export_df = pd.DataFrame([
-            {"Sensör No": k, f"Ölçüm ({cat_cfg['unit']})": v} for k, v in active_category_values.items()
-        ]).sort_values(by="Sensör No").reset_index(drop=True)
+        if compare_mode and table_data:
+            export_df = pd.DataFrame(table_data).sort_values(by="Sensör No").reset_index(drop=True)
+        else:
+            export_df = pd.DataFrame([
+                {"Sensör No": k, f"Ölçüm ({cat_cfg['unit']})": v} for k, v in active_category_values.items()
+            ]).sort_values(by="Sensör No").reset_index(drop=True)
         
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -944,10 +946,10 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # ИДЕЯ 2: ГРАФИК ВРЕМЕННЫХ РЯДОВ ПРИ КЛИКЕ НА ДАТЧИК
+    # İDEYA 2: ДИНАМИЧЕСКИЙ ГРАФИК НА ТУРЕЦКОМ ЯЗЫКЕ
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
-        st.markdown(f"### 📈 Dinamik Analiz: {selected_sensor}")
+        st.markdown(f"### 📈 Sensör Zaman İçindeki Değişimi: {selected_sensor}")
         
         sensor_history_dates = []
         sensor_history_vals = []
@@ -964,17 +966,19 @@ with col_3d:
             if selected_sensor in sensors_dict:
                 v_num = sensors_dict[selected_sensor]
                 if v_num is not None and not np.isnan(v_num):
-                    sensor_history_dates.append(parse_ts(timestamp_str))
-                    sensor_history_vals.append(v_num)
+                    dt_parsed = parse_ts(timestamp_str)
+                    if dt_parsed:
+                        sensor_history_dates.append(dt_parsed.strftime("%d.%m.%Y %H:%M"))
+                        sensor_history_vals.append(v_num)
         
         if sensor_history_dates and sensor_history_vals:
             chart_df = pd.DataFrame({
-                "Zaman": sensor_history_dates,
-                f"Değer ({cat_cfg['unit']})": sensor_history_vals
-            }).set_index("Zaman")
-            st.line_chart(chart_df, color="#00C8E6", height=220)
+                "Tarih": sensor_history_dates,
+                f"Ölçüm Değeri ({cat_cfg['unit']})": sensor_history_vals
+            }).set_index("Tarih")
+            st.line_chart(chart_df, color="#00C8E6", height=240)
         else:
-            st.info(f"'{selected_sensor}' için geçmiş zaman serisi verisi bulunamadı.")
+            st.info(f"'{selected_sensor}' için arşivde zaman serisi verisi bulunamadı.")
 
     model_b64 = get_model_b64(MODEL_PATH)
     
