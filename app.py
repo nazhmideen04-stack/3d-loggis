@@ -211,7 +211,6 @@ st.markdown("""
         h2 { font-size: 1.1rem !important; }
         h3 { font-size: 1.0rem !important; }
 
-        /* Шрифт заголовка CATERİNG - THY сделан мельче */
         .header-box h1 {
             font-size: 17px !important;
             line-height: 1.15 !important;
@@ -253,9 +252,9 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
-    <div style="display: align-items: center;">
+    <div style="display: flex; align-items: center;">
         {LOGO_TAG}
     </div>
 </div>
@@ -378,6 +377,7 @@ def _new_page(browser):
     return context.new_page()
 
 def _select_duration_flexible(page, mode_type, log):
+    """Надежный выбор опции Duration в LoggIS."""
     try:
         combo = page.get_by_role("combobox").first
         combo.wait_for(state="attached", timeout=15000)
@@ -389,7 +389,7 @@ def _select_duration_flexible(page, mode_type, log):
         target_val = None
         if mode_type == "ALL":
             for o in opts:
-                if any(w in o["t"] or w in o["v"].lower() for w in ["all", "tout", "historique", "complet"]):
+                if any(w in o["t"] or w in o["v"].lower() for w in ["all", "tout", "historique", "complet", "depuis"]):
                     target_val = o["v"]
                     break
             if not target_val and opts:
@@ -697,6 +697,7 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
+                            # Синхронизация: Aktif Periyot строго равен открытой архивной дате
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
