@@ -627,8 +627,19 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         if len(lines) < 2:
             return {}
 
-        delim = ";" if lines[0].count(";") >= lines[0].count(",") else ","
-        rows = list(csv.reader(lines, delimiter=delim))
+        sample = text[:4096]
+        delimiter = ";"
+        if sample.count(",") > sample.count(";"):
+            delimiter = ","
+        elif sample.count("\t") > sample.count(";") and sample.count("\t") > sample.count(","):
+            delimiter = "\t"
+
+        rows = []
+        for line in lines:
+            reader = csv.reader([line], delimiter=delimiter)
+            for row in reader:
+                if row:
+                    rows.append(row)
 
         header_idx = None
         for i, r in enumerate(rows[:25]):
@@ -732,7 +743,7 @@ with col_nav:
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman Seçimi")
+        st.subheader("Zaman SeçİMİ")
         
         with st.spinner("Arşiv verileri alınıyor..."):
             all_dates, full_db = fetch_archive_csv_database()
@@ -900,13 +911,12 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # ДИНАМИЧЕСКИЙ ГРАФИК (МЕСЯЦЫ НА ТУРЕЦКОМ И ТОЧНЫЕ ДАТЫ В ИНТЕРАКТИВЕ)
+    # ДИНАМИЧЕСКИЙ ГРАФИК (МЕСЯЦЫ НА ТУРЕЦКОМ ВВИДУ + КНОПКА СКАЧИВАНИЯ ИСТОРИИ СЕНСОРА)
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
-        st.markdown(f"### 📈 Sensör Zaman İçindeki Değişimi: {selected_sensor}")
+        st.markdown(f"### Sensörün Zaman İçindeki Değişimi: {selected_sensor}")
         
-        sensor_history_dates = []
-        sensor_history_vals = []
+        sensor_history_data = []
         
         db_source = full_db if (data_mode == "Arşiv Veriler" and full_db) else {}
         if not db_source:
@@ -922,15 +932,33 @@ with col_3d:
                 if v_num is not None and not np.isnan(v_num):
                     dt_parsed = parse_ts(timestamp_str)
                     if dt_parsed:
-                        sensor_history_dates.append(dt_parsed)
-                        sensor_history_vals.append(v_num)
+                        m_num = dt_parsed.strftime("%m")
+                        m_name = TR_MONTHS.get(m_num, m_num)
+                        y_val = dt_parsed.strftime("%Y")
+                        month_year_tr = f"{m_name} {y_val}"
+                        exact_time_tr = dt_parsed.strftime("%d.%m.%Y %H:%M")
+                        
+                        sensor_history_data.append({
+                            "Ay / Yıl": month_year_tr,
+                            "Tarih ve Saat": exact_time_tr,
+                            f"Ölçüm Değeri ({cat_cfg['unit']})": v_num
+                        })
         
-        if sensor_history_dates and sensor_history_vals:
-            chart_df = pd.DataFrame({
-                "Tarih": sensor_history_dates,
-                f"Ölçüm Değeri ({cat_cfg['unit']})": sensor_history_vals
-            }).set_index("Tarih")
-            st.line_chart(chart_df, color="#00C8E6", height=240)
+        if sensor_history_data:
+            chart_df = pd.DataFrame(sensor_history_data)
+            
+            # Кнопка скачивания таблицы для конкретного сенсора (с разделителями по столбцам)
+            sensor_csv_bytes = ("sep=;\n" + chart_df.to_csv(index=False, sep=';', encoding='utf-8-sig')).encode('utf-8-sig')
+            st.download_button(
+                label=f"{selected_sensor} Verilerini İndir",
+                data=sensor_csv_bytes,
+                file_name=f"Sensor_{selected_sensor}_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
+            
+            # Отображаем график по месяцам
+            plot_df = chart_df[["Ay / Yıl", f"Ölçüm Değeri ({cat_cfg['unit']})"]].set_index("Ay / Yıl")
+            st.line_chart(plot_df, color="#00C8E6", height=240)
         else:
             st.info(f"'{selected_sensor}' için arşivde zaman serisi verisi bulunamadı.")
 
@@ -1540,7 +1568,7 @@ with col_3d:
 </body>
 </html>"""
 
-        final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
+        final_html = raw_template.render if False else raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
         st.components.v1.html(final_html, height=600, scrolling=False)
 
 # ---------------------------------------------------------
@@ -1553,11 +1581,11 @@ if compare_mode and table_data:
     df = pd.DataFrame(table_data)
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
-    # ПРИНУДИТЕЛЬНЫЙ РАЗДЕЛИТЕЛЬ ДЛЯ EXCEL (sep=;) + UTF-8-SIG ПРОТИВ ИЕРОГЛИФОВ
+    # ПРИНУДИТЕЛЬНЫЙ РАЗДЕЛИТЕЛЬ ДЛЯ EXCEL (sep=;) + UTF-8-SIG (УБИРАЕТ ИЕРОГЛИФЫ)
     csv_bytes = ("sep=;\n" + df.to_csv(index=False, sep=';', encoding='utf-8-sig')).encode('utf-8-sig')
     
     st.download_button(
-        label="📥 Fark Raporunu İndir",
+        label="Fark Raporunu İndir",
         data=csv_bytes,
         file_name=f"Fark_Raporu_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv"
