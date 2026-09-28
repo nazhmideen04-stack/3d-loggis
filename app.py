@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
-from io import BytesIO
 
 # 1. STREAMLIT TEMASI VE AYARLARI
 os.makedirs(".streamlit", exist_ok=True)
@@ -551,7 +550,7 @@ def fetch_live_data():
     return live_db, cat_timestamps
 
 # -------------------------------------------------------------------------
-# 2. ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME
+# 2. ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME (ИСПРАВЛЕННЫЙ ПАРСЕР С РАЗДЕЛИТЕЛЯМИ)
 # -------------------------------------------------------------------------
 def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
     page = _new_page(browser)
@@ -639,18 +638,21 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         if len(lines) < 2:
             return {}
 
-        sample = text[:2048]
+        # Универсальный разбор CSV без слияния в одну колонку
         delimiter = ";"
-        try:
-            dialect = csv.Sniffer().sniff(sample, delimiters=";,\\t")
-            delimiter = dialect.delimiter
-        except Exception:
-            if sample.count(";") > sample.count(","):
-                delimiter = ";"
-            elif sample.count(",") > sample.count(";"):
-                delimiter = ","
+        sample = text[:4096]
+        if sample.count(",") > sample.count(";"):
+            delimiter = ","
+        elif sample.count("\t") > sample.count(";") and sample.count("\t") > sample.count(","):
+            delimiter = "\t"
 
-        rows = list(csv.reader(lines, delimiter=delimiter))
+        rows = []
+        for line in lines:
+            # Ручное расщепление по определенному разделителю с учетом кавычек
+            reader = csv.reader([line], delimiter=delimiter)
+            for row in reader:
+                if row:
+                    rows.append(row)
 
         header_idx = None
         for i, r in enumerate(rows[:25]):
@@ -900,7 +902,7 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # НОВОЕ: ИДЕЯ 1 - ЭКСПОРТ ОТЧЕТА В EXCEL (DESTECH БРЕНДИНГ)
+    # ИДЕЯ 1: ЭКСПОРТ ОТЧЕТА В EXCEL (DESTECH БРЕНДИНГ)
     # ---------------------------------------------------------
     st.markdown("---")
     st.subheader("RAPOR DIŞA AKTAR")
@@ -943,6 +945,43 @@ with col_3d:
             )
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
+
+    # ---------------------------------------------------------
+    # НОВОЕ: ИДЕЯ 2 - ГРАФИК ВРЕМЕННЫХ РЯДОВ (TIME-SERIES) ПРИ ВЫБОРЕ ДАТЧИКА
+    # ---------------------------------------------------------
+    if selected_sensor != "Seçiniz...":
+        st.markdown("---")
+        st.markdown(f"### 📈 Dinamik Analiz: {selected_sensor}")
+        
+        # Собираем историю по выбранному датчику из загруженной базы full_db или архивного словаря
+        sensor_history_dates = []
+        sensor_history_vals = []
+        
+        # Если открыт режим архива или есть данные в full_db
+        db_source = full_db if (data_mode == "Arşiv Veriler" and full_db) else {}
+        if not db_source:
+            # Если активен живой режим, подгружаем кэшированный архив для графиков
+            try:
+                _, db_source = fetch_archive_csv_database()
+            except Exception:
+                db_source = {}
+                
+        cat_history = db_source.get(selected_comp, {})
+        for timestamp_str, sensors_dict in sorted(cat_history.items(), key=lambda x: x[0]):
+            if selected_sensor in sensors_dict:
+                v_num = sensors_dict[selected_sensor]
+                if v_num is not None and not np.isnan(v_num):
+                    sensor_history_dates.append(parse_ts(timestamp_str))
+                    sensor_history_vals.append(v_num)
+        
+        if sensor_history_dates and sensor_history_vals:
+            chart_df = pd.DataFrame({
+                "Zaman": sensor_history_dates,
+                f"Değer ({cat_cfg['unit']})": sensor_history_vals
+            }).set_index("Zaman")
+            st.line_chart(chart_df, color="#00C8E6", height=220)
+        else:
+            st.info(f"'{selected_sensor}' için geçmiş zaman serisi verisi bulunamadı.")
 
     model_b64 = get_model_b64(MODEL_PATH)
     
