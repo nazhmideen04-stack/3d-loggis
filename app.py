@@ -255,7 +255,7 @@ st.markdown(f"""
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
         <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
-    <div style="display: align-items: center;">
+    <div style="display: flex; align-items: center;">
         {LOGO_TAG}
     </div>
 </div>
@@ -1420,21 +1420,21 @@ with col_3d:
 
 # ТАБЛИЦА СРАВНЕНИЯ
 if compare_mode and table_data:
-    st.markdown("---")[cite: 1, 3]
-    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")[cite: 1, 3]
+    st.markdown("---")
+    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
-    df = pd.DataFrame(table_data)[cite: 1, 3]
-    df = df.sort_values(by="Sensör No").reset_index(drop=True)[cite: 1, 3]
+    df = pd.DataFrame(table_data)
+    df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
-    st.dataframe([cite: 1, 3]
-        df,[cite: 1, 3]
-        use_container_width=True,[cite: 1, 3]
-        hide_index=True,[cite: 1, 3]
-        height=400,[cite: 1, 3]
-        column_config={[cite: 1, 3]
-            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),[cite: 1, 3]
-            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),[cite: 1, 3]
-            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),[cite: 1, 3]
-            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),[cite: 1, 3]
-        }[cite: 1, 3]
-    )[cite: 1, 3]
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        height=400,
+        column_config={
+            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
+            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
+            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
+            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
+        }
+    )
