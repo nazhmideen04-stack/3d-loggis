@@ -6,7 +6,7 @@ import unicodedata
 import json
 import base64
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
@@ -322,14 +322,14 @@ def _new_page(browser):
 
 def _select_combo(page, index, value, log, label):
     try:
-        page.wait_for_selector(f'select option[value="{value}"]', state="attached", timeout=20000)
+        page.wait_for_selector(f'select option[value="{value}"]', state="attached", timeout=15000)
     except Exception: pass
     try:
-        page.get_by_role("combobox").nth(index).select_option(value, timeout=10000)
+        page.get_by_role("combobox").nth(index).select_option(value, timeout=8000)
         return True
     except Exception: pass
     try:
-        page.locator(f'select:has(option[value="{value}"])').first.select_option(value, timeout=8000)
+        page.locator(f'select:has(option[value="{value}"])').first.select_option(value, timeout=5000)
         return True
     except Exception as e:
         log.append(f"{label}='{value}' seçilemedi")
@@ -342,7 +342,7 @@ def _click_types(page, log):
             break
         except Exception: pass
     try:
-        page.get_by_role("listbox").first.wait_for(state="attached", timeout=12000)
+        page.get_by_role("listbox").first.wait_for(state="attached", timeout=10000)
     except Exception:
         log.append("Kategori listbox bulunamadı")
 
@@ -405,13 +405,9 @@ def _download_csv(page, log=None, tag=""):
 
 def parse_loggis_csv(path, cat_key):
     """
-    Строгий парсинг CSV:
-    Находит все строки с валидными датами, сортирует хронологически
-    и возвращает:
-      1) out: полную базу {ts_str: {sensor: val}}
-      2) latest_snapshot: срез значений СТРОГО на самую последнюю существующую дату.
-         Если значения на эту крайнюю дату нет — оно НЕ подтягивается из прошлого.
-      3) max_date_key: строковое представление крайней даты.
+    Честный разбор CSV без додумывания данных:
+    Находит все строки с датами. Если дат или данных нет — возвращает пустые словари.
+    На крайнюю дату возвращает только существующие замеры.
     """
     if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
         return {}, {}, None
@@ -437,7 +433,7 @@ def parse_loggis_csv(path, cat_key):
 
     header = rows[header_idx]
 
-    # Строгая фильтрация колонок: исключаем смешивание деформаций и температур
+    # Строгая фильтрация колонок
     sensor_cols = {}
     for col_idx, h in enumerate(header):
         s_id = extract_sensor_name(h)
@@ -489,8 +485,10 @@ def parse_loggis_csv(path, cat_key):
     if time_indexed_rows:
         time_indexed_rows.sort(key=lambda x: x[0], reverse=True)
         max_dt, max_row_vals = time_indexed_rows[0]
-        max_date_key = ts_key(max_dt)
-        latest_snapshot = {s_id: v for s_id, v in max_row_vals.items()}
+        # Если в строке с крайней датой есть хотя бы одно валидное значение
+        if max_row_vals:
+            max_date_key = ts_key(max_dt)
+            latest_snapshot = {s_id: v for s_id, v in max_row_vals.items()}
 
     return out, latest_snapshot, max_date_key
 
@@ -517,21 +515,33 @@ def _csv_once(browser, cat_key, cat_cfg, mode_type, log):
         try: page.context.close()
         except Exception: pass
 
-@st.cache_data(ttl=180, show_spinner=False)
-def fetch_live_table(mode_type="MONTH_02"):
+# В режиме Live запрашиваем реальный актуальный период (DAY_01 или WEEK_01)
+@st.cache_data(ttl=120, show_spinner=False)
+def fetch_live_table():
     live_db = {k: {} for k in CATEGORIES}
     cat_timestamps = {}
     log = []
+
+    # Пробуем запросить сегодняшний срез DAY_01, если пусто — WEEK_01
+    modes_to_try = ["DAY_01", "WEEK_01", "MONTH_01"]
 
     with sync_playwright() as p:
         browser = _launch_browser(p)
         try:
             for cat_key, cat_cfg in CATEGORIES.items():
-                _, latest_snapshot, max_dt_key = _csv_once(browser, cat_key, cat_cfg, mode_type, log)
-                if latest_snapshot and max_dt_key:
-                    live_db[cat_key] = latest_snapshot
-                    cat_timestamps[cat_key] = max_dt_key
-                else:
+                found_live = False
+                for m_mode in modes_to_try:
+                    _, latest_snapshot, max_dt_key = _csv_once(browser, cat_key, cat_cfg, m_mode, log)
+                    if latest_snapshot and max_dt_key:
+                        dt_obj = parse_ts(max_dt_key)
+                        now_tr = datetime.now(ZoneInfo("Europe/Istanbul")).replace(tzinfo=None)
+                        # Честная проверка: данные считаются "живыми", только если получены в пределах последних 48 часов
+                        if dt_obj and (now_tr - dt_obj) <= timedelta(days=2):
+                            live_db[cat_key] = latest_snapshot
+                            cat_timestamps[cat_key] = max_dt_key
+                            found_live = True
+                            break
+                if not found_live:
                     live_db[cat_key] = {}
                     cat_timestamps[cat_key] = None
         finally:
@@ -603,7 +613,7 @@ with col_nav:
         cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)
             
         if not cat_dates:
-            st.error(f"'{cat_cfg['title']}' için sunucuda hiçbir arşiv verisi bulunamadı.")
+            st.warning(f"⚠️ '{cat_cfg['title']}' kategorisi için LoggIS arşivinde kayıt bulunamadı.")
         else:
             latest_key = cat_dates[0]
             latest_timestamp = fmt_ts(latest_key)
@@ -636,14 +646,15 @@ with col_nav:
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
     else:
-        with st.spinner("En güncel veriler alınıyor..."):
-            live_db, cat_timestamps, logs = fetch_live_table(mode_type="MONTH_02")
+        with st.spinner("Güncel veriler kontrol ediliyor..."):
+            live_db, cat_timestamps, logs = fetch_live_table()
         
         raw_v_map = live_db.get(selected_comp, {})
         cur_ts = cat_timestamps.get(selected_comp)
         
+        # Честное информирование: если данных нет на сайте, не придумываем их
         if not raw_v_map or not cur_ts:
-            st.error(f"'{cat_cfg['title']}' için LoggIS sisteminde en son tarihe ait ölçüm bulunamadı.")
+            st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için güncel aktif ölçüm bulunmuyor. Sensörler veri iletmiyor.")
             target_timestamp = "-"
         else:
             target_timestamp = fmt_ts(cur_ts)
@@ -660,7 +671,8 @@ table_data = []
 
 if raw_v_map:
     for s_name, val in raw_v_map.items():
-        if val is None or np.isnan(val): continue
+        if val is None or np.isnan(val): 
+            continue
         
         if compare_mode:
             latest_val = latest_v_map.get(s_name)
@@ -722,7 +734,7 @@ with col_nav:
         st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
     
     st.write("**Aktif Sensör Sayısı:**")
-    sensor_count_str = str(len(active_category_values)) if active_category_values else "-"
+    sensor_count_str = str(len(active_category_values)) if active_category_values else "0"
     st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{sensor_count_str}</span>", unsafe_allow_html=True)
     
     st.write("**Skala Limitleri:**")
