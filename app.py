@@ -183,6 +183,7 @@ st.markdown("""
         background-color: #0A0E17 !important;
     }
 
+    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1.2rem !important;
@@ -191,6 +192,7 @@ st.markdown("""
             padding-bottom: 2.5rem !important;
         }
 
+        /* 3D-сцена на смартфонах располагается первой (вверху) */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
@@ -378,30 +380,34 @@ def _new_page(browser):
 def _norm(t):
     return unicodedata.normalize("NFKD", str(t)).encode("ascii", "ignore").decode().lower().strip()
 
-def _click_types(page):
-    for loc in (page.get_by_text("Types", exact=True).first, page.get_by_text("Types").first):
+def _click_types_menu(page):
+    """Кликает по вкладке Types в верхней панели меню"""
+    for loc in (page.get_by_text("Types", exact=True), page.locator("text=Types")):
         try:
-            loc.click(timeout=10000, force=True)
-            break
+            if loc.count() > 0:
+                loc.first.click(timeout=8000, force=True)
+                break
         except Exception: pass
-    page.get_by_role("listbox").first.wait_for(state="attached", timeout=20000)
+    page.wait_for_timeout(1000)
 
-def _select_category(page, cat_cfg):
-    lb = page.get_by_role("listbox").first
-    for c_name in cat_cfg["names"]:
+def _select_type_category(page, cat_cfg):
+    """
+    Кликает непосредственно по строке категории в списке под фильтром:
+    Longitudinal Strains / Othoradial Strains / Temperature
+    """
+    for name in cat_cfg["names"]:
         try:
-            lb.select_option(c_name, timeout=3000)
-            return True
+            loc = page.locator("div, span, li, p, td, a").filter(has_text=re.compile(f"^{re.escape(name)}$", re.I))
+            if loc.count() > 0 and loc.first.is_visible():
+                loc.first.click(timeout=5000, force=True)
+                return True
         except Exception: pass
-    try:
-        opts = lb.locator("option").evaluate_all("els => els.map(e => ({v: e.value, t: (e.textContent || '').trim()}))")
-        wanted = [_norm(n) for n in cat_cfg["names"]]
-        for w in wanted:
-            for o in opts:
-                if w in _norm(o["t"]) or w in _norm(o["v"]):
-                    lb.select_option(o["v"], timeout=3000)
-                    return True
-    except Exception: pass
+        try:
+            loc_fuzzy = page.get_by_text(name, exact=False)
+            if loc_fuzzy.count() > 0:
+                loc_fuzzy.first.click(timeout=5000, force=True)
+                return True
+        except Exception: pass
     return False
 
 def _wait_data_loaded(page, timeout=45000):
@@ -471,9 +477,8 @@ def _scrape_live_table(browser, cat_key, cat_cfg):
                 break
         page.wait_for_timeout(1500)
 
-        _click_types(page)
-        if not _select_category(page, cat_cfg):
-            return {}, None
+        _click_types_menu(page)
+        _select_type_category(page, cat_cfg)
         page.wait_for_timeout(2500)
         _wait_data_loaded(page)
 
@@ -493,7 +498,7 @@ def _scrape_live_table(browser, cat_key, cat_cfg):
         if not sensor_cols or not rows:
             return {}, None
 
-        # Верхняя строка - самая свежая
+        # Верхняя строка таблицы - крайняя дата
         newest_row = rows[0]
         dt = None
         for cell in newest_row[:3]:
@@ -531,10 +536,15 @@ def fetch_live_data():
     return live_db, cat_timestamps
 
 # -------------------------------------------------------------------------
-# ПУТЬ 2: ARŞİV VERİLER (СТРОГО: TOUT -> GRAPHIQUES -> TYPES -> КЛИК 🠋CSV)
+# ПУТЬ 2: ARŞİV VERİLER (TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV)
 # -------------------------------------------------------------------------
 def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
     page = _new_page(browser)
+    downloads = []
+    page.on("download", lambda d: downloads.append(d))
+    ctx = page.context
+    ctx.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))
+
     try:
         page.goto(URL, timeout=90000, wait_until="domcontentloaded")
         page.wait_for_timeout(3000)
@@ -571,42 +581,49 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
             disp_combo.select_option(target_disp, timeout=12000)
             page.wait_for_timeout(2000)
 
-        # 3. Выбираем Types и кликаем по категории
-        _click_types(page)
-        if not _select_category(page, cat_cfg):
-            return {}
+        # 3. Кликаем по вкладке Types и выбираем категорию прямым кликом
+        _click_types_menu(page)
+        _select_type_category(page, cat_cfg)
         
-        # Даем графику перестроиться
+        # Даем время серверу отрендерить график и обновить CSV файл
         page.wait_for_timeout(5000)
         _wait_data_loaded(page)
         page.wait_for_timeout(2000)
 
-        # 4. Находим кнопку 🠋CSV и перехватываем скачивание с popup
-        csv_btn = page.locator("a, button, span, div").filter(has_text=re.compile(r"CSV", re.I)).first
-        if not csv_btn.is_visible():
-            csv_btn = page.get_by_text("🠋CSV").first
+        # 4. Поиск кнопки 🠋CSV
+        btn = None
+        for selector in [
+            "text=🠋CSV",
+            "text=CSV",
+            "button:has-text('CSV')",
+            "a:has-text('CSV')",
+            "div:has-text('CSV')",
+            "[title*='CSV']"
+        ]:
+            loc = page.locator(selector)
+            if loc.count() > 0 and loc.first.is_visible():
+                btn = loc.first
+                break
 
-        if csv_btn.count() == 0:
+        if not btn:
             return {}
 
         download_path = None
         try:
-            with page.expect_download(timeout=60000) as download_info:
-                try:
-                    with page.expect_popup(timeout=8000) as popup_info:
-                        csv_btn.click(force=True)
-                    popup = popup_info.value
-                    popup.close()
-                except Exception:
-                    csv_btn.click(force=True)
-            download_path = download_info.value.path()
+            # Клик по кнопке CSV с перехватом файла
+            btn.click(force=True, timeout=15000)
+            for _ in range(120):
+                if downloads: break
+                page.wait_for_timeout(500)
+            if downloads:
+                download_path = downloads[-1].path()
         except Exception as down_err:
-            print(f"CSV indirme tetikleme hatasi {cat_key}: {down_err}")
+            print(f"CSV tetikleme hatasi {cat_key}: {down_err}")
 
         if not download_path or not os.path.exists(download_path) or os.path.getsize(download_path) == 0:
             return {}
 
-        # 5. Разбор скачанного архива
+        # 5. Разбор скачанного файла CSV
         with open(download_path, "rb") as f:
             raw = f.read()
         text = raw.decode("utf-8-sig", errors="ignore")
@@ -618,7 +635,7 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         rows = list(csv.reader(lines, delimiter=delim))
 
         header_idx = None
-        for i, r in enumerate(rows[:15]):
+        for i, r in enumerate(rows[:20]):
             if any(extract_sensor_name(c) for c in r):
                 header_idx = i
                 break
@@ -718,7 +735,7 @@ with col_nav:
         st.markdown("---")
         st.subheader("Zaman Seçimi")
         
-        with st.spinner("Arşiv verileri LoggIS üzerinden CSV olarak indiriliyor (Tout -> Graphiques -> CSV)..."):
+        with st.spinner("Arşiv CSV dosyası LoggIS üzerinden indiriliyor (Tout -> Graphiques -> Types -> CSV)..."):
             all_dates, full_db = fetch_archive_csv_database()
 
         cat_rows = full_db.get(selected_comp, {})
@@ -754,7 +771,7 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # АКТИВНЫЙ ПЕРИОД: СИНХРОНИЗИРОВАН С ВЫБРАННЫМ МОМЕНТОМ В АРХИВЕ
+                            # АКТИВНЫЙ ПЕРИОД: СТРОГО СИНХРОНИЗИРОВАН С ВЫБРАННОЙ ДАТОЙ В АРХИВЕ
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
@@ -769,7 +786,7 @@ with col_nav:
             st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
             target_timestamp = "-"
         else:
-            # АКТИВНЫЙ ПЕРИОД: СИНХРОНИЗИРОВАН С ПОСЛЕДНЕЙ ЖИВОЙ СТРОКОЙ
+            # АКТИВНЫЙ ПЕРИОД: СТРОГО СИНХРОНИЗИРОВАН С ПОСЛЕДНЕЙ ЖИВОЙ СТРОКОЙ
             target_timestamp = fmt_ts(cur_ts)
 
     if st.button("Verileri Yenile"):
@@ -777,7 +794,7 @@ with col_nav:
         st.rerun()
 
 # ---------------------------------------------------------
-# ОБРАБОТКА И РАСЧЕТ ДЕЛЬТЫ
+# ОБРАБОТКА ДАННЫХ И ДЕЛЬТЫ
 # ---------------------------------------------------------
 active_category_values = {}
 table_data = []
@@ -1499,11 +1516,11 @@ with col_3d:
 # ТАБЛИЦА СРАВНЕНИЯ (FARK RAPORU)
 # ---------------------------------------------------------
 if compare_mode and table_data:
-    st.markdown("---")[cite: 1, 3]
-    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")[cite: 1, 3]
+    st.markdown("---")
+    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
     
-    df = pd.DataFrame(table_data)[cite: 1, 3]
-    df = df.sort_values(by="Sensör No").reset_index(drop=True)[cite: 1, 3]
+    df = pd.DataFrame(table_data)
+    df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
     st.dataframe(
         df,
