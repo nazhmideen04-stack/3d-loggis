@@ -211,6 +211,7 @@ st.markdown("""
         h2 { font-size: 1.1rem !important; }
         h3 { font-size: 1.0rem !important; }
 
+        /* Шрифт заголовка CATERİNG - THY сделан мельче */
         .header-box h1 {
             font-size: 17px !important;
             line-height: 1.15 !important;
@@ -254,7 +255,7 @@ st.markdown(f"""
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
         <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
-    <div style="display: flex; align-items: center;">
+    <div style="display: align-items: center;">
         {LOGO_TAG}
     </div>
 </div>
@@ -376,59 +377,37 @@ def _new_page(browser):
     )
     return context.new_page()
 
-def _setup_page_view(page, mode_type, log):
-    """
-    Выбирает Duration и Display mode.
-    Для скачивания CSV режим Display mode обязательно должен быть Graphiques (как на скриншоте)!
-    """
+def _select_duration_flexible(page, mode_type, log):
     try:
-        combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="attached", timeout=15000)
+        combo = page.get_by_role("combobox").first
+        combo.wait_for(state="attached", timeout=15000)
         
-        # 1. Выбор Duration
-        dur_combo = combos.nth(0)
-        dur_opts = dur_combo.locator("option").evaluate_all(
+        opts = combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
         )
         
-        target_dur = None
+        target_val = None
         if mode_type == "ALL":
-            for o in dur_opts:
-                if any(w in o["t"] or w in o["v"].lower() for w in ["tout", "all", "historique", "complet"]):
-                    target_dur = o["v"]
+            for o in opts:
+                if any(w in o["t"] or w in o["v"].lower() for w in ["all", "tout", "historique", "complet"]):
+                    target_val = o["v"]
                     break
-            if not target_dur and dur_opts:
-                target_dur = dur_opts[-1]["v"]
+            if not target_val and opts:
+                target_val = opts[-1]["v"]
         else:
-            for o in dur_opts:
-                if "2 mois" in o["t"] or "month_02" in o["v"].lower():
-                    target_dur = o["v"]
+            for o in opts:
+                if mode_type.lower() in o["v"].lower() or "2 mois" in o["t"]:
+                    target_val = o["v"]
                     break
 
-        if target_dur:
-            dur_combo.select_option(target_dur, timeout=8000)
+        if target_val:
+            combo.select_option(target_val, timeout=8000)
+            return True
         else:
-            dur_combo.select_option(mode_type, timeout=8000)
-            
-        page.wait_for_timeout(1000)
-
-        # 2. Выбор Display mode = Graphiques (чтобы кнопка 🠋CSV была на экране)
-        disp_combo = combos.nth(1)
-        disp_opts = disp_combo.locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
-        )
-        target_disp = None
-        for o in disp_opts:
-            if "graph" in o["t"] or "chart" in o["v"].lower():
-                target_disp = o["v"]
-                break
-        if target_disp:
-            disp_combo.select_option(target_disp, timeout=8000)
-            page.wait_for_timeout(1000)
-
-        return True
+            combo.select_option(mode_type, timeout=8000)
+            return True
     except Exception as e:
-        log.append(f"View setup hatası: {e}")
+        log.append(f"Duration={mode_type} seçilemedi: {e}")
         return False
 
 def _click_types(page, log):
@@ -479,10 +458,9 @@ def _download_csv(page, log=None, tag=""):
     ctx = page.context
     ctx.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))
     
-    # Кнопка как на скриншоте: 🠋CSV
-    btn = page.locator("a, button, span, div").filter(has_text=re.compile(r"CSV", re.I)).first
+    btn = page.get_by_text("🠋CSV").first
     if not btn.is_visible():
-        btn = page.get_by_text("🠋CSV").first
+        btn = page.locator("text=CSV").first
     
     if btn.count() == 0:
         if log is not None: log.append(f"CSV düğmesi yok {tag}")
@@ -491,8 +469,7 @@ def _download_csv(page, log=None, tag=""):
     path = None
     try:
         btn.click(force=True, timeout=15000)
-        # Ожидание скачивания (для Tout/ALL файл может весить несколько мегабайт)
-        for _ in range(90):
+        for _ in range(70):
             if downloads: break
             page.wait_for_timeout(500)
         if downloads:
@@ -587,7 +564,8 @@ def _csv_once(browser, cat_key, cat_cfg, mode_type, log):
     try:
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(2500)
-        _setup_page_view(page, mode_type, log)
+        _select_duration_flexible(page, mode_type, log)
+        page.wait_for_timeout(1500)
         _click_types(page, log)
         if not _select_category(page, cat_cfg, log):
             return {}, {}, None
@@ -604,7 +582,6 @@ def _csv_once(browser, cat_key, cat_cfg, mode_type, log):
         try: page.context.close()
         except Exception: pass
 
-# В режиме Canlı Veriler жестко запрашивается MONTH_02 (2 mois), берутся самые верхние замеры
 @st.cache_data(ttl=180, show_spinner=False)
 def fetch_live_table(mode_type="MONTH_02"):
     live_db = {k: {} for k in CATEGORIES}
@@ -627,7 +604,6 @@ def fetch_live_table(mode_type="MONTH_02"):
 
     return live_db, cat_timestamps, log
 
-# В режиме Arşiv Veriler выгрузка через CSV по кнопке 🠋CSV режима Graphiques (Tout)
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_csv_database(mode_type="ALL"):
     historical_db = {k: {} for k in CATEGORIES}
@@ -685,7 +661,7 @@ with col_nav:
         st.markdown("---")
         st.subheader("Zaman Seçimi")
         
-        with st.spinner("Arşiv verileri LoggIS üzerinden CSV olarak yükleniyor..."):
+        with st.spinner("Arşiv verileri yükleniyor..."):
             all_dates, full_db, logs = fetch_csv_database(mode_type="ALL")
 
         cat_rows = full_db.get(selected_comp, {})
@@ -721,7 +697,6 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # СИНХРОНИЗАЦИЯ: Aktif Periyot строго равен открытой архивной дате
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
