@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
-# 1. ТЕМА STREAMLIT
+# 1. TEMA STREAMLIT
 os.makedirs(".streamlit", exist_ok=True)
 config_path = os.path.join(".streamlit", "config.toml")
 target_config = """[theme]
@@ -34,7 +34,7 @@ URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&proj
 LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
 MODEL_PATH = "tunnel_model.glb"
 
-# Фирменный стиль DESTECH с мобильной адаптацией
+# Firmanin DESTECH stili
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -183,7 +183,6 @@ st.markdown("""
         background-color: #0A0E17 !important;
     }
 
-    /* МОБИЛЬНАЯ АДАПТАЦИЯ */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1.2rem !important;
@@ -192,7 +191,6 @@ st.markdown("""
             padding-bottom: 2.5rem !important;
         }
 
-        /* 3D-сцена на смартфонах располагается первой (вверху) */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
@@ -211,7 +209,6 @@ st.markdown("""
         h2 { font-size: 1.1rem !important; }
         h3 { font-size: 1.0rem !important; }
 
-        /* Шрифт заголовка CATERİNG - THY сделан мельче */
         .header-box h1 {
             font-size: 17px !important;
             line-height: 1.15 !important;
@@ -383,16 +380,16 @@ def _norm(t):
 def _click_types(page):
     for loc in (page.get_by_text("Types", exact=True).first, page.get_by_text("Types").first):
         try:
-            loc.click(timeout=8000, force=True)
+            loc.click(timeout=10000, force=True)
             break
         except Exception: pass
-    page.get_by_role("listbox").first.wait_for(state="attached", timeout=12000)
+    page.get_by_role("listbox").first.wait_for(state="attached", timeout=20000)
 
 def _select_category(page, cat_cfg):
     lb = page.get_by_role("listbox").first
     for c_name in cat_cfg["names"]:
         try:
-            lb.select_option(c_name, timeout=2000)
+            lb.select_option(c_name, timeout=3000)
             return True
         except Exception: pass
     try:
@@ -401,12 +398,12 @@ def _select_category(page, cat_cfg):
         for w in wanted:
             for o in opts:
                 if w in _norm(o["t"]) or w in _norm(o["v"]):
-                    lb.select_option(o["v"], timeout=2000)
+                    lb.select_option(o["v"], timeout=3000)
                     return True
     except Exception: pass
     return False
 
-def _wait_data_loaded(page, timeout=35000):
+def _wait_data_loaded(page, timeout=45000):
     try:
         page.wait_for_function(
             """() => !Array.from(document.querySelectorAll('body *')).some(e =>
@@ -414,10 +411,10 @@ def _wait_data_loaded(page, timeout=35000):
                    /Récupération des données/i.test(e.textContent || ''))""",
             timeout=timeout)
     except Exception: pass
-    page.wait_for_timeout(2000)
+    page.wait_for_timeout(3000)
 
 # -------------------------------------------------------------------------
-# ПУТЬ 1: CANLI VERILER (ЧТЕНИЕ АКТУАЛЬНОЙ ТАБЛИЦЫ MONTH_02)
+# CANLI VERİLER: TABLODAN ANLIK OLARAK EN ÜST SATIRI OKUR
 # -------------------------------------------------------------------------
 _SCRAPE_TABLE_JS = r"""
 () => {
@@ -446,12 +443,12 @@ def _scrape_live_table(browser, cat_key, cat_cfg):
     page = _new_page(browser)
     try:
         page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2500)
+        page.wait_for_timeout(3000)
 
-        # Выбираем 2 mois и Display mode = Tableau
         combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="attached", timeout=20000)
+        combos.first.wait_for(state="attached", timeout=25000)
 
+        # 2 mois seçimi
         dur_combo = combos.nth(0)
         dur_opts = dur_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
@@ -460,8 +457,9 @@ def _scrape_live_table(browser, cat_key, cat_cfg):
             if "2 mois" in o["t"] or "month_02" in o["v"].lower():
                 dur_combo.select_option(o["v"], timeout=8000)
                 break
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(1500)
 
+        # Tableau modu
         disp_combo = combos.nth(1)
         disp_opts = disp_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
@@ -470,12 +468,12 @@ def _scrape_live_table(browser, cat_key, cat_cfg):
             if "tableau" in o["t"] or "table" in o["v"].lower():
                 disp_combo.select_option(o["v"], timeout=8000)
                 break
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(1500)
 
         _click_types(page)
         if not _select_category(page, cat_cfg):
             return {}, None
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(2500)
         _wait_data_loaded(page)
 
         table_data = page.evaluate(_SCRAPE_TABLE_JS)
@@ -489,21 +487,12 @@ def _scrape_live_table(browser, cat_key, cat_cfg):
         for col_idx, h in enumerate(headers):
             s_id = extract_sensor_name(h)
             if s_id:
-                u_col = (s_id + " " + h).upper()
-                is_valid = False
-                if cat_key == "temp":
-                    if "-TP" in u_col or "TEMP" in u_col: is_valid = True
-                elif cat_key == "hoop":
-                    if "-CS" in u_col and "-TP" not in u_col and "TEMP" not in u_col: is_valid = True
-                elif cat_key == "axial":
-                    if "-S" in u_col and "-CS" not in u_col and "-TP" not in u_col and "TEMP" not in u_col: is_valid = True
-                if is_valid:
-                    sensor_cols[col_idx] = s_id
+                sensor_cols[col_idx] = s_id
 
         if not sensor_cols or not rows:
             return {}, None
 
-        # В LoggIS первая строка - самая новая (крайняя)
+        # LoggIS tablosunun 1. satırı en güncel ölçümdür
         newest_row = rows[0]
         dt = None
         for cell in newest_row[:3]:
@@ -541,7 +530,7 @@ def fetch_live_data():
     return live_db, cat_timestamps
 
 # -------------------------------------------------------------------------
-# ПУТЬ 2: ARŞİV VERİLER (ВЫБОР TOUT -> GRAPHIQUES -> TYPES -> КЛИК 🠋CSV)
+# ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME VE AYIKLAMA
 # -------------------------------------------------------------------------
 def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
     page = _new_page(browser)
@@ -551,13 +540,13 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
     ctx.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))
 
     try:
-        page.goto(URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2500)
+        page.goto(URL, timeout=90000, wait_until="domcontentloaded")
+        page.wait_for_timeout(3000)
 
         combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="attached", timeout=20000)
+        combos.first.wait_for(state="attached", timeout=30000)
 
-        # 1. В выпадающем списке Duration выбирается Tout
+        # 1. Duration -> Tout
         dur_combo = combos.nth(0)
         dur_opts = dur_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
@@ -569,10 +558,10 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
                 break
         if not target_dur and dur_opts:
             target_dur = dur_opts[-1]["v"]
-        dur_combo.select_option(target_dur, timeout=8000)
-        page.wait_for_timeout(1000)
+        dur_combo.select_option(target_dur, timeout=12000)
+        page.wait_for_timeout(2000)
 
-        # 2. В Display mode выбирается Graphiques (появляется черная кнопка 🠋CSV)
+        # 2. Display mode -> Graphiques (🠋CSV butonunun görünmesi için şart)
         disp_combo = combos.nth(1)
         disp_opts = disp_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
@@ -583,17 +572,20 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
                 target_disp = o["v"]
                 break
         if target_disp:
-            disp_combo.select_option(target_disp, timeout=8000)
-            page.wait_for_timeout(1000)
+            disp_combo.select_option(target_disp, timeout=12000)
+            page.wait_for_timeout(2000)
 
-        # 3. Должно быть выбрано TYPES
+        # 3. Types menüsü açılır ve ilgili kategori seçilir
         _click_types(page)
         if not _select_category(page, cat_cfg):
             return {}
-        page.wait_for_timeout(2500)
+        
+        # Sunucunun grafiği oluşturması ve CSV indirme butonunu hazırlaması için bekleme
+        page.wait_for_timeout(5000)
         _wait_data_loaded(page)
+        page.wait_for_timeout(2000)
 
-        # 4. Клик по кнопке 🠋CSV перехватывает и сохраняет полный файл архива
+        # 4. 🠋CSV butonuna basılır
         btn = page.locator("a, button, span, div").filter(has_text=re.compile(r"CSV", re.I)).first
         if not btn.is_visible():
             btn = page.get_by_text("🠋CSV").first
@@ -602,8 +594,9 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
             return {}
 
         path = None
-        btn.click(force=True, timeout=15000)
-        for _ in range(90):
+        btn.click(force=True, timeout=20000)
+        # Tüm geçmiş indirildiği için dosya oluşana kadar beklenir
+        for _ in range(120):
             if downloads: break
             page.wait_for_timeout(500)
         if downloads:
@@ -612,7 +605,7 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
             return {}
 
-        # 5. Разбор CSV
+        # 5. İndirilen CSV dosyasını okuma
         with open(path, "rb") as f:
             raw = f.read()
         text = raw.decode("utf-8-sig", errors="ignore")
@@ -624,7 +617,7 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         rows = list(csv.reader(lines, delimiter=delim))
 
         header_idx = None
-        for i, r in enumerate(rows[:10]):
+        for i, r in enumerate(rows[:15]):
             if any(extract_sensor_name(c) for c in r):
                 header_idx = i
                 break
@@ -636,16 +629,7 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         for col_idx, h in enumerate(header):
             s_id = extract_sensor_name(h)
             if s_id:
-                u_col = (s_id + " " + h).upper()
-                is_valid = False
-                if cat_key == "temp":
-                    if "-TP" in u_col or "TEMP" in u_col: is_valid = True
-                elif cat_key == "hoop":
-                    if "-CS" in u_col and "-TP" not in u_col and "TEMP" not in u_col: is_valid = True
-                elif cat_key == "axial":
-                    if "-S" in u_col and "-CS" not in u_col and "-TP" not in u_col and "TEMP" not in u_col: is_valid = True
-                if is_valid:
-                    sensor_cols[col_idx] = s_id
+                sensor_cols[col_idx] = s_id
 
         if not sensor_cols:
             return {}
@@ -669,7 +653,7 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         return out
 
     except Exception as e:
-        print(f"Arşiv indirme hatası {cat_key}: {e}")
+        print(f"Arşiv çekme hatası {cat_key}: {e}")
         return {}
     finally:
         try: page.context.close()
@@ -704,7 +688,7 @@ def get_model_b64(path):
         return base64.b64encode(f.read()).decode()
 
 # ---------------------------------------------------------
-# НАВИГАЦИЯ И УПРАВЛЕНИЕ
+# ARAYÜZ VE KONTROL PANELİ
 # ---------------------------------------------------------
 col_nav, col_3d = st.columns([1, 4])
 
@@ -733,7 +717,7 @@ with col_nav:
         st.markdown("---")
         st.subheader("Zaman Seçimi")
         
-        with st.spinner("Arşiv CSV dosyası LoggIS üzerinden indiriliyor (Tout -> Graphiques -> CSV)..."):
+        with st.spinner("Arşiv verileri LoggIS üzerinden CSV olarak indiriliyor (Tout -> Graphiques -> CSV)..."):
             all_dates, full_db = fetch_archive_csv_database()
 
         cat_rows = full_db.get(selected_comp, {})
@@ -769,7 +753,7 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # СИНХРОНИЗАЦИЯ: Aktif Periyot показывает именно выбранную архивную дату
+                            # AKTİF PERİYOT: Doğrudan seçilen geçmiş tarihi gösterir
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
@@ -784,7 +768,7 @@ with col_nav:
             st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
             target_timestamp = "-"
         else:
-            # СИНХРОНИЗАЦИЯ: Aktif Periyot показывает дату крайней живой строки
+            # AKTİF PERİYOT: Doğrudan canlı tablodaki son satırın tarihini gösterir
             target_timestamp = fmt_ts(cur_ts)
 
     if st.button("Verileri Yenile"):
@@ -792,7 +776,7 @@ with col_nav:
         st.rerun()
 
 # ---------------------------------------------------------
-# ОБРАБОТКА ДАННЫХ И ДЕЛЬТЫ
+# FİLTRELEME VE FARK (DELTA) HESAPLAMA
 # ---------------------------------------------------------
 active_category_values = {}
 table_data = []
@@ -823,7 +807,9 @@ if raw_v_map:
         else:
             active_category_values[s_name] = float(val)
 
-# РАСЧЕТ ШКАЛЫ СТРОГО ОТ ИМЕЮЩИХСЯ ДАННЫХ
+# ---------------------------------------------------------
+# SKALA LİMİTLERİ (YALNIZCA MEVCUT VERİLER ÜZERİNDEN HESAPLANIR)
+# ---------------------------------------------------------
 vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
 if not vals:
     clim = [0.0, 0.0]
@@ -877,7 +863,7 @@ with col_nav:
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# THREE.JS 3D ОБЛАСТЬ (ВВЕРХУ НА СМАРТФОНАХ)
+# THREE.JS 3D GÖRSELLEŞTİRME (MOBİLDE EN ÜSTTE KONUMLANIR)
 # ---------------------------------------------------------
 with col_3d:
     sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
@@ -1509,7 +1495,7 @@ with col_3d:
         st.components.v1.html(final_html, height=600, scrolling=False)
 
 # ---------------------------------------------------------
-# ТАБЛИЦА СРАВНЕНИЯ (FARK RAPORU)
+# TABLO (FARK RAPORU)
 # ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
