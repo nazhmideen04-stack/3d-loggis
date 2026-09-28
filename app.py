@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
-from io import BytesIO
 
 # 1. STREAMLIT TEMASI VE AYARLARI
 os.makedirs(".streamlit", exist_ok=True)
@@ -900,7 +899,7 @@ with col_nav:
         limit_str = "-"
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
-    # ИДЕЯ 1: МНОГОКОЛОНОЧНЫЙ ЭКСПОРТ В EXCEL (С РАЗДЕЛИТЕЛЯМИ)
+    # ЭКСПОРТ В CSV С ТОЧКОЙ С ЗАПЯТОЙ (ГАРАНТИРОВАННО РАСПРЕДЕЛЯЕТ ПО СТОЛБЦАМ В EXCEL)
     st.markdown("---")
     st.subheader("RAPOR DIŞA AKTAR")
     if active_category_values:
@@ -911,16 +910,13 @@ with col_nav:
                 {"Sensör No": k, f"Ölçüm ({cat_cfg['unit']})": v} for k, v in active_category_values.items()
             ]).sort_values(by="Sensör No").reset_index(drop=True)
         
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            export_df.to_excel(writer, index=False, sheet_name='DESTECH_Rapor')
-        processed_data = output.getvalue()
+        csv_buffer = export_df.to_csv(index=False, sep=';', encoding='utf-8-sig')
         
         st.download_button(
-            label="📥 Excel Raporunu İndir",
-            data=processed_data,
-            file_name=f"DESTECH_Rapor_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="📥 CSV Raporunu İndir (Sütunlu)",
+            data=csv_buffer,
+            file_name=f"DESTECH_Rapor_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv"
         )
 
 # ---------------------------------------------------------
@@ -946,7 +942,7 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # ИДЕЯ 2: ГРАФИК НА ТУРЕЦКОМ ЯЗЫКЕ
+    # ДИНАМИЧЕСКИЙ ГРАФИК С ТУРЕЦКИМИ МЕТКАМИ ВРЕМЕНИ
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
         st.markdown(f"### 📈 Sensör Zaman İçindeki Değişimi: {selected_sensor}")
