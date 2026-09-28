@@ -184,7 +184,7 @@ st.markdown("""
         cursor: pointer !important;
     }
 
-    /* GELİŞMİŞ MOBİL UYUMLULUK VE KULLANILABİLİRLİK */
+    /* GELİŞMİŞ MOBİL UYUMLULUK */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 0.6rem !important;
@@ -193,7 +193,6 @@ st.markdown("""
             padding-bottom: 2rem !important;
         }
 
-        /* 3B Model mobilde en üstte yer alır */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
@@ -262,8 +261,8 @@ LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 250px; h
 st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERING - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
     <div style="display: align-items: center;">
         {LOGO_TAG}
@@ -551,7 +550,7 @@ def fetch_live_data():
     return live_db, cat_timestamps
 
 # -------------------------------------------------------------------------
-# 2. ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME
+# 2. ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME (ИСПРАВЛЕННЫЙ ПАРСЕР КОЛОНОК)
 # -------------------------------------------------------------------------
 def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
     page = _new_page(browser)
@@ -639,8 +638,19 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         if len(lines) < 2:
             return {}
 
-        delim = ";" if lines[0].count(";") >= lines[0].count(",") else ","
-        rows = list(csv.reader(lines, delimiter=delim))
+        # Автоматическое определение разделителя (запятая или точка с запятой), предотвращающее попадание всех данных в одну колонку
+        sample = text[:2048]
+        delimiter = ";"
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=";,\\t")
+            delimiter = dialect.delimiter
+        except Exception:
+            if sample.count(";") > sample.count(","):
+                delimiter = ";"
+            elif sample.count(",") > sample.count(";"):
+                delimiter = ","
+
+        rows = list(csv.reader(lines, delimiter=delimiter))
 
         header_idx = None
         for i, r in enumerate(rows[:25]):
@@ -743,7 +753,7 @@ with col_nav:
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman SEÇİMİ")
+        st.subheader("Zaman Seçimi")
         
         with st.spinner("Arşiv verileri alınıyor..."):
             all_dates, full_db = fetch_archive_csv_database()
@@ -1524,7 +1534,7 @@ with col_3d:
         st.components.v1.html(final_html, height=600, scrolling=False)
 
 # ---------------------------------------------------------
-# FARK RAPORU TABLOSU (SAYISAL SIRALAMA DESTEKLİ)
+# TABLO (FARK RAPORU)
 # ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
@@ -1539,10 +1549,7 @@ if compare_mode and table_data:
         hide_index=True,
         height=400,
         column_config={
-            "Sensör No": st.column_config.TextColumn(
-                "Sensör No", 
-                width="medium"
-            ),
+            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
             "Arşiv Değeri": st.column_config.NumberColumn(
                 f"Geçmiş ({target_timestamp})", 
                 format="%.2f",
