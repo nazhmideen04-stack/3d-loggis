@@ -900,7 +900,7 @@ with col_nav:
         limit_str = "-"
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
-    # İDEYA 1: ЭКСПОРТ В EXCEL (МНОГОКОЛОНОЧНЫЙ)
+    # ИДЕЯ 1: МНОГОКОЛОНОЧНЫЙ ЭКСПОРТ В EXCEL (С РАЗДЕЛИТЕЛЯМИ)
     st.markdown("---")
     st.subheader("RAPOR DIŞA AKTAR")
     if active_category_values:
@@ -946,7 +946,7 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # İDEYA 2: ДИНАМИЧЕСКИЙ ГРАФИК НА ТУРЕЦКОМ ЯЗЫКЕ
+    # ИДЕЯ 2: ГРАФИК НА ТУРЕЦКОМ ЯЗЫКЕ
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
         st.markdown(f"### 📈 Sensör Zaman İçindeki Değişimi: {selected_sensor}")
