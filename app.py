@@ -840,8 +840,8 @@ if raw_v_map:
                 
             table_data.append({
                 "Sensör No": s_name,
-                "Arşiv Değeri": val_float,
-                "Güncel Değer": latest_float,
+                f"Arşiv ({target_timestamp})": val_float,
+                f"Şimdi ({latest_timestamp})": latest_float,
                 "Fark (Δ)": delta
             })
         else:
@@ -899,26 +899,6 @@ with col_nav:
         limit_str = "-"
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
-    # ЭКСПОРТ В CSV С ТОЧКОЙ С ЗАПЯТОЙ (ГАРАНТИРОВАННО РАСПРЕДЕЛЯЕТ ПО СТОЛБЦАМ В EXCEL)
-    st.markdown("---")
-    st.subheader("RAPOR DIŞA AKTAR")
-    if active_category_values:
-        if compare_mode and table_data:
-            export_df = pd.DataFrame(table_data).sort_values(by="Sensör No").reset_index(drop=True)
-        else:
-            export_df = pd.DataFrame([
-                {"Sensör No": k, f"Ölçüm ({cat_cfg['unit']})": v} for k, v in active_category_values.items()
-            ]).sort_values(by="Sensör No").reset_index(drop=True)
-        
-        csv_buffer = export_df.to_csv(index=False, sep=';', encoding='utf-8-sig')
-        
-        st.download_button(
-            label="📥 CSV Raporunu İndir (Sütunlu)",
-            data=csv_buffer,
-            file_name=f"DESTECH_Rapor_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-            mime="text/csv"
-        )
-
 # ---------------------------------------------------------
 # THREE.JS 3D PENCERESİ
 # ---------------------------------------------------------
@@ -942,7 +922,7 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # ДИНАМИЧЕСКИЙ ГРАФИК С ТУРЕЦКИМИ МЕТКАМИ ВРЕМЕНИ
+    # DİNAMİK GRAFİK (ТУРЕЦКИЕ ПОДПИСИ)
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
         st.markdown(f"### 📈 Sensör Zaman İçindeki Değişimi: {selected_sensor}")
@@ -1586,7 +1566,7 @@ with col_3d:
         st.components.v1.html(final_html, height=600, scrolling=False)
 
 # ---------------------------------------------------------
-# TABLO (FARK RAPORU)
+# TABLO (FARK RAPORU VE CSV İNDİRME)
 # ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
@@ -1595,6 +1575,16 @@ if compare_mode and table_data:
     df = pd.DataFrame(table_data)
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
+    # Прямая выгрузка в виде аккуратного CSV с точкой с запятой (гарантированно разделяет по колонкам в Excel)
+    csv_string = "sep=;\n" + df.to_csv(index=False, sep=';', encoding='utf-8-sig')
+    
+    st.download_button(
+        label="📥 Fark Raporunu İndir (Sütunlu CSV)",
+        data=csv_string,
+        file_name=f"Fark_Raporu_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        mime="text/csv"
+    )
+    
     st.dataframe(
         df,
         use_container_width=True,
@@ -1602,12 +1592,12 @@ if compare_mode and table_data:
         height=400,
         column_config={
             "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
-            "Arşiv Değeri": st.column_config.NumberColumn(
-                f"Geçmiş ({target_timestamp})", 
+            f"Arşiv ({target_timestamp})": st.column_config.NumberColumn(
+                f"Arşiv ({target_timestamp})", 
                 format="%.2f",
                 width="small"
             ),
-            "Güncel Değer": st.column_config.NumberColumn(
+            f"Şimdi ({latest_timestamp})": st.column_config.NumberColumn(
                 f"Şimdi ({latest_timestamp})", 
                 format="%.2f",
                 width="small"
