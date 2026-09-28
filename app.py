@@ -639,6 +639,7 @@ def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
         if len(lines) < 2:
             return {}
 
+        # Универсальный разбор CSV без слияния в одну колонку
         sample = text[:4096]
         delimiter = ";"
         if sample.count(",") > sample.count(";"):
@@ -900,7 +901,7 @@ with col_nav:
         limit_str = "-"
     st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
 
-    # İDEYA 1: ЭКСПОРТ В EXCEL
+    # ИДЕЯ 1: ЭКСПОРТ В EXCEL
     st.markdown("---")
     st.subheader("RAPOR DIŞA AKTAR")
     if active_category_values:
@@ -943,7 +944,7 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # İDEYA 2: ГРАФИК ВРЕМЕННЫХ РЯДОВ ПРИ КЛИКЕ НА ДАТЧИК
+    # ИДЕЯ 2: ГРАФИК ВРЕМЕННЫХ РЯДОВ ПРИ КЛИКЕ НА ДАТЧИК
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
         st.markdown(f"### 📈 Dinamik Analiz: {selected_sensor}")
