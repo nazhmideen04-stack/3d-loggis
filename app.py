@@ -183,7 +183,7 @@ st.markdown("""
         background-color: #0A0E17 !important;
     }
 
-    /* Mobil Düzen */
+    /* Mobil Duzen */
     @media (max-width: 820px) {
         .main .block-container {
             padding-left: 1.2rem !important;
@@ -192,7 +192,6 @@ st.markdown("""
             padding-bottom: 2.5rem !important;
         }
 
-        /* 3B Model üstte konumlanır */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
@@ -743,8 +742,6 @@ with col_nav:
         if not cat_dates:
             st.warning(f"⚠️ '{cat_cfg['title']}' kategorisi için LoggIS arşivinde kayıt bulunamadı.")
         else:
-            latest_key = cat_dates[0]
-            latest_timestamp = fmt_ts(latest_key)
             compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
 
             date_hierarchy = {}
@@ -770,10 +767,17 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # Aktif Periyot geçmiş tarihle tam senkronizedir
+                            # Aktif Periyot: Seçilen geçmiş arşiv tarihini gösterir
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
-                            latest_v_map = cat_rows.get(latest_key, {})
+
+                            # Karşılaştırma modunda canlı verilerle kıyaslama
+                            if compare_mode:
+                                with st.spinner("Kıyaslama için canlı veriler alınıyor..."):
+                                    live_db_cmp, live_ts_cmp = fetch_live_data()
+                                latest_v_map = live_db_cmp.get(selected_comp, {})
+                                cur_live_dt = live_ts_cmp.get(selected_comp)
+                                latest_timestamp = fmt_ts(cur_live_dt) if cur_live_dt else "-"
     else:
         with st.spinner("En güncel veriler alınıyor (Canlı)..."):
             live_db, cat_timestamps = fetch_live_data()
@@ -785,7 +789,7 @@ with col_nav:
             st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
             target_timestamp = "-"
         else:
-            # Aktif Periyot son canlı ölçümle senkronizedir
+            # Aktif Periyot: Canlı tablodaki son satırın tarihini gösterir
             target_timestamp = fmt_ts(cur_ts)
 
     if st.button("Verileri Yenile"):
@@ -1509,7 +1513,7 @@ with col_3d:
         st.components.v1.html(final_html, height=600, scrolling=False)
 
 # ---------------------------------------------------------
-# FARK RAPORU TABLOSU
+# TABLO (FARK RAPORU)
 # ---------------------------------------------------------
 if compare_mode and table_data:
     st.markdown("---")
