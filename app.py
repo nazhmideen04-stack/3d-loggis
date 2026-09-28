@@ -14,27 +14,27 @@ import streamlit as st
 from playwright.sync_api import sync_playwright
 
 # 1. STREAMLIT TEMASI VE AYARLARI
-os.makedirs(".streamlit", exist_ok=True)
-config_path = os.path.join(".streamlit", "config.toml")
+os.makedirs(".streamlit", exist_ok=True)[cite: 4]
+config_path = os.path.join(".streamlit", "config.toml")[cite: 4]
 target_config = """[theme]
 primaryColor = "#00C8E6"
 backgroundColor = "#0A0E17"
 secondaryBackgroundColor = "#0E182A"
 textColor = "#D2DEEC"
 font = "sans serif"
-"""
-if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").read() != target_config:
-    with open(config_path, "w", encoding="utf-8") as f:
-        f.write(target_config)
+"""[cite: 4]
+if not os.path.exists(config_path) or open(config_path, "r", encoding="utf-8").read() != target_config:[cite: 4]
+    with open(config_path, "w", encoding="utf-8") as f:[cite: 4]
+        f.write(target_config)[cite: 4]
 
-st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="CATERİNG - THY", layout="wide", initial_sidebar_state="collapsed")[cite: 4]
 
-URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"
+URL = "https://loggis2.com/?company-id=20ce6d9f-398b-43b3-a452-3580dae39122&project-id=2d381d12-d966-4c90-a7c8-c90d6f758ae0&token-id=6e73d15f-0b2f-4d93-a152-3464f7450e50"[cite: 4]
 
-LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"
-MODEL_PATH = "tunnel_model.glb"
+LOGO_PATH = "logo.jpg" if os.path.exists("logo.jpg") else "logo.png"[cite: 4]
+MODEL_PATH = "tunnel_model.glb"[cite: 4]
 
-# DESTECH Stili ve Mobil Uyumluluk
+# DESTECH Stili ve Gelismis Mobil Uyumluluk
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Syne:wght@700;800&display=swap');
@@ -181,21 +181,23 @@ st.markdown("""
         font-weight: 700 !important;
         letter-spacing: 1px !important;
         background-color: #0A0E17 !important;
+        cursor: pointer !important;
     }
 
-    /* Mobil Duzen */
+    /* GELİŞMİŞ MOBİL UYUMLULUK */
     @media (max-width: 820px) {
         .main .block-container {
-            padding-left: 1.2rem !important;
-            padding-right: 1.2rem !important;
-            padding-top: 1rem !important;
-            padding-bottom: 2.5rem !important;
+            padding-left: 0.8rem !important;
+            padding-right: 0.8rem !important;
+            padding-top: 0.6rem !important;
+            padding-bottom: 2rem !important;
         }
 
+        /* 3B Model üstte konumlanır */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
-            gap: 1.5rem !important;
+            gap: 1.2rem !important;
         }
 
         [data-testid="column"] {
@@ -210,20 +212,26 @@ st.markdown("""
         h2 { font-size: 1.1rem !important; }
         h3 { font-size: 1.0rem !important; }
 
+        .header-box {
+            margin-top: -10px !important;
+            margin-bottom: 12px !important;
+            padding-bottom: 8px !important;
+        }
+
         .header-box h1 {
-            font-size: 17px !important;
+            font-size: 16px !important;
             line-height: 1.15 !important;
             margin-bottom: 2px !important;
             word-break: break-word !important;
         }
 
         .header-box div {
-            font-size: 10px !important;
-            letter-spacing: 1px !important;
+            font-size: 9px !important;
+            letter-spacing: 0.8px !important;
         }
 
         .header-box img {
-            width: 95px !important;
+            width: 85px !important;
         }
         
         div[data-testid="stRadio"] div[role="radiogroup"] label p {
@@ -231,46 +239,50 @@ st.markdown("""
         }
         
         [data-testid="stMetricValue"] {
-            font-size: 22px !important;
+            font-size: 20px !important;
         }
         [data-testid="stMetricLabel"] {
             font-size: 11px !important;
         }
+
+        iframe {
+            height: 480px !important;
+        }
     }
 </style>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)[cite: 4]
 
-LOGO_B64 = ""
-if os.path.exists(LOGO_PATH):
-    with open(LOGO_PATH, "rb") as f:
-        LOGO_B64 = base64.b64encode(f.read()).decode()
+LOGO_B64 = ""[cite: 4]
+if os.path.exists(LOGO_PATH):[cite: 4]
+    with open(LOGO_PATH, "rb") as f:[cite: 4]
+        LOGO_B64 = base64.b64encode(f.read()).decode()[cite: 4]
 
-LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 250px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'
+LOGO_TAG = f'<img src="data:image/jpeg;base64,{LOGO_B64}" style="width: 250px; height: auto; display: block; opacity: 0.85; border-radius: 4px;" alt="DESTECH">' if LOGO_B64 else '<span class="destech-badge">DESTECH</span>'[cite: 4]
 
 st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
-        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERING - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
+        <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
     <div style="display: align-items: center;">
         {LOGO_TAG}
     </div>
 </div>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)[cite: 4]
 
 CATEGORIES = {
     "axial": {"names": ["Longitudinal Strains", "Longitudinal"], "tag": "-S", "title": "Boyuna gerinim (S)", "unit": "µm/m"},
     "hoop": {"names": ["Othoradial Strains", "Orthoradial Strains", "Orthoradial"], "tag": "-CS", "title": "Çevresel gerinim (CS)", "unit": "µm/m"},
     "temp": {"names": ["Temperature", "Temperatures", "Température", "Températures"], "tag": "-TP", "title": "Sıcaklık (TP)", "unit": "°C"},
-}
+}[cite: 4]
 
-SENSOR_RE = re.compile(r"(?<![A-Za-z0-9])(T[AB]-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)", re.IGNORECASE)
+SENSOR_RE = re.compile(r"(?<![A-Za-z0-9])(T[AB]-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)", re.IGNORECASE)[cite: 4]
 
 TR_MONTHS = {
     "01": "Ocak", "02": "Şubat", "03": "Mart", "04": "Nisan", "05": "Mayıs", "06": "Haziran",
     "07": "Temmuz", "08": "Ağustos", "09": "Eylül", "10": "Ekim", "11": "Kasım", "12": "Aralık",
-}
+}[cite: 4]
 
 DATE_FORMATS = [
     "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y",
@@ -279,148 +291,148 @@ DATE_FORMATS = [
     "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
     "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d",
     "%d/%m/%y %H:%M:%S", "%d/%m/%y %H:%M",
-]
+][cite: 4]
 
 def clean_num(s):
-    if s is None:
-        return np.nan
-    if isinstance(s, (int, float, np.integer, np.floating)):
-        return float(s)
-    s = str(s).strip()
-    if not s or s.lower() in ("nan", "null", "-", "--", ""):
-        return np.nan
-    s = s.replace("\u2212", "-").replace("\u2013", "-")
-    s = re.sub(r"[\s\u00a0\u202f\u2009']", "", s)
-    if "," in s and "." in s:
-        if s.rfind(",") > s.rfind("."):
-            s = s.replace(".", "").replace(",", ".")
+    if s is None:[cite: 4]
+        return np.nan[cite: 4]
+    if isinstance(s, (int, float, np.integer, np.floating)):[cite: 4]
+        return float(s)[cite: 4]
+    s = str(s).strip()[cite: 4]
+    if not s or s.lower() in ("nan", "null", "-", "--", ""):[cite: 4]
+        return np.nan[cite: 4]
+    s = s.replace("\u2212", "-").replace("\u2013", "-")[cite: 4]
+    s = re.sub(r"[\s\u00a0\u202f\u2009']", "", s)[cite: 4]
+    if "," in s and "." in s:[cite: 4]
+        if s.rfind(",") > s.rfind("."):[cite: 4]
+            s = s.replace(".", "").replace(",", ".")[cite: 4]
         else:
-            s = s.replace(",", "")
+            s = s.replace(",", "")[cite: 4]
     else:
-        s = s.replace(",", ".")
-    m = re.search(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", s)
-    return float(m.group()) if m else np.nan
+        s = s.replace(",", ".")[cite: 4]
+    m = re.search(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", s)[cite: 4]
+    return float(m.group()) if m else np.nan[cite: 4]
 
 def parse_ts(s):
-    if s is None:
-        return None
-    t = str(s).replace("\ufeff", "").strip().strip('"')
-    if not t or not re.search(r"\d", t):
-        return None
-    if re.fullmatch(r"\d{10}(\.\d+)?|\d{13}", t):
-        x = float(t) / (1000.0 if len(t) == 13 else 1.0)
+    if s is None:[cite: 4]
+        return None[cite: 4]
+    t = str(s).replace("\ufeff", "").strip().strip('"')[cite: 4]
+    if not t or not re.search(r"\d", t):[cite: 4]
+        return None[cite: 4]
+    if re.fullmatch(r"\d{10}(\.\d+)?|\d{13}", t):[cite: 4]
+        x = float(t) / (1000.0 if len(t) == 13 else 1.0)[cite: 4]
         try:
-            return datetime.fromtimestamp(x, ZoneInfo("Europe/Istanbul")).replace(tzinfo=None)
+            return datetime.fromtimestamp(x, ZoneInfo("Europe/Istanbul")).replace(tzinfo=None)[cite: 4]
         except Exception:
-            return None
-    t = re.sub(r"\s+", " ", t.replace("T", " "))
-    t = re.sub(r"(\.\d+)?(Z|[+-]\d{2}:?\d{2})$", "", t).strip()
-    for fmt in DATE_FORMATS:
+            return None[cite: 4]
+    t = re.sub(r"\s+", " ", t.replace("T", " "))[cite: 4]
+    t = re.sub(r"(\.\d+)?(Z|[+-]\d{2}:?\d{2})$", "", t).strip()[cite: 4]
+    for fmt in DATE_FORMATS:[cite: 4]
         try:
-            return datetime.strptime(t, fmt)
+            return datetime.strptime(t, fmt)[cite: 4]
         except ValueError:
             pass
     try:
-        ts = pd.to_datetime(t, dayfirst=True, errors="coerce")
-        if pd.notna(ts):
-            return ts.to_pydatetime().replace(tzinfo=None)
+        ts = pd.to_datetime(t, dayfirst=True, errors="coerce")[cite: 4]
+        if pd.notna(ts):[cite: 4]
+            return ts.to_pydatetime().replace(tzinfo=None)[cite: 4]
     except Exception:
         pass
-    return None
+    return None[cite: 4]
 
 def ts_key(dt):
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
+    return dt.strftime("%Y-%m-%d %H:%M:%S")[cite: 4]
 
 def fmt_ts(key):
-    if not key or key == "-":
-        return "-"
+    if not key or key == "-":[cite: 4]
+        return "-"[cite: 4]
     try:
-        return datetime.strptime(key, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+        return datetime.strptime(key, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")[cite: 4]
     except ValueError:
-        return str(key)
+        return str(key)[cite: 4]
 
 def extract_sensor_name(header):
-    if header is None:
-        return None
-    h = str(header).replace("\ufeff", "").strip()
-    m = SENSOR_RE.search(h)
-    if m:
-        return m.group(1).strip("-")
-    m_alt = re.search(r"(T[AB][-_][A-Za-z0-9\-_]+)", h, re.IGNORECASE)
-    return m_alt.group(1).replace("_", "-").strip("-") if m_alt else None
+    if header is None:[cite: 4]
+        return None[cite: 4]
+    h = str(header).replace("\ufeff", "").strip()[cite: 4]
+    m = SENSOR_RE.search(h)[cite: 4]
+    if m:[cite: 4]
+        return m.group(1).strip("-")[cite: 4]
+    m_alt = re.search(r"(T[AB][-_][A-Za-z0-9\-_]+)", h, re.IGNORECASE)[cite: 4]
+    return m_alt.group(1).replace("_", "-").strip("-") if m_alt else None[cite: 4]
 
 def ensure_playwright_installed():
-    try:
-        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
-    except Exception:
-        pass
+    try:[cite: 4]
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)[cite: 4]
+    except Exception:[cite: 4]
+        pass[cite: 4]
 
 BROWSER_ARGS = [
-    "--no-sandbox", "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage", "--disable-gpu",
-    "--disable-blink-features=AutomationControlled",
-    "--window-size=1920,1080"
+    "--no-sandbox", "--disable-setuid-sandbox",[cite: 4]
+    "--disable-dev-shm-usage", "--disable-gpu",[cite: 4]
+    "--disable-blink-features=AutomationControlled",[cite: 4]
+    "--window-size=1920,1080"[cite: 4]
 ]
 
 def _launch_browser(p):
-    try:
-        return p.chromium.launch(headless=True, args=BROWSER_ARGS)
-    except Exception:
-        ensure_playwright_installed()
-        return p.chromium.launch(headless=True, args=BROWSER_ARGS)
+    try:[cite: 4]
+        return p.chromium.launch(headless=True, args=BROWSER_ARGS)[cite: 4]
+    except Exception:[cite: 4]
+        ensure_playwright_installed()[cite: 4]
+        return p.chromium.launch(headless=True, args=BROWSER_ARGS)[cite: 4]
 
 def _new_page(browser):
-    context = browser.new_context(
-        accept_downloads=True,
-        viewport={"width": 1920, "height": 1080},
-        timezone_id="Europe/Istanbul", locale="fr-FR",
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    )
-    page = context.new_page()
-    page.set_default_timeout(0)
-    return page
+    context = browser.new_context([cite: 4]
+        accept_downloads=True,[cite: 4]
+        viewport={"width": 1920, "height": 1080},[cite: 4]
+        timezone_id="Europe/Istanbul", locale="fr-FR",[cite: 4]
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"[cite: 4]
+    )[cite: 4]
+    page = context.new_page()[cite: 4]
+    page.set_default_timeout(0)[cite: 4]
+    return page[cite: 4]
 
 def _norm(t):
-    return unicodedata.normalize("NFKD", str(t)).encode("ascii", "ignore").decode().lower().strip()
+    return unicodedata.normalize("NFKD", str(t)).encode("ascii", "ignore").decode().lower().strip()[cite: 4]
 
 def _click_types_menu(page):
-    for loc in (page.get_by_text("Types", exact=True), page.locator("text=Types")):
-        try:
-            if loc.count() > 0:
-                loc.first.click(timeout=0, force=True)
-                break
-        except Exception:
-            pass
-    page.wait_for_timeout(1000)
+    for loc in (page.get_by_text("Types", exact=True), page.locator("text=Types")):[cite: 4]
+        try:[cite: 4]
+            if loc.count() > 0:[cite: 4]
+                loc.first.click(timeout=0, force=True)[cite: 4]
+                break[cite: 4]
+        except Exception:[cite: 4]
+            pass[cite: 4]
+    page.wait_for_timeout(1000)[cite: 4]
 
 def _select_type_category(page, cat_cfg):
-    for name in cat_cfg["names"]:
-        try:
-            loc = page.locator("div, span, li, p, td, a").filter(has_text=re.compile(f"^{re.escape(name)}$", re.I))
-            if loc.count() > 0:
-                loc.first.click(timeout=0, force=True)
-                return True
-        except Exception:
-            pass
-        try:
-            loc_fuzzy = page.get_by_text(name, exact=False)
-            if loc_fuzzy.count() > 0:
-                loc_fuzzy.first.click(timeout=0, force=True)
-                return True
-        except Exception:
-            pass
-    return False
+    for name in cat_cfg["names"]:[cite: 4]
+        try:[cite: 4]
+            loc = page.locator("div, span, li, p, td, a").filter(has_text=re.compile(f"^{re.escape(name)}$", re.I))[cite: 4]
+            if loc.count() > 0:[cite: 4]
+                loc.first.click(timeout=0, force=True)[cite: 4]
+                return True[cite: 4]
+        except Exception:[cite: 4]
+            pass[cite: 4]
+        try:[cite: 4]
+            loc_fuzzy = page.get_by_text(name, exact=False)[cite: 4]
+            if loc_fuzzy.count() > 0:[cite: 4]
+                loc_fuzzy.first.click(timeout=0, force=True)[cite: 4]
+                return True[cite: 4]
+        except Exception:[cite: 4]
+            pass[cite: 4]
+    return False[cite: 4]
 
 def _wait_data_loaded(page):
-    try:
-        page.wait_for_function(
+    try:[cite: 4]
+        page.wait_for_function([cite: 4]
             """() => !Array.from(document.querySelectorAll('body *')).some(e =>
                    e.children.length === 0 && e.offsetParent !== null &&
                    /Récupération des données/i.test(e.textContent || ''))""",
-            timeout=0)
-    except Exception:
-        pass
-    page.wait_for_timeout(3000)
+            timeout=0)[cite: 4]
+    except Exception:[cite: 4]
+        pass[cite: 4]
+    page.wait_for_timeout(3000)[cite: 4]
 
 # -------------------------------------------------------------------------
 # 1. CANLI VERİLER: 2 MOIS TABLOSUNDAN EN SON SATIRI OKUMA
@@ -446,483 +458,482 @@ _SCRAPE_TABLE_JS = r"""
     });
     return { headers, rows };
 }
-"""
+"""[cite: 4]
 
 def _scrape_live_table(browser, cat_key, cat_cfg):
-    page = _new_page(browser)
-    try:
-        page.goto(URL, timeout=0, wait_until="domcontentloaded")
-        page.wait_for_timeout(3000)
+    page = _new_page(browser)[cite: 4]
+    try:[cite: 4]
+        page.goto(URL, timeout=0, wait_until="domcontentloaded")[cite: 4]
+        page.wait_for_timeout(3000)[cite: 4]
 
-        combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="attached", timeout=0)
+        combos = page.get_by_role("combobox")[cite: 4]
+        combos.first.wait_for(state="attached", timeout=0)[cite: 4]
 
         # 2 mois seçimi
-        dur_combo = combos.nth(0)
-        dur_opts = dur_combo.locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
-        )
-        for o in dur_opts:
-            if "2 mois" in o["t"] or "month_02" in o["v"].lower():
-                dur_combo.select_option(o["v"], timeout=0)
-                break
-        page.wait_for_timeout(1500)
+        dur_combo = combos.nth(0)[cite: 4]
+        dur_opts = dur_combo.locator("option").evaluate_all([cite: 4]
+            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"[cite: 4]
+        )[cite: 4]
+        for o in dur_opts:[cite: 4]
+            if "2 mois" in o["t"] or "month_02" in o["v"].lower():[cite: 4]
+                dur_combo.select_option(o["v"], timeout=0)[cite: 4]
+                break[cite: 4]
+        page.wait_for_timeout(1500)[cite: 4]
 
         # Tableau modu
-        disp_combo = combos.nth(1)
-        disp_opts = disp_combo.locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
-        )
-        for o in disp_opts:
-            if "tableau" in o["t"] or "table" in o["v"].lower():
-                disp_combo.select_option(o["v"], timeout=0)
-                break
-        page.wait_for_timeout(1500)
+        disp_combo = combos.nth(1)[cite: 4]
+        disp_opts = disp_combo.locator("option").evaluate_all([cite: 4]
+            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"[cite: 4]
+        )[cite: 4]
+        for o in disp_opts:[cite: 4]
+            if "tableau" in o["t"] or "table" in o["v"].lower():[cite: 4]
+                disp_combo.select_option(o["v"], timeout=0)[cite: 4]
+                break[cite: 4]
+        page.wait_for_timeout(1500)[cite: 4]
 
-        _click_types_menu(page)
-        _select_type_category(page, cat_cfg)
-        page.wait_for_timeout(2500)
-        _wait_data_loaded(page)
+        _click_types_menu(page)[cite: 4]
+        _select_type_category(page, cat_cfg)[cite: 4]
+        page.wait_for_timeout(2500)[cite: 4]
+        _wait_data_loaded(page)[cite: 4]
 
-        table_data = page.evaluate(_SCRAPE_TABLE_JS)
-        if not table_data or not table_data.get("headers") or not table_data.get("rows"):
-            return {}, None
+        table_data = page.evaluate(_SCRAPE_TABLE_JS)[cite: 4]
+        if not table_data or not table_data.get("headers") or not table_data.get("rows"):[cite: 4]
+            return {}, None[cite: 4]
 
-        headers = table_data["headers"]
-        rows = table_data["rows"]
+        headers = table_data["headers"][cite: 4]
+        rows = table_data["rows"][cite: 4]
 
-        sensor_cols = {}
-        for col_idx, h in enumerate(headers):
-            s_id = extract_sensor_name(h)
-            if s_id:
-                sensor_cols[col_idx] = s_id
+        sensor_cols = {}[cite: 4]
+        for col_idx, h in enumerate(headers):[cite: 4]
+            s_id = extract_sensor_name(h)[cite: 4]
+            if s_id:[cite: 4]
+                sensor_cols[col_idx] = s_id[cite: 4]
 
-        if not sensor_cols or not rows:
-            return {}, None
+        if not sensor_cols or not rows:[cite: 4]
+            return {}, None[cite: 4]
 
-        newest_row = rows[0]
-        dt = None
-        for cell in newest_row[:3]:
-            dt = parse_ts(cell)
-            if dt: break
+        newest_row = rows[0][cite: 4]
+        dt = None[cite: 4]
+        for cell in newest_row[:3]:[cite: 4]
+            dt = parse_ts(cell)[cite: 4]
+            if dt: break[cite: 4]
 
-        row_vals = {}
-        for col_idx, s_id in sensor_cols.items():
-            if col_idx < len(newest_row):
-                val = clean_num(newest_row[col_idx])
-                if not np.isnan(val):
-                    row_vals[s_id] = val
+        row_vals = {}[cite: 4]
+        for col_idx, s_id in sensor_cols.items():[cite: 4]
+            if col_idx < len(newest_row):[cite: 4]
+                val = clean_num(newest_row[col_idx])[cite: 4]
+                if not np.isnan(val):[cite: 4]
+                    row_vals[s_id] = val[cite: 4]
 
-        return row_vals, (ts_key(dt) if dt else None)
-    except Exception as e:
-        print(f"Canlı veri hatası {cat_key}: {e}")
-        return {}, None
+        return row_vals, (ts_key(dt) if dt else None)[cite: 4]
+    except Exception as e:[cite: 4]
+        print(f"Canlı veri hatası {cat_key}: {e}")[cite: 4]
+        return {}, None[cite: 4]
     finally:
-        try:
-            page.context.close()
-        except Exception:
-            pass
+        try:[cite: 4]
+            page.context.close()[cite: 4]
+        except Exception:[cite: 4]
+            pass[cite: 4]
 
-@st.cache_data(ttl=180, show_spinner=False)
+@st.cache_data(ttl=180, show_spinner=False)[cite: 4]
 def fetch_live_data():
-    live_db = {k: {} for k in CATEGORIES}
-    cat_timestamps = {}
-    with sync_playwright() as p:
-        browser = _launch_browser(p)
-        try:
-            for cat_key, cat_cfg in CATEGORIES.items():
-                vals, dt_key = _scrape_live_table(browser, cat_key, cat_cfg)
-                live_db[cat_key] = vals
-                cat_timestamps[cat_key] = dt_key
+    live_db = {k: {} for k in CATEGORIES}[cite: 4]
+    cat_timestamps = {}[cite: 4]
+    with sync_playwright() as p:[cite: 4]
+        browser = _launch_browser(p)[cite: 4]
+        try:[cite: 4]
+            for cat_key, cat_cfg in CATEGORIES.items():[cite: 4]
+                vals, dt_key = _scrape_live_table(browser, cat_key, cat_cfg)[cite: 4]
+                live_db[cat_key] = vals[cite: 4]
+                cat_timestamps[cat_key] = dt_key[cite: 4]
         finally:
-            browser.close()
-    return live_db, cat_timestamps
+            browser.close()[cite: 4]
+    return live_db, cat_timestamps[cite: 4]
 
 # -------------------------------------------------------------------------
 # 2. ARŞİV VERİLER: TOUT -> GRAPHIQUES -> TYPES -> 🠋CSV İNDİRME
 # -------------------------------------------------------------------------
 def _download_archive_csv_for_category(browser, cat_key, cat_cfg):
-    page = _new_page(browser)
-    downloads = []
-    page.on("download", lambda d: downloads.append(d))
-    page.context.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))
+    page = _new_page(browser)[cite: 4]
+    downloads = [][cite: 4]
+    page.on("download", lambda d: downloads.append(d))[cite: 4]
+    page.context.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))[cite: 4]
 
-    try:
-        page.goto(URL, timeout=0, wait_until="domcontentloaded")
-        page.wait_for_timeout(3000)
+    try:[cite: 4]
+        page.goto(URL, timeout=0, wait_until="domcontentloaded")[cite: 4]
+        page.wait_for_timeout(3000)[cite: 4]
 
-        combos = page.get_by_role("combobox")
-        combos.first.wait_for(state="attached", timeout=0)
+        combos = page.get_by_role("combobox")[cite: 4]
+        combos.first.wait_for(state="attached", timeout=0)[cite: 4]
 
         # Duration -> Tout
-        dur_combo = combos.nth(0)
-        dur_opts = dur_combo.locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
-        )
-        target_dur = None
-        for o in dur_opts:
-            if any(w in o["t"] or w in o["v"].lower() for w in ["tout", "all", "historique", "complet"]):
-                target_dur = o["v"]
-                break
-        if not target_dur and dur_opts:
-            target_dur = dur_opts[-1]["v"]
-        dur_combo.select_option(target_dur, timeout=0)
-        page.wait_for_timeout(2000)
+        dur_combo = combos.nth(0)[cite: 4]
+        dur_opts = dur_combo.locator("option").evaluate_all([cite: 4]
+            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"[cite: 4]
+        )[cite: 4]
+        target_dur = None[cite: 4]
+        for o in dur_opts:[cite: 4]
+            if any(w in o["t"] or w in o["v"].lower() for w in ["tout", "all", "historique", "complet"]):[cite: 4]
+                target_dur = o["v"][cite: 4]
+                break[cite: 4]
+        if not target_dur and dur_opts:[cite: 4]
+            target_dur = dur_opts[-1]["v"][cite: 4]
+        dur_combo.select_option(target_dur, timeout=0)[cite: 4]
+        page.wait_for_timeout(2000)[cite: 4]
 
         # Display mode -> Graphiques
-        disp_combo = combos.nth(1)
-        disp_opts = disp_combo.locator("option").evaluate_all(
-            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
-        )
-        target_disp = None
-        for o in disp_opts:
-            if "graph" in o["t"] or "chart" in o["v"].lower():
-                target_disp = o["v"]
-                break
-        if target_disp:
-            disp_combo.select_option(target_disp, timeout=0)
-            page.wait_for_timeout(2000)
+        disp_combo = combos.nth(1)[cite: 4]
+        disp_opts = disp_combo.locator("option").evaluate_all([cite: 4]
+            "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"[cite: 4]
+        )[cite: 4]
+        target_disp = None[cite: 4]
+        for o in disp_opts:[cite: 4]
+            if "graph" in o["t"] or "chart" in o["v"].lower():[cite: 4]
+                target_disp = o["v"][cite: 4]
+                break[cite: 4]
+        if target_disp:[cite: 4]
+            disp_combo.select_option(target_disp, timeout=0)[cite: 4]
+            page.wait_for_timeout(2000)[cite: 4]
 
         # Types sekmesi ve kategori seçimi
-        _click_types_menu(page)
-        _select_type_category(page, cat_cfg)
+        _click_types_menu(page)[cite: 4]
+        _select_type_category(page, cat_cfg)[cite: 4]
         
         # Grafiğin yüklenmesi için bekleme
-        page.wait_for_timeout(6000)
-        _wait_data_loaded(page)
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(6000)[cite: 4]
+        _wait_data_loaded(page)[cite: 4]
+        page.wait_for_timeout(2000)[cite: 4]
 
         # 🠋CSV Butonunu bulma
-        btn = None
-        for selector in [
+        btn = None[cite: 4]
+        for selector in [[cite: 4]
             "text=🠋CSV",
             "button:has-text('CSV')",
             "a:has-text('CSV')",
             "text=CSV"
         ]:
-            loc = page.locator(selector)
-            if loc.count() > 0 and loc.first.is_visible():
-                btn = loc.first
-                break
+            loc = page.locator(selector)[cite: 4]
+            if loc.count() > 0 and loc.first.is_visible():[cite: 4]
+                btn = loc.first[cite: 4]
+                break[cite: 4]
 
-        if not btn:
-            return {}
+        if not btn:[cite: 4]
+            return {}[cite: 4]
 
-        download_path = None
-        try:
-            btn.click(force=True, timeout=0)
-            while not downloads:
-                page.wait_for_timeout(500)
-            download_path = downloads[-1].path()
-        except Exception as down_err:
-            print(f"CSV tetikleme hatasi {cat_key}: {down_err}")
+        download_path = None[cite: 4]
+        try:[cite: 4]
+            btn.click(force=True, timeout=0)[cite: 4]
+            while not downloads:[cite: 4]
+                page.wait_for_timeout(500)[cite: 4]
+            download_path = downloads[-1].path()[cite: 4]
+        except Exception as down_err:[cite: 4]
+            print(f"CSV tetikleme hatasi {cat_key}: {down_err}")[cite: 4]
 
-        if not download_path or not os.path.exists(download_path) or os.path.getsize(download_path) == 0:
-            return {}
+        if not download_path or not os.path.exists(download_path) or os.path.getsize(download_path) == 0:[cite: 4]
+            return {}[cite: 4]
 
-        with open(download_path, "rb") as f:
-            raw = f.read()
-        text = raw.decode("utf-8-sig", errors="ignore")
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        if len(lines) < 2:
-            return {}
+        with open(download_path, "rb") as f:[cite: 4]
+            raw = f.read()[cite: 4]
+        text = raw.decode("utf-8-sig", errors="ignore")[cite: 4]
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()][cite: 4]
+        if len(lines) < 2:[cite: 4]
+            return {}[cite: 4]
 
-        delim = ";" if lines[0].count(";") >= lines[0].count(",") else ","
-        rows = list(csv.reader(lines, delimiter=delim))
+        delim = ";" if lines[0].count(";") >= lines[0].count(",") else ","[cite: 4]
+        rows = list(csv.reader(lines, delimiter=delim))[cite: 4]
 
-        header_idx = None
-        for i, r in enumerate(rows[:25]):
-            if any(extract_sensor_name(c) for c in r):
-                header_idx = i
-                break
-        if header_idx is None:
-            return {}
+        header_idx = None[cite: 4]
+        for i, r in enumerate(rows[:25]):[cite: 4]
+            if any(extract_sensor_name(c) for c in r):[cite: 4]
+                header_idx = i[cite: 4]
+                break[cite: 4]
+        if header_idx is None:[cite: 4]
+            return {}[cite: 4]
 
-        header = rows[header_idx]
-        sensor_cols = {}
-        for col_idx, h in enumerate(header):
-            s_id = extract_sensor_name(h)
-            if s_id:
-                sensor_cols[col_idx] = s_id
+        header = rows[header_idx][cite: 4]
+        sensor_cols = {}[cite: 4]
+        for col_idx, h in enumerate(header):[cite: 4]
+            s_id = extract_sensor_name(h)[cite: 4]
+            if s_id:[cite: 4]
+                sensor_cols[col_idx] = s_id[cite: 4]
 
-        if not sensor_cols:
-            return {}
+        if not sensor_cols:[cite: 4]
+            return {}[cite: 4]
 
-        out = {}
-        for r in rows[header_idx + 1:]:
-            if not r: continue
-            row_vals = {}
-            for col_idx, s_id in sensor_cols.items():
-                if col_idx < len(r):
-                    val = clean_num(r[col_idx])
-                    if not np.isnan(val):
-                        row_vals[s_id] = val
-            dt = None
-            for cell in r[:3]:
-                dt = parse_ts(cell)
-                if dt: break
-            if dt and row_vals:
-                out.setdefault(ts_key(dt), {}).update(row_vals)
+        out = {}[cite: 4]
+        for r in rows[header_idx + 1:]:[cite: 4]
+            if not r: continue[cite: 4]
+            row_vals = {}[cite: 4]
+            for col_idx, s_id in sensor_cols.items():[cite: 4]
+                if col_idx < len(r):[cite: 4]
+                    val = clean_num(r[col_idx])[cite: 4]
+                    if not np.isnan(val):[cite: 4]
+                        row_vals[s_id] = val[cite: 4]
+            dt = None[cite: 4]
+            for cell in r[:3]:[cite: 4]
+                dt = parse_ts(cell)[cite: 4]
+                if dt: break[cite: 4]
+            if dt and row_vals:[cite: 4]
+                out.setdefault(ts_key(dt), {}).update(row_vals)[cite: 4]
 
-        return out
+        return out[cite: 4]
 
-    except Exception as e:
-        print(f"Arşiv çekme hatası {cat_key}: {e}")
-        return {}
+    except Exception as e:[cite: 4]
+        print(f"Arşiv çekme hatası {cat_key}: {e}")[cite: 4]
+        return {}[cite: 4]
     finally:
-        try:
-            page.context.close()
-        except Exception:
-            pass
+        try:[cite: 4]
+            page.context.close()[cite: 4]
+        except Exception:[cite: 4]
+            pass[cite: 4]
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False)[cite: 4]
 def fetch_archive_csv_database():
-    historical_db = {k: {} for k in CATEGORIES}
-    dates_set = set()
+    historical_db = {k: {} for k in CATEGORIES}[cite: 4]
+    dates_set = set()[cite: 4]
 
-    with sync_playwright() as p:
-        browser = _launch_browser(p)
-        try:
-            for cat_key, cat_cfg in CATEGORIES.items():
-                parsed = _download_archive_csv_for_category(browser, cat_key, cat_cfg)
-                if parsed:
-                    for k, v in parsed.items():
-                        dates_set.add(k)
-                        historical_db[cat_key][k] = v
+    with sync_playwright() as p:[cite: 4]
+        browser = _launch_browser(p)[cite: 4]
+        try:[cite: 4]
+            for cat_key, cat_cfg in CATEGORIES.items():[cite: 4]
+                parsed = _download_archive_csv_for_category(browser, cat_key, cat_cfg)[cite: 4]
+                if parsed:[cite: 4]
+                    for k, v in parsed.items():[cite: 4]
+                        dates_set.add(k)[cite: 4]
+                        historical_db[cat_key][k] = v[cite: 4]
                 else:
-                    historical_db[cat_key] = {}
+                    historical_db[cat_key] = {}[cite: 4]
         finally:
-            browser.close()
+            browser.close()[cite: 4]
 
-    return sorted(list(dates_set), reverse=True), historical_db
+    return sorted(list(dates_set), reverse=True), historical_db[cite: 4]
 
-@st.cache_data
+@st.cache_data[cite: 4]
 def get_model_b64(path):
-    if not os.path.exists(path):
-        return None
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+    if not os.path.exists(path):[cite: 4]
+        return None[cite: 4]
+    with open(path, "rb") as f:[cite: 4]
+        return base64.b64encode(f.read()).decode()[cite: 4]
 
 # ---------------------------------------------------------
 # KONTROL PANELİ VE GÖRÜNÜM
 # ---------------------------------------------------------
-col_nav, col_3d = st.columns([1, 4])
+col_nav, col_3d = st.columns([1, 4])[cite: 4]
 
-with col_nav:
-    st.subheader("KONTROL PANELİ")
+with col_nav:[cite: 4]
+    st.subheader("KONTROL PANELİ")[cite: 4]
     
-    data_mode = st.radio(
-        "Veri Modu Seçimi:",
-        options=["Canlı Veriler", "Arşiv Veriler"]
-    )
+    data_mode = st.radio([cite: 4]
+        "Veri Modu Seçimi:",[cite: 4]
+        options=["Canlı Veriler", "Arşiv Veriler"][cite: 4]
+    )[cite: 4]
 
-    selected_comp = st.radio(
-        "Görüntülenecek Bileşen (Kategori):",
-        options=["axial", "hoop", "temp"],
-        format_func=lambda k: CATEGORIES[k]["title"]
-    )
+    selected_comp = st.radio([cite: 4]
+        "Görüntülenecek Bileşen (Kategori):",[cite: 4]
+        options=["axial", "hoop", "temp"],[cite: 4]
+        format_func=lambda k: CATEGORIES[k]["title"][cite: 4]
+    )[cite: 4]
 
-    target_timestamp = "-"
-    latest_timestamp = None
-    raw_v_map = {}
-    latest_v_map = {}
-    cat_cfg = CATEGORIES[selected_comp]
-    compare_mode = False
+    target_timestamp = "-"[cite: 4]
+    latest_timestamp = None[cite: 4]
+    raw_v_map = {}[cite: 4]
+    latest_v_map = {}[cite: 4]
+    cat_cfg = CATEGORIES[selected_comp][cite: 4]
+    compare_mode = False[cite: 4]
 
-    if data_mode == "Arşiv Veriler":
-        st.markdown("---")
-        st.subheader("Zaman Seçimi")
+    if data_mode == "Arşiv Veriler":[cite: 4]
+        st.markdown("---")[cite: 4]
+        st.subheader("Zaman Seçimi")[cite: 4]
         
-        with st.spinner("Arşiv verileri alınıyor..."):
-            all_dates, full_db = fetch_archive_csv_database()
+        with st.spinner("Arşiv verileri alınıyor..."):[cite: 4]
+            all_dates, full_db = fetch_archive_csv_database()[cite: 4]
 
-        cat_rows = full_db.get(selected_comp, {})
-        cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)
+        cat_rows = full_db.get(selected_comp, {})[cite: 4]
+        cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)[cite: 4]
             
-        if not cat_dates:
-            st.warning(f"⚠️ '{cat_cfg['title']}' kategorisi için LoggIS arşivinde kayıt bulunamadı.")
+        if not cat_dates:[cite: 4]
+            st.warning(f"⚠️ '{cat_cfg['title']}' kategorisi için LoggIS arşivinde kayıt bulunamadı.")[cite: 4]
         else:
-            compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")
+            compare_mode = st.checkbox("Karşılaştır (Fark Analizi)")[cite: 4]
 
-            date_hierarchy = {}
-            for k in cat_dates:
-                y, m, d, t = k[0:4], k[5:7], k[8:10], k[11:]
-                date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(t)
+            date_hierarchy = {}[cite: 4]
+            for k in cat_dates:[cite: 4]
+                y, m, d, t = k[0:4], k[5:7], k[8:10], k[11:][cite: 4]
+                date_hierarchy.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(t)[cite: 4]
 
-            years = sorted(date_hierarchy.keys(), reverse=True)
-            sel_year = st.selectbox("Yıl Seçiniz", options=years)
+            years = sorted(date_hierarchy.keys(), reverse=True)[cite: 4]
+            sel_year = st.selectbox("Yıl Seçiniz", options=years)[cite: 4]
 
-            if sel_year:
-                months = sorted(date_hierarchy[sel_year].keys(), reverse=True)
-                sel_month = st.selectbox("Ay Seçiniz:", options=months,
-                                         format_func=lambda mm: f"{mm} - {TR_MONTHS.get(mm, mm)}")
+            if sel_year:[cite: 4]
+                months = sorted(date_hierarchy[sel_year].keys(), reverse=True)[cite: 4]
+                sel_month = st.selectbox("Ay Seçiniz:", options=months,[cite: 4]
+                                         format_func=lambda mm: f"{mm} - {TR_MONTHS.get(mm, mm)}")[cite: 4]
 
-                if sel_month:
-                    days = sorted(date_hierarchy[sel_year][sel_month].keys(), reverse=True)
-                    sel_day = st.selectbox("Gün Seçiniz:", options=days)
+                if sel_month:[cite: 4]
+                    days = sorted(date_hierarchy[sel_year][sel_month].keys(), reverse=True)[cite: 4]
+                    sel_day = st.selectbox("Gün Seçiniz:", options=days)[cite: 4]
 
-                    if sel_day:
-                        times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)
-                        sel_time = st.selectbox("Saat Seçiniz:", options=times, format_func=lambda t: t[:5])
+                    if sel_day:[cite: 4]
+                        times = sorted(date_hierarchy[sel_year][sel_month][sel_day], reverse=True)[cite: 4]
+                        sel_time = st.selectbox("Saat Seçiniz:", options=times, format_func=lambda t: t[:5])[cite: 4]
 
-                        if sel_time:
-                            target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
+                        if sel_time:[cite: 4]
+                            target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"[cite: 4]
                             # Aktif Periyot: Seçilen geçmiş arşiv tarihini gösterir
-                            target_timestamp = fmt_ts(target_key)
-                            raw_v_map = cat_rows.get(target_key, {})
+                            target_timestamp = fmt_ts(target_key)[cite: 4]
+                            raw_v_map = cat_rows.get(target_key, {})[cite: 4]
 
                             # Karşılaştırma modunda canlı verilerle kıyaslama
-                            if compare_mode:
-                                with st.spinner("Kıyaslama için canlı veriler alınıyor..."):
-                                    live_db_cmp, live_ts_cmp = fetch_live_data()
-                                latest_v_map = live_db_cmp.get(selected_comp, {})
-                                cur_live_dt = live_ts_cmp.get(selected_comp)
-                                latest_timestamp = fmt_ts(cur_live_dt) if cur_live_dt else "-"
+                            if compare_mode:[cite: 4]
+                                with st.spinner("Kıyaslama için canlı veriler alınıyor..."):[cite: 4]
+                                    live_db_cmp, live_ts_cmp = fetch_live_data()[cite: 4]
+                                latest_v_map = live_db_cmp.get(selected_comp, {})[cite: 4]
+                                cur_live_dt = live_ts_cmp.get(selected_comp)[cite: 4]
+                                latest_timestamp = fmt_ts(cur_live_dt) if cur_live_dt else "-"[cite: 4]
     else:
-        with st.spinner("En güncel veriler alınıyor..."):
-            live_db, cat_timestamps = fetch_live_data()
+        with st.spinner("En güncel veriler alınıyor..."):[cite: 4]
+            live_db, cat_timestamps = fetch_live_data()[cite: 4]
         
-        raw_v_map = live_db.get(selected_comp, {})
-        cur_ts = cat_timestamps.get(selected_comp)
+        raw_v_map = live_db.get(selected_comp, {})[cite: 4]
+        cur_ts = cat_timestamps.get(selected_comp)[cite: 4]
         
-        if not raw_v_map or not cur_ts:
-            st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")
-            target_timestamp = "-"
+        if not raw_v_map or not cur_ts:[cite: 4]
+            st.warning(f"⚠️ LoggIS sisteminde '{cat_cfg['title']}' için aktif ölçüm bulunamadı.")[cite: 4]
+            target_timestamp = "-"[cite: 4]
         else:
             # Aktif Periyot: Canlı tablodaki son satırın tarihini gösterir
-            target_timestamp = fmt_ts(cur_ts)
+            target_timestamp = fmt_ts(cur_ts)[cite: 4]
 
-    if st.button("Verileri Yenile"):
-        st.cache_data.clear()
-        st.rerun()
+    if st.button("Verileri Yenile"):[cite: 4]
+        st.cache_data.clear()[cite: 4]
+        st.rerun()[cite: 4]
 
 # ---------------------------------------------------------
 # VERİ HESAPLAMALARI
 # ---------------------------------------------------------
-active_category_values = {}
-table_data = []
+active_category_values = {}[cite: 4]
+table_data = [][cite: 4]
 
-if raw_v_map:
-    for s_name, val in raw_v_map.items():
-        if val is None or np.isnan(val): 
-            continue
+if raw_v_map:[cite: 4]
+    for s_name, val in raw_v_map.items():[cite: 4]
+        if val is None or np.isnan(val):[cite: 4]
+            continue[cite: 4]
         
-        if compare_mode:
-            latest_val = latest_v_map.get(s_name)
-            str_val = f"{float(val):.2f}"
-            str_latest = f"{float(latest_val):.2f}" if latest_val is not None and not np.isnan(latest_val) else "-"
+        if compare_mode:[cite: 4]
+            latest_val = latest_v_map.get(s_name)[cite: 4]
+            val_float = float(val)
+            latest_float = float(latest_val) if latest_val is not None and not np.isnan(latest_val) else np.nan
             
-            if latest_val is not None and not np.isnan(latest_val):
-                delta = float(latest_val) - float(val)
-                active_category_values[s_name] = delta
-                str_delta = f"{delta:+.2f}"
+            if not np.isnan(latest_float):
+                delta = latest_float - val_float
+                active_category_values[s_name] = delta[cite: 4]
             else:
-                str_delta = "-"
+                delta = np.nan
                 
             table_data.append({
                 "Sensör No": s_name,
-                "Arşiv Değeri": str_val,
-                "Güncel Değer": str_latest,
-                "Fark (Δ)": str_delta
+                "Arşiv Değeri": val_float,
+                "Güncel Değer": latest_float,
+                "Fark (Δ)": delta
             })
         else:
-            active_category_values[s_name] = float(val)
+            active_category_values[s_name] = float(val)[cite: 4]
 
-vals = [float(v) for v in active_category_values.values() if not np.isnan(v)]
-if not vals:
-    clim = [0.0, 0.0]
-    display_min = np.nan
-    display_max = np.nan
-    display_mid = np.nan
+vals = [float(v) for v in active_category_values.values() if not np.isnan(v)][cite: 4]
+if not vals:[cite: 4]
+    clim = [0.0, 0.0][cite: 4]
+    display_min = np.nan[cite: 4]
+    display_max = np.nan[cite: 4]
+    display_mid = np.nan[cite: 4]
 else:
-    real_min = float(min(vals))
-    real_max = float(max(vals))
-    display_min = real_min
-    display_max = real_max
-    display_mid = float(np.mean(vals))
+    real_min = float(min(vals))[cite: 4]
+    real_max = float(max(vals))[cite: 4]
+    display_min = real_min[cite: 4]
+    display_max = real_max[cite: 4]
+    display_mid = float(np.mean(vals))[cite: 4]
     
-    if compare_mode:
-        max_abs = max(abs(real_min), abs(real_max))
-        if max_abs < 1e-4:
-            clim = [-0.1, 0.1]
+    if compare_mode:[cite: 4]
+        max_abs = max(abs(real_min), abs(real_max))[cite: 4]
+        if max_abs < 1e-4:[cite: 4]
+            clim = [-0.1, 0.1][cite: 4]
         else:
-            clim = [-round(max_abs, 2), round(max_abs, 2)]
+            clim = [-round(max_abs, 2), round(max_abs, 2)][cite: 4]
     else:
-        if abs(real_max - real_min) < 1e-4:
-            clim = [round(real_min - 0.1, 2), round(real_max + 0.1, 2)]
+        if abs(real_max - real_min) < 1e-4:[cite: 4]
+            clim = [round(real_min - 0.1, 2), round(real_max + 0.1, 2)][cite: 4]
         else:
-            clim = [round(real_min, 2), round(real_max, 2)]
+            clim = [round(real_min, 2), round(real_max, 2)][cite: 4]
 
-with col_nav:
-    st.markdown("---")
-    st.subheader("GÖRÜNÜM AYARLARI")
+with col_nav:[cite: 4]
+    st.markdown("---")[cite: 4]
+    st.subheader("GÖRÜNÜM AYARLARI")[cite: 4]
 
-    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0
-    show_meters = st.checkbox("Metre Cetveli Göster", value=True)
-    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)
+    tunnel_opacity = st.slider("Tünel Opaklığı (%):", min_value=0, max_value=100, value=85, step=5) / 100.0[cite: 4]
+    show_meters = st.checkbox("Metre Cetveli Göster", value=True)[cite: 4]
+    show_no_data_red = st.checkbox("⚠️ Verisi Olmayan Sensörleri Göster", value=False)[cite: 4]
 
-    st.markdown("---")
-    if compare_mode:
-        st.write("**Karşılaştırma (Fark Analizi):**")
-        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  {latest_timestamp}</span>", unsafe_allow_html=True)
+    st.markdown("---")[cite: 4]
+    if compare_mode:[cite: 4]
+        st.write("**Karşılaştırma (Fark Analizi):**")[cite: 4]
+        st.markdown(f"<span class='neon-data' style='font-size: 13px; color: #FF9500;'>{target_timestamp}  ➔  {latest_timestamp}</span>", unsafe_allow_html=True)[cite: 4]
     else:
-        st.write("**Aktif Periyot:**")
-        st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)
+        st.write("**Aktif Periyot:**")[cite: 4]
+        st.markdown(f"<span class='neon-data' style='font-size: 13px;'>{target_timestamp if target_timestamp != '-' else '-'}</span>", unsafe_allow_html=True)[cite: 4]
     
-    st.write("**Aktif Sensör Sayısı:**")
-    sensor_count_str = str(len(active_category_values)) if active_category_values else "0"
-    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{sensor_count_str}</span>", unsafe_allow_html=True)
+    st.write("**Aktif Sensör Sayısı:**")[cite: 4]
+    sensor_count_str = str(len(active_category_values)) if active_category_values else "0"[cite: 4]
+    st.markdown(f"<span class='neon-data' style='font-size: 18px;'>{sensor_count_str}</span>", unsafe_allow_html=True)[cite: 4]
     
-    st.write("**Skala Limitleri:**")
-    if vals:
-        limit_str = f"Min: {display_min:+.2f} | Maks: {display_max:+.2f} {cat_cfg['unit']}"
+    st.write("**Skala Limitleri:**")[cite: 4]
+    if vals:[cite: 4]
+        limit_str = f"Min: {display_min:+.2f} | Maks: {display_max:+.2f} {cat_cfg['unit']}"[cite: 4]
     else:
-        limit_str = "-"
-    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)
+        limit_str = "-"[cite: 4]
+    st.markdown(f"<span class='neon-data' style='font-size: 14px;'>{limit_str}</span>", unsafe_allow_html=True)[cite: 4]
 
 # ---------------------------------------------------------
 # THREE.JS 3D PENCERESİ
 # ---------------------------------------------------------
-with col_3d:
-    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))
+with col_3d:[cite: 4]
+    sensor_options = ["Seçiniz..."] + sorted(list(active_category_values.keys()))[cite: 4]
     
-    sel_col1, sel_col2 = st.columns([3, 1])
-    with sel_col1:
-        selected_sensor = st.selectbox(
-            "Modelde Sensör Odakla:",
-            options=sensor_options,
-            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"
-        )
-    with sel_col2:
-        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:
-            val_label = "Değişim (Δ)" if compare_mode else "Ölçüm"
-            st.metric(
-                label=f"{val_label} ({selected_sensor})",
-                value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"
-            )
+    sel_col1, sel_col2 = st.columns([3, 1])[cite: 4]
+    with sel_col1:[cite: 4]
+        selected_sensor = st.selectbox([cite: 4]
+            "Modelde Sensör Odakla:",[cite: 4]
+            options=sensor_options,[cite: 4]
+            help="Modelde vurgulanacak ve kameranın odaklanacağı sensörü seçin"[cite: 4]
+        )[cite: 4]
+    with sel_col2:[cite: 4]
+        if selected_sensor != "Seçiniz..." and selected_sensor in active_category_values:[cite: 4]
+            val_label = "Değişim (Δ)" if compare_mode else "Ölçüm"[cite: 4]
+            st.metric([cite: 4]
+                label=f"{val_label} ({selected_sensor})",[cite: 4]
+                value=f"{active_category_values[selected_sensor]:+.2f} {cat_cfg['unit']}"[cite: 4]
+            )[cite: 4]
         else:
-            st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
+            st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")[cite: 4]
 
-    model_b64 = get_model_b64(MODEL_PATH)
+    model_b64 = get_model_b64(MODEL_PATH)[cite: 4]
     
-    if not model_b64:
-        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini yükleyiniz.")
+    if not model_b64:[cite: 4]
+        st.error(f"⚠️ `{MODEL_PATH}` bulunamadı! Lütfen 3ds Max'ten aldığınız .glb modelini yükleyiniz.")[cite: 4]
     else:
-        payload_data = {
-            "activeCategoryValues": active_category_values,
-            "selectedSensor": selected_sensor,
-            "unit": cat_cfg["unit"],
-            "clim": clim,
-            "displayMin": display_min if not np.isnan(display_min) else None,
-            "displayMax": display_max if not np.isnan(display_max) else None,
-            "displayMid": display_mid if not np.isnan(display_mid) else None,
-            "comp": selected_comp,
-            "tunnelOpacity": float(tunnel_opacity),
-            "showMeters": show_meters,
-            "showNoDataRed": show_no_data_red,
-            "isCompareMode": compare_mode
-        }
-        json_payload = json.dumps(payload_data)
+        payload_data = {[cite: 4]
+            "activeCategoryValues": active_category_values,[cite: 4]
+            "selectedSensor": selected_sensor,[cite: 4]
+            "unit": cat_cfg["unit"],[cite: 4]
+            "clim": clim,[cite: 4]
+            "displayMin": display_min if not np.isnan(display_min) else None,[cite: 4]
+            "displayMax": display_max if not np.isnan(display_max) else None,[cite: 4]
+            "displayMid": display_mid if not np.isnan(display_mid) else None,[cite: 4]
+            "comp": selected_comp,[cite: 4]
+            "tunnelOpacity": float(tunnel_opacity),[cite: 4]
+            "showMeters": show_meters,[cite: 4]
+            "showNoDataRed": show_no_data_red,[cite: 4]
+            "isCompareMode": compare_mode[cite: 4]
+        }[cite: 4]
+        json_payload = json.dumps(payload_data)[cite: 4]
 
         raw_template = """<!DOCTYPE html>
 <html>
@@ -944,10 +955,10 @@ with col_3d:
         .legend-bar-container { display: flex; align-items: stretch; height: 180px; }
         #legend-bar { width: 16px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.35); margin-right: 8px; }
         .legend-labels { display: flex; flex-direction: column; justify-content: space-between; color: #FFFFFF; font-size: 11px; font-weight: 700; }
-        @media (max-width: 600px) { 
-            #canvas-container { width: calc(100% - 44px) !important; margin: 0 auto !important; }
+        @media (max-width: 820px) { 
+            #canvas-container { width: calc(100% - 48px) !important; margin: 0 auto !important; height: 480px !important; }
             #color-legend { padding: 6px 8px; top: 10px; right: 10px; } 
-            .legend-bar-container { height: 130px; } 
+            .legend-bar-container { height: 120px; } 
             #legend-bar { width: 12px; } 
             #legend-title { font-size: 10px; } 
             .legend-labels { font-size: 9px; } 
@@ -1507,30 +1518,45 @@ with col_3d:
         (function animate(time) { requestAnimationFrame(animate); TWEEN.update(time); controls.update(); renderer.clear(); renderer.render(scene, camera); renderer.clearDepth(); renderer.render(sensorScene, camera); })();
     </script>
 </body>
-</html>"""
+</html>"""[cite: 4]
 
-        final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)
-        st.components.v1.html(final_html, height=600, scrolling=False)
+        final_html = raw_template.replace("__INJECT_PAYLOAD__", json_payload).replace("__INJECT_MODEL__", model_b64)[cite: 4]
+        st.components.v1.html(final_html, height=540, scrolling=False)
 
 # ---------------------------------------------------------
-# TABLO (FARK RAPORU)
+# FARK RAPORU TABLOSU (SAYISAL SIRALAMA DESTEKLİ)
 # ---------------------------------------------------------
-if compare_mode and table_data:
-    st.markdown("---")
-    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")
+if compare_mode and table_data:[cite: 4]
+    st.markdown("---")[cite: 4]
+    st.markdown(f"### Fark Raporu ({target_timestamp} ➔ {latest_timestamp})")[cite: 4]
     
-    df = pd.DataFrame(table_data)
-    df = df.sort_values(by="Sensör No").reset_index(drop=True)
+    df = pd.DataFrame(table_data)[cite: 4]
+    df = df.sort_values(by="Sensör No").reset_index(drop=True)[cite: 4]
     
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        height=400,
+    st.dataframe([cite: 4]
+        df,[cite: 4]
+        use_container_width=True,[cite: 4]
+        hide_index=True,[cite: 4]
+        height=400,[cite: 4]
         column_config={
-            "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
-            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
-            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
-            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
+            "Sensör No": st.column_config.TextColumn(
+                "Sensör No", 
+                width="medium"
+            ),
+            "Arşiv Değeri": st.column_config.NumberColumn(
+                f"Geçmiş ({target_timestamp})", 
+                format="%.2f",
+                width="small"
+            ),
+            "Güncel Değer": st.column_config.NumberColumn(
+                f"Şimdi ({latest_timestamp})", 
+                format="%.2f",
+                width="small"
+            ),
+            "Fark (Δ)": st.column_config.NumberColumn(
+                "Fark (Δ)", 
+                format="%+.2f",
+                width="small"
+            ),
         }
     )
