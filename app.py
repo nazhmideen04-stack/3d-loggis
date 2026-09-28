@@ -251,7 +251,7 @@ st.markdown(f"""
 <div class="header-box" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: -20px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid rgba(0, 200, 230, 0.15);">
     <div style="display: flex; flex-direction: column; justify-content: center;">
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
-        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
+        <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ</div>
     </div>
     <div style="display: align-items: center;">
         {LOGO_TAG}
@@ -733,7 +733,7 @@ with col_nav:
         st.markdown("---")
         st.subheader("Zaman Seçimi")
         
-        with st.spinner("Arşiv verileri LoggIS üzerinden CSV olarak indiriliyor (Tout -> Graphiques -> Types -> CSV)..."):
+        with st.spinner("Arşiv verileri alınıyor..."):
             all_dates, full_db = fetch_archive_csv_database()
 
         cat_rows = full_db.get(selected_comp, {})
@@ -779,7 +779,7 @@ with col_nav:
                                 cur_live_dt = live_ts_cmp.get(selected_comp)
                                 latest_timestamp = fmt_ts(cur_live_dt) if cur_live_dt else "-"
     else:
-        with st.spinner("En güncel veriler alınıyor (Canlı)..."):
+        with st.spinner("En güncel veriler alınıyor..."):
             live_db, cat_timestamps = fetch_live_data()
         
         raw_v_map = live_db.get(selected_comp, {})
