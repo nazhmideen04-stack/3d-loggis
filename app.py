@@ -192,6 +192,7 @@ st.markdown("""
             padding-bottom: 2.5rem !important;
         }
 
+        /* 3D-сцена на смартфонах располагается первой (вверху) */
         [data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-direction: column !important;
@@ -253,7 +254,7 @@ st.markdown(f"""
         <h1 style="margin: 0 !important; padding: 0 !important; font-size: 30px !important; line-height: 1.1 !important;">CATERİNG - THY</h1>
         <div style="color: #00C8E6; font-weight: 700; font-size: 13px; letter-spacing: 1.5px; margin-top: 3px;">SENSÖR TAKİP SİSTEMİ & ANALİZ</div>
     </div>
-    <div style="display: align-items: center;">
+    <div style="display: flex; align-items: center;">
         {LOGO_TAG}
     </div>
 </div>
@@ -377,14 +378,14 @@ def _new_page(browser):
 
 def _setup_page_view(page, mode_type, log):
     """
-    Устанавливает Duration и Display mode.
-    Для скачивания CSV режим Display mode обязательно должен быть Graphiques!
+    Выбирает Duration и Display mode.
+    Для скачивания CSV режим Display mode обязательно должен быть Graphiques (как на скриншоте)!
     """
     try:
         combos = page.get_by_role("combobox")
         combos.first.wait_for(state="attached", timeout=15000)
         
-        # 1. Выбор Duration (Tout для архива, 2 mois для live)
+        # 1. Выбор Duration
         dur_combo = combos.nth(0)
         dur_opts = dur_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
@@ -411,7 +412,7 @@ def _setup_page_view(page, mode_type, log):
             
         page.wait_for_timeout(1000)
 
-        # 2. Выбор Display mode = Graphiques (чтобы кнопка 🠋CSV была видна)
+        # 2. Выбор Display mode = Graphiques (чтобы кнопка 🠋CSV была на экране)
         disp_combo = combos.nth(1)
         disp_opts = disp_combo.locator("option").evaluate_all(
             "els => els.map(e => ({v: e.value, t: (e.textContent || '').trim().toLowerCase()}))"
@@ -478,7 +479,7 @@ def _download_csv(page, log=None, tag=""):
     ctx = page.context
     ctx.on("page", lambda p: p.on("download", lambda d: downloads.append(d)))
     
-    # Кнопка как на скриншоте: черная плашка с текстом и стрелкой
+    # Кнопка как на скриншоте: 🠋CSV
     btn = page.locator("a, button, span, div").filter(has_text=re.compile(r"CSV", re.I)).first
     if not btn.is_visible():
         btn = page.get_by_text("🠋CSV").first
@@ -490,7 +491,7 @@ def _download_csv(page, log=None, tag=""):
     path = None
     try:
         btn.click(force=True, timeout=15000)
-        # Для Tout (ALL) сервер формирует большой файл — даем до 45 сек ожидания
+        # Ожидание скачивания (для Tout/ALL файл может весить несколько мегабайт)
         for _ in range(90):
             if downloads: break
             page.wait_for_timeout(500)
@@ -603,6 +604,7 @@ def _csv_once(browser, cat_key, cat_cfg, mode_type, log):
         try: page.context.close()
         except Exception: pass
 
+# В режиме Canlı Veriler жестко запрашивается MONTH_02 (2 mois), берутся самые верхние замеры
 @st.cache_data(ttl=180, show_spinner=False)
 def fetch_live_table(mode_type="MONTH_02"):
     live_db = {k: {} for k in CATEGORIES}
@@ -625,6 +627,7 @@ def fetch_live_table(mode_type="MONTH_02"):
 
     return live_db, cat_timestamps, log
 
+# В режиме Arşiv Veriler выгрузка через CSV по кнопке 🠋CSV режима Graphiques (Tout)
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_csv_database(mode_type="ALL"):
     historical_db = {k: {} for k in CATEGORIES}
@@ -718,7 +721,7 @@ with col_nav:
 
                         if sel_time:
                             target_key = f"{sel_year}-{sel_month}-{sel_day} {sel_time}"
-                            # СТРОГАЯ СИНХРОНИЗАЦИЯ: Aktif Periyot показывает выбранный момент архива
+                            # СИНХРОНИЗАЦИЯ: Aktif Periyot строго равен открытой архивной дате
                             target_timestamp = fmt_ts(target_key)
                             raw_v_map = cat_rows.get(target_key, {})
                             latest_v_map = cat_rows.get(latest_key, {})
