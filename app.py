@@ -748,7 +748,7 @@ with col_nav:
 
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman Seçimi")
+        st.subheader("Zaman SeçİMİ")
 
         cat_rows = full_db.get(selected_comp, {})
         cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)
@@ -916,7 +916,7 @@ with col_3d:
     # ДИНАМИЧЕСКИЙ ГРАФИК (ДОСТУПЕН ВСЕГДА: И В CANLI, И В ARŞİV / KARŞILAŞTIR)
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
-        st.markdown(f"### Sensörün Zaman İçindeki Değişimi: {selected_sensor}")
+        st.markdown(f"### Sensörün Zaman İÇİNDEKİ DEĞİŞİMİ: {selected_sensor}")
         
         sensor_history_data = []
         cat_history = full_db.get(selected_comp, {})
@@ -949,7 +949,7 @@ with col_3d:
             sensor_excel_bytes = output_sensor.getvalue()
             
             st.download_button(
-                label=f"📥 {selected_sensor} Verilerini İndir (Excel)",
+                label=f"{selected_sensor} Verilerini İndir",
                 data=sensor_excel_bytes,
                 file_name=f"Sensor_{selected_sensor}_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1586,7 +1586,7 @@ if compare_mode and table_data:
     fark_excel_bytes = output_fark.getvalue()
     
     st.download_button(
-        label="📥 Fark Raporunu İndir (Excel)",
+        label="Fark Raporunu İndir",
         data=fark_excel_bytes,
         file_name=f"Fark_Raporu_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
