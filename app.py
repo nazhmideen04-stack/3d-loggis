@@ -742,7 +742,7 @@ with col_nav:
     compare_mode = False
     full_db = {}
 
-    # Загружаем архивную базу всегда, чтобы график работал и в режиме Canlı Veriler, и в Arşiv Veriler
+    # Загружаем архивную базу всегда, чтобы график работал во всех режимах без путаницы с текстом
     with st.spinner("Arşiv verileri yükleniyor..."):
         all_dates, full_db = fetch_archive_csv_database()
 
@@ -913,7 +913,7 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # ДИНАМИЧЕСКИЙ ГРАФИК (ВСЕГДА ДОСТУПЕН, МЕСЯЦЫ НА ТУРЕЦКОМ + ТОЧНЫЕ ДАТЫ)
+    # ДИНАМИЧЕСКИЙ ГРАФИК (ДОСТУПЕН ВСЕГДА: И В CANLI, И В ARŞİV / KARŞILAŞTIR)
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
         st.markdown(f"### Sensörün Zaman İçindeki Değişimi: {selected_sensor}")
@@ -942,7 +942,7 @@ with col_3d:
         if sensor_history_data:
             chart_df = pd.DataFrame(sensor_history_data)
             
-            # Скачивание истории сенсора в формате НАСТОЯЩЕГО EXCEL (.xlsx)
+            # Скачивание в формате настоящего EXCEL (.xlsx) — данные всегда по разным столбцам
             output_sensor = BytesIO()
             with pd.ExcelWriter(output_sensor, engine='openpyxl') as writer:
                 chart_df.to_excel(writer, index=False, sheet_name='Sensor_Raporu')
@@ -1579,7 +1579,7 @@ if compare_mode and table_data:
     df = pd.DataFrame(table_data)
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
-    # СКАЧИВАНИЕ ФАРК РАПОРУ В ФОРМАТЕ НАСТОЯЩЕГО EXCEL (.xlsx)
+    # СКАЧИВАНИЕ В НАСТОЯЩЕМ EXCEL ФОРМАТЕ (.xlsx) БЕЗ ПРОБЛЕМ СО СТОЛБЦАМИ И ИЕРОГЛИФАМИ
     output_fark = BytesIO()
     with pd.ExcelWriter(output_fark, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Fark_Raporu')
