@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from playwright.sync_api import sync_playwright
+from io import BytesIO
 
 # 1. STREAMLIT TEMASI VE AYARLARI
 os.makedirs(".streamlit", exist_ok=True)
@@ -741,12 +742,13 @@ with col_nav:
     compare_mode = False
     full_db = {}
 
+    # Загружаем архивную базу всегда, чтобы график работал и в режиме Canlı Veriler, и в Arşiv Veriler
+    with st.spinner("Arşiv verileri yükleniyor..."):
+        all_dates, full_db = fetch_archive_csv_database()
+
     if data_mode == "Arşiv Veriler":
         st.markdown("---")
-        st.subheader("Zaman SeçİMİ")
-        
-        with st.spinner("Arşiv verileri alınıyor..."):
-            all_dates, full_db = fetch_archive_csv_database()
+        st.subheader("Zaman Seçimi")
 
         cat_rows = full_db.get(selected_comp, {})
         cat_dates = sorted([k for k, v in cat_rows.items() if v], reverse=True)
@@ -911,21 +913,14 @@ with col_3d:
         else:
             st.metric(label="Değer" if compare_mode else "Ölçüm", value="-")
 
-    # ДИНАМИЧЕСКИЙ ГРАФИК (МЕСЯЦЫ НА ТУРЕЦКОМ ВВИДУ + КНОПКА СКАЧИВАНИЯ ИСТОРИИ СЕНСОРА)
+    # ДИНАМИЧЕСКИЙ ГРАФИК (ВСЕГДА ДОСТУПЕН, МЕСЯЦЫ НА ТУРЕЦКОМ + ТОЧНЫЕ ДАТЫ)
     if selected_sensor != "Seçiniz...":
         st.markdown("---")
-        st.markdown(f"### Sensörün Zaman İçİndekİ Değİşİmİ: {selected_sensor}")
+        st.markdown(f"### Sensörün Zaman İçindeki Değişimi: {selected_sensor}")
         
         sensor_history_data = []
+        cat_history = full_db.get(selected_comp, {})
         
-        db_source = full_db if (data_mode == "Arşiv Veriler" and full_db) else {}
-        if not db_source:
-            try:
-                _, db_source = fetch_archive_csv_database()
-            except Exception:
-                db_source = {}
-                
-        cat_history = db_source.get(selected_comp, {})
         for timestamp_str, sensors_dict in sorted(cat_history.items(), key=lambda x: x[0]):
             if selected_sensor in sensors_dict:
                 v_num = sensors_dict[selected_sensor]
@@ -947,16 +942,19 @@ with col_3d:
         if sensor_history_data:
             chart_df = pd.DataFrame(sensor_history_data)
             
-            # Кнопка скачивания таблицы для конкретного сенсора (с разделителями по столбцам)
-            sensor_csv_bytes = ("sep=;\n" + chart_df.to_csv(index=False, sep=';', encoding='utf-8-sig')).encode('utf-8-sig')
+            # Скачивание истории сенсора в формате НАСТОЯЩЕГО EXCEL (.xlsx)
+            output_sensor = BytesIO()
+            with pd.ExcelWriter(output_sensor, engine='openpyxl') as writer:
+                chart_df.to_excel(writer, index=False, sheet_name='Sensor_Raporu')
+            sensor_excel_bytes = output_sensor.getvalue()
+            
             st.download_button(
-                label=f"{selected_sensor} Verilerini İndir",
-                data=sensor_csv_bytes,
-                file_name=f"Sensor_{selected_sensor}_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
+                label=f"📥 {selected_sensor} Verilerini İndir (Excel)",
+                data=sensor_excel_bytes,
+                file_name=f"Sensor_{selected_sensor}_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
-            # Отображаем график по месяцам
             plot_df = chart_df[["Ay / Yıl", f"Ölçüm Değeri ({cat_cfg['unit']})"]].set_index("Ay / Yıl")
             st.line_chart(plot_df, color="#00C8E6", height=240)
         else:
@@ -1581,14 +1579,17 @@ if compare_mode and table_data:
     df = pd.DataFrame(table_data)
     df = df.sort_values(by="Sensör No").reset_index(drop=True)
     
-    # ПРИНУДИТЕЛЬНЫЙ РАЗДЕЛИТЕЛЬ ДЛЯ EXCEL (sep=;) + UTF-8-SIG (УБИРАЕТ ИЕРОГЛИФЫ)
-    csv_bytes = ("sep=;\n" + df.to_csv(index=False, sep=';', encoding='utf-8-sig')).encode('utf-8-sig')
+    # СКАЧИВАНИЕ ФАРК РАПОРУ В ФОРМАТЕ НАСТОЯЩЕГО EXCEL (.xlsx)
+    output_fark = BytesIO()
+    with pd.ExcelWriter(output_fark, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Fark_Raporu')
+    fark_excel_bytes = output_fark.getvalue()
     
     st.download_button(
-        label="Fark Raporunu İndir",
-        data=csv_bytes,
-        file_name=f"Fark_Raporu_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime="text/csv"
+        label="📥 Fark Raporunu İndir (Excel)",
+        data=fark_excel_bytes,
+        file_name=f"Fark_Raporu_{selected_comp}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     
     st.dataframe(
@@ -1598,8 +1599,20 @@ if compare_mode and table_data:
         height=400,
         column_config={
             "Sensör No": st.column_config.TextColumn("Sensör No", width="medium"),
-            "Arşiv Değeri": st.column_config.TextColumn(f"Geçmiş ({target_timestamp})", width="small"),
-            "Güncel Değer": st.column_config.TextColumn(f"Şimdi ({latest_timestamp})", width="small"),
-            "Fark (Δ)": st.column_config.TextColumn("Fark (Δ)", width="small"),
+            "Arşiv Değeri": st.column_config.NumberColumn(
+                f"Geçmiş ({target_timestamp})", 
+                format="%.2f",
+                width="small"
+            ),
+            "Güncel Değer": st.column_config.NumberColumn(
+                f"Şimdi ({latest_timestamp})", 
+                format="%.2f",
+                width="small"
+            ),
+            "Fark (Δ)": st.column_config.NumberColumn(
+                "Fark (Δ)", 
+                format="%+.2f",
+                width="small"
+            ),
         }
     )
